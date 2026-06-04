@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint      --workspaces --if-present
+      - run: npm run typecheck --workspaces --if-present
+
+  test-api:
+    name: API Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lsp
+          POSTGRES_PASSWORD: lsp
+          POSTGRES_DB: lsp_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://lsp:lsp@localhost:5433/lsp_test
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate test keys
+        run: |
+          mkdir -p apps/api/keys
+          openssl genrsa -out apps/api/keys/private.pem 2048
+          openssl rsa -in apps/api/keys/private.pem -pubout -out apps/api/keys/public.pem
+      - name: Run migrations
+        working-directory: apps/api
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: postgresql://lsp:lsp@localhost:5433/lsp_test
+          JWT_PRIVATE_KEY_PATH: ./keys/private.pem
+          JWT_PUBLIC_KEY_PATH: ./keys/public.pem
+          CORS_ORIGIN: http://localhost:5173
+      - name: Run tests
+        working-directory: apps/api
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://lsp:lsp@localhost:5433/lsp_test
+          JWT_PRIVATE_KEY_PATH: ./keys/private.pem
+          JWT_PUBLIC_KEY_PATH: ./keys/public.pem
+          CORS_ORIGIN: http://localhost:5173
+
+  test-web:
+    name: Web Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace=@lsp/web

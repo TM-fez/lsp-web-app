@@ -1,0 +1,51 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lsp
+      POSTGRES_PASSWORD: lsp
+      POSTGRES_DB: lsp_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lsp -d lsp_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # api and web are dev-only via npm — only included in the 'full' profile
+  # for containerised deployments; local dev runs: npm run dev
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ../apps/api/.env
+    environment:
+      DATABASE_URL: postgresql://lsp:lsp@postgres:5432/lsp_dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../apps/api/uploads:/app/uploads
+    profiles: ["full"]
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+    profiles: ["full"]
+
+volumes:
+  postgres_data:

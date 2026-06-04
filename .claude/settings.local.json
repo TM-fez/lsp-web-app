@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(openssl version *)",
+      "Bash(psql --version)",
+      "Bash(npx --version)",
+      "Bash(brew --version)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npm audit *)",
+      "Bash(openssl genrsa *)",
+      "Bash(openssl rsa *)",
+      "Bash(chmod 600 \"/Users/macbookair/Desktop/lsp web app/apps/api/keys/private.pem\")",
+      "Bash(chmod 644 \"/Users/macbookair/Desktop/lsp web app/apps/api/keys/public.pem\")",
+      "Bash(npx tsx *)",
+      "Bash(node --input-type=module)",
+      "Bash(NODE_ENV=development PORT=4000 DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 timeout 5 npx tsx src/app.ts)",
+      "Bash(npx tsc *)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run tests/unit)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run tests/unit --reporter=verbose)",
+      "Bash(ls ~/Desktop/ | grep -i lsp)"
+    ]
+  }
+}
