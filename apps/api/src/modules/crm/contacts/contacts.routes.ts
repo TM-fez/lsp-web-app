@@ -4,8 +4,8 @@ import { ContactsService } from './contacts.service';
 import { ContactsRepository } from './contacts.repository';
 // Assuming you have some DI container or export a db instance
 import { db } from '../../../db'; 
-// Assuming auth middleware exists
-// import { requireAuth, requirePermissions } from '../../core/middleware';
+import { authenticate } from '../../../core/auth/authenticate.middleware.js';
+import { authorize } from '../../../core/auth/authorize.middleware.js';
 
 export function createContactsRouter(dbInstance = db): Router {
   const router = Router();
@@ -13,20 +13,16 @@ export function createContactsRouter(dbInstance = db): Router {
   const service = new ContactsService(repository);
   const controller = new ContactsController(service);
 
-  // Apply auth and RBAC middlewares appropriately here
-  // e.g. router.use(requireAuth);
+  router.use(authenticate);
 
-  router.get('/', controller.getContacts);
-  router.get('/:id', controller.getContactById);
+  router.get('/', authorize('crm.contacts.read'), controller.getContacts);
+  router.get('/:id', authorize('crm.contacts.read'), controller.getContactById);
   
-  // router.post('/', requirePermissions('crm.contacts.create'), controller.createContact);
-  router.post('/', controller.createContact);
+  router.post('/', authorize('crm.contacts.create'), controller.createContact);
   
-  // router.put('/:id', requirePermissions('crm.contacts.update'), controller.updateContact);
-  router.put('/:id', controller.updateContact);
+  router.patch('/:id', authorize('crm.contacts.update'), controller.updateContact);
   
-  // router.delete('/:id', requirePermissions('crm.contacts.delete'), controller.deleteContact);
-  router.delete('/:id', controller.deleteContact);
+  router.delete('/:id', authorize('crm.contacts.delete'), controller.deleteContact);
 
   return router;
 }

@@ -16,8 +16,9 @@ export class ContactsController {
 
   getContacts = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      let limit = parseInt(req.query.limit as string) || 20;
+      if (limit > 100) limit = 100;
       const search = req.query.search as string | undefined;
       const type = req.query.type as 'individual' | 'company' | undefined;
 
