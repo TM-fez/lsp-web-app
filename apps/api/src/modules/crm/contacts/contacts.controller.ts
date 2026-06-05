@@ -6,11 +6,12 @@ export class ContactsController {
   constructor(private readonly service: ContactsService) {}
 
   private getRequestMeta(req: Request) {
-    // Assuming req.user is set by auth middleware
+    // req.user is the JWT payload set by the authenticate middleware; the user
+    // id is carried in `sub` (not `id`).
     return {
-      userId: (req as any).user?.id,
+      userId: (req as any).user?.sub,
       ip: req.ip,
-      requestId: (req as any).id, // Or req.headers['x-request-id']
+      requestId: (req as any).id,
     };
   }
 

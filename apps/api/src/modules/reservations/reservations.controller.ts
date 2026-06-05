@@ -7,8 +7,9 @@ export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
 
   private getRequestMeta(req: Request) {
+    // user id is carried in the JWT payload's `sub` claim (not `id`).
     return {
-      userId: (req as any).user?.id,
+      userId: (req as any).user?.sub,
       ip: req.ip,
       requestId: (req as any).id,
     };
