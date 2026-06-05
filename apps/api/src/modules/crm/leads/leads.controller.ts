@@ -1,0 +1,75 @@
+import type { Request, Response, NextFunction } from 'express';
+import { LeadsService } from './leads.service';
+import { CreateLeadSchema, UpdateLeadSchema, LeadStatusEnum } from './leads.types';
+
+export class LeadsController {
+  constructor(private readonly service: LeadsService) {}
+
+  private getRequestMeta(req: Request) {
+    return {
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      requestId: (req as any).id,
+    };
+  }
+
+  getLeads = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      let limit = parseInt(req.query.limit as string) || 20;
+      if (limit > 100) limit = 100;
+      const search = req.query.search as string | undefined;
+      const statusRaw = req.query.status;
+      const status = statusRaw ? LeadStatusEnum.parse(statusRaw) : undefined;
+
+      const result = await this.service.getLeads(
+        { search, status },
+        { page, limit }
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getLeadById = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const lead = await this.service.getLeadById(req.params.id);
+      res.json(lead);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createLead = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = CreateLeadSchema.parse(req.body);
+      const meta = this.getRequestMeta(req);
+      const lead = await this.service.createLead(dto, meta);
+      res.status(201).json(lead);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateLead = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = UpdateLeadSchema.parse(req.body);
+      const meta = this.getRequestMeta(req);
+      const lead = await this.service.updateLead(req.params.id, dto, meta);
+      res.json(lead);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteLead = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      await this.service.deleteLead(req.params.id, meta);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  };
+}

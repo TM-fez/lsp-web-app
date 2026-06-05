@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authRouter }      from './modules/auth/auth.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { createContactsRouter } from './modules/crm/contacts/contacts.routes.js';
+import { createLeadsRouter } from './modules/crm/leads/leads.routes.js';
 
 const router = Router();
 
@@ -13,6 +14,7 @@ router.use('/dashboard', dashboardRouter);
 
 // ── Sprint 1 — CRM (next) ─────────────────────────────────────────────────────
 router.use('/contacts',  createContactsRouter());
+router.use('/leads',     createLeadsRouter());
 
 // ── Sprint 1 — Supporting modules ────────────────────────────────────────────
 // router.use('/users',     usersRouter);

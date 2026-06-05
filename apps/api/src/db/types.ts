@@ -68,6 +68,20 @@ export interface ContactsTable {
   updated_at: Generated<Date>;
 }
 
+export interface LeadsTable {
+  id: Generated<string>;
+  title: string;
+  description: string | null;
+  status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
+  contact_id: string | null;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface AuditLogsTable {
   id: Generated<string>;
   request_id: string | null;
@@ -99,6 +113,7 @@ export interface Database {
   refresh_tokens: RefreshTokensTable;
   files: FilesTable;
   contacts: ContactsTable;
+  leads: LeadsTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
 }
@@ -112,6 +127,10 @@ export type UpdateUser    = Updateable<UsersTable>;
 export type ContactRow    = Selectable<ContactsTable>;
 export type NewContact    = Insertable<ContactsTable>;
 export type UpdateContact = Updateable<ContactsTable>;
+
+export type LeadRow       = Selectable<LeadsTable>;
+export type NewLead       = Insertable<LeadsTable>;
+export type UpdateLead    = Updateable<LeadsTable>;
 
 export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;
