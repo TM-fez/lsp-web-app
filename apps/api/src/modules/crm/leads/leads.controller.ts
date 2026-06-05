@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import { LeadsService } from './leads.service';
-import { CreateLeadSchema, UpdateLeadSchema, LeadStatusEnum } from './leads.types';
+import { LeadsService } from './leads.service.js';
+import { LeadStatusEnum } from './leads.types.js';
+import type { CreateLeadDTO, UpdateLeadDTO } from './leads.types.js';
 
 export class LeadsController {
   constructor(private readonly service: LeadsService) {}
@@ -34,7 +35,7 @@ export class LeadsController {
 
   getLeadById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const lead = await this.service.getLeadById(req.params.id);
+      const lead = await this.service.getLeadById(req.params.id as string);
       res.json(lead);
     } catch (err) {
       next(err);
@@ -43,7 +44,7 @@ export class LeadsController {
 
   createLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = CreateLeadSchema.parse(req.body);
+      const dto = req.body as CreateLeadDTO;
       const meta = this.getRequestMeta(req);
       const lead = await this.service.createLead(dto, meta);
       res.status(201).json(lead);
@@ -54,9 +55,9 @@ export class LeadsController {
 
   updateLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = UpdateLeadSchema.parse(req.body);
+      const dto = req.body as UpdateLeadDTO;
       const meta = this.getRequestMeta(req);
-      const lead = await this.service.updateLead(req.params.id, dto, meta);
+      const lead = await this.service.updateLead(req.params.id as string, dto, meta);
       res.json(lead);
     } catch (err) {
       next(err);
@@ -66,7 +67,7 @@ export class LeadsController {
   deleteLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      await this.service.deleteLead(req.params.id, meta);
+      await this.service.deleteLead(req.params.id as string, meta);
       res.status(204).send();
     } catch (err) {
       next(err);

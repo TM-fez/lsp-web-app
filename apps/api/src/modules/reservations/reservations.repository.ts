@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
-import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types';
-import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta } from './reservations.types';
+import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
+import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta } from './reservations.types.js';
 
 export class ReservationsRepository {
   constructor(private readonly db: Kysely<Database>) {}

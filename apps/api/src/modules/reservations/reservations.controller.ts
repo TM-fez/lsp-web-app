@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ReservationsService } from './reservations.service';
-import { CreateReservationSchema, UpdateReservationSchema, ReservationStatusEnum } from './reservations.types';
+import { ReservationsService } from './reservations.service.js';
+import { ReservationStatusEnum } from './reservations.types.js';
+import type { CreateReservationDTO, UpdateReservationDTO } from './reservations.types.js';
 
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
@@ -37,7 +38,7 @@ export class ReservationsController {
 
   getReservationById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const reservation = await this.service.getReservationById(req.params.id);
+      const reservation = await this.service.getReservationById(req.params.id as string);
       res.json(reservation);
     } catch (err) {
       next(err);
@@ -64,7 +65,7 @@ export class ReservationsController {
 
   createReservation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = CreateReservationSchema.parse(req.body);
+      const dto = req.body as CreateReservationDTO;
       const meta = this.getRequestMeta(req);
       const reservation = await this.service.createReservation(dto, meta);
       res.status(201).json(reservation);
@@ -75,9 +76,9 @@ export class ReservationsController {
 
   modifyReservation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = UpdateReservationSchema.parse(req.body);
+      const dto = req.body as UpdateReservationDTO;
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.modifyReservation(req.params.id, dto, meta);
+      const reservation = await this.service.modifyReservation(req.params.id as string, dto, meta);
       res.json(reservation);
     } catch (err) {
       next(err);
@@ -87,7 +88,7 @@ export class ReservationsController {
   cancelReservation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.cancelReservation(req.params.id, meta);
+      const reservation = await this.service.cancelReservation(req.params.id as string, meta);
       res.json(reservation);
     } catch (err) {
       next(err);

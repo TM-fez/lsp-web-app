@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm.types';
+import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 
 export const ReservationStatusEnum = z.enum([
   'PENDING',

@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { ContactsController } from './contacts.controller';
-import { ContactsService } from './contacts.service';
-import { ContactsRepository } from './contacts.repository';
-// Assuming you have some DI container or export a db instance
-import { db } from '../../../db'; 
+import { ContactsController } from './contacts.controller.js';
+import { ContactsService } from './contacts.service.js';
+import { ContactsRepository } from './contacts.repository.js';
+import { db } from '../../../config/db.js';
 import { authenticate } from '../../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../../core/auth/authorize.middleware.js';
+import { validateBody } from '../../../core/middleware/validate.middleware.js';
+import { CreateContactSchema, UpdateContactSchema } from '../crm.types.js';
 
 export function createContactsRouter(dbInstance = db): Router {
   const router = Router();
@@ -18,9 +19,9 @@ export function createContactsRouter(dbInstance = db): Router {
   router.get('/', authorize('crm.contacts.read'), controller.getContacts);
   router.get('/:id', authorize('crm.contacts.read'), controller.getContactById);
   
-  router.post('/', authorize('crm.contacts.create'), controller.createContact);
-  
-  router.patch('/:id', authorize('crm.contacts.update'), controller.updateContact);
+  router.post('/', authorize('crm.contacts.create'), validateBody(CreateContactSchema), controller.createContact);
+
+  router.patch('/:id', authorize('crm.contacts.update'), validateBody(UpdateContactSchema), controller.updateContact);
   
   router.delete('/:id', authorize('crm.contacts.delete'), controller.deleteContact);
 

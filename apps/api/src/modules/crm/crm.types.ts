@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RequestMeta } from '../auth/auth.types';
+import type { RequestMeta } from '../auth/auth.types.js';
 
 export const ContactTypeEnum = z.enum(['individual', 'company']);
 

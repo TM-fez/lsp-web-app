@@ -1,6 +1,7 @@
-import { LeadsRepository } from './leads.repository';
-import type { LeadRow, NewLead, UpdateLead } from '../../../../db/types';
-import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta, CreateLeadDTO, UpdateLeadDTO } from './leads.types';
+import { LeadsRepository } from './leads.repository.js';
+import { AppError } from '../../../core/errors/AppError.js';
+import type { LeadRow, NewLead, UpdateLead } from '../../../db/types.js';
+import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta, CreateLeadDTO, UpdateLeadDTO } from './leads.types.js';
 
 export class LeadsService {
   constructor(private readonly repository: LeadsRepository) {}
@@ -8,7 +9,7 @@ export class LeadsService {
   async getLeadById(id: string): Promise<LeadRow> {
     const lead = await this.repository.findById(id);
     if (!lead) {
-      throw new Error(`Lead with id ${id} not found`);
+      throw AppError.notFound(`Lead with id ${id} not found`);
     }
     return lead;
   }
@@ -40,7 +41,7 @@ export class LeadsService {
     
     const updated = await this.repository.update(id, updatePayload, meta);
     if (!updated) {
-      throw new Error(`Failed to update lead with id ${id}`);
+      throw AppError.notFound(`Failed to update lead with id ${id}`);
     }
     return updated;
   }
@@ -51,7 +52,7 @@ export class LeadsService {
 
     const success = await this.repository.softDelete(id, meta);
     if (!success) {
-      throw new Error(`Failed to delete lead with id ${id}`);
+      throw AppError.notFound(`Failed to delete lead with id ${id}`);
     }
   }
 }

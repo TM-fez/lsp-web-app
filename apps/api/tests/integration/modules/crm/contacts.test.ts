@@ -23,10 +23,11 @@ app.use('/api/crm/contacts', createContactsRouter({} as any)); // You'd pass a r
 describe('Contacts Integration', () => {
   // In a real integration test, you would seed the DB and use a real connection
   
-  it('should return 500 when db is not injected correctly (mock test)', async () => {
+  // The router applies `authenticate`, so an unauthenticated request is rejected
+  // with 401 before reaching the repository. Full CRUD coverage needs a live DB.
+  it('protects the list endpoint — returns 401 without authentication', async () => {
     const res = await request(app).get('/api/crm/contacts');
-    // Since we passed {} as db, it will fail in repository.findPaginated calling this.db.selectFrom
-    expect(res.status).toBe(500); 
+    expect(res.status).toBe(401);
   });
 
   // Example structure for actual test

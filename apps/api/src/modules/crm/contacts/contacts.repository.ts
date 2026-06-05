@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
-import type { Database, ContactRow, NewContact, UpdateContact } from '../../../db/types';
-import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types';
+import type { Database, ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
+import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types.js';
 
 export class ContactsRepository {
   constructor(private readonly db: Kysely<Database>) {}

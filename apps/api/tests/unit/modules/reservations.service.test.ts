@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ReservationsService } from '../../../../src/modules/reservations/reservations.service';
-import { ReservationsRepository } from '../../../../src/modules/reservations/reservations.repository';
+import { ReservationsService } from '../../../src/modules/reservations/reservations.service';
+import { ReservationsRepository } from '../../../src/modules/reservations/reservations.repository';
 
 describe('ReservationsService', () => {
   let service: ReservationsService;

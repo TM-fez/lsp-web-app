@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm.types';
+import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm.types.js';
 
 export const LeadStatusEnum = z.enum([
   'NEW',

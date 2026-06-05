@@ -1,13 +1,14 @@
-import { ReservationsRepository } from './reservations.repository';
-import type { ReservationRow, NewReservation, UpdateReservation } from '../../db/types';
-import type { 
+import { ReservationsRepository } from './reservations.repository.js';
+import { AppError } from '../../core/errors/AppError.js';
+import type { ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
+import type {
   ReservationFilters, 
   ReservationPaginationOptions, 
   PaginatedReservationResult, 
   ReservationRequestMeta, 
   CreateReservationDTO, 
   UpdateReservationDTO 
-} from './reservations.types';
+} from './reservations.types.js';
 
 export class ReservationsService {
   constructor(private readonly repository: ReservationsRepository) {}
@@ -15,7 +16,7 @@ export class ReservationsService {
   async getReservationById(id: string): Promise<ReservationRow> {
     const reservation = await this.repository.findById(id);
     if (!reservation) {
-      throw new Error(`Reservation with id ${id} not found`);
+      throw AppError.notFound(`Reservation with id ${id} not found`);
     }
     return reservation;
   }
@@ -37,13 +38,13 @@ export class ReservationsService {
 
     // Prevent check-in dates in past
     if (checkIn < new Date(new Date().setHours(0, 0, 0, 0))) {
-      throw new Error('Cannot create reservation with check-in date in the past');
+      throw AppError.badRequest('Cannot create reservation with check-in date in the past');
     }
 
     // Check availability
     const isAvailable = await this.checkAvailability(dto.room_id, checkIn, checkOut);
     if (!isAvailable) {
-      throw new Error('Room is not available for the selected dates');
+      throw AppError.conflict('Room is not available for the selected dates');
     }
 
     const newReservation: NewReservation = {
@@ -59,10 +60,10 @@ export class ReservationsService {
     
     // Status transitions enforced
     if (dto.status && existing.status === 'CANCELLED' && dto.status !== 'CANCELLED') {
-      throw new Error('Cannot modify a cancelled reservation');
+      throw AppError.conflict('Cannot modify a cancelled reservation');
     }
     if (dto.status && existing.status === 'CHECKED_OUT' && dto.status !== 'CHECKED_OUT') {
-      throw new Error('Cannot modify a checked out reservation');
+      throw AppError.conflict('Cannot modify a checked out reservation');
     }
 
     const checkIn = dto.check_in_date ? new Date(dto.check_in_date) : existing.check_in_date;
@@ -70,14 +71,14 @@ export class ReservationsService {
     const roomId = dto.room_id || existing.room_id;
 
     if (checkIn >= checkOut) {
-      throw new Error('Check-out date must be after check-in date');
+      throw AppError.badRequest('Check-out date must be after check-in date');
     }
 
     // Re-check availability if dates or room changed
     if (dto.check_in_date || dto.check_out_date || dto.room_id) {
       const isAvailable = await this.checkAvailability(roomId, checkIn, checkOut, id);
       if (!isAvailable) {
-        throw new Error('Room is not available for the updated dates/room');
+        throw AppError.conflict('Room is not available for the updated dates/room');
       }
     }
     
@@ -88,7 +89,7 @@ export class ReservationsService {
     
     const updated = await this.repository.update(id, updatePayload, meta);
     if (!updated) {
-      throw new Error(`Failed to update reservation with id ${id}`);
+      throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
     return updated;
   }
@@ -97,7 +98,7 @@ export class ReservationsService {
     const existing = await this.getReservationById(id);
 
     if (['CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'].includes(existing.status)) {
-      throw new Error(`Cannot cancel reservation with status ${existing.status}`);
+      throw AppError.conflict(`Cannot cancel reservation with status ${existing.status}`);
     }
 
     const updated = await this.repository.update(
@@ -107,7 +108,7 @@ export class ReservationsService {
     );
 
     if (!updated) {
-      throw new Error(`Failed to cancel reservation with id ${id}`);
+      throw AppError.notFound(`Failed to cancel reservation with id ${id}`);
     }
     return updated;
   }

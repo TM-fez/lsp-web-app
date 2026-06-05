@@ -1,6 +1,7 @@
-import { ContactsRepository } from './contacts.repository';
-import type { ContactRow, NewContact, UpdateContact } from '../../../db/types';
-import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta, CreateContactDTO, UpdateContactDTO } from '../crm.types';
+import { ContactsRepository } from './contacts.repository.js';
+import { AppError } from '../../../core/errors/AppError.js';
+import type { ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
+import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta, CreateContactDTO, UpdateContactDTO } from '../crm.types.js';
 
 export class ContactsService {
   constructor(private readonly repository: ContactsRepository) {}
@@ -8,7 +9,7 @@ export class ContactsService {
   async getContactById(id: string): Promise<ContactRow> {
     const contact = await this.repository.findById(id);
     if (!contact) {
-      throw new Error(`Contact with id ${id} not found`);
+      throw AppError.notFound(`Contact with id ${id} not found`);
     }
     return contact;
   }
@@ -40,7 +41,7 @@ export class ContactsService {
     
     const updated = await this.repository.update(id, updatePayload, meta);
     if (!updated) {
-      throw new Error(`Failed to update contact with id ${id}`);
+      throw AppError.notFound(`Failed to update contact with id ${id}`);
     }
     return updated;
   }
@@ -51,7 +52,7 @@ export class ContactsService {
 
     const success = await this.repository.softDelete(id, meta);
     if (!success) {
-      throw new Error(`Failed to delete contact with id ${id}`);
+      throw AppError.notFound(`Failed to delete contact with id ${id}`);
     }
   }
 }

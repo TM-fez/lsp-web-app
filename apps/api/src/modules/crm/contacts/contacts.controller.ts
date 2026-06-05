@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ContactsService } from './contacts.service';
-import { CreateContactSchema, UpdateContactSchema } from '../crm.types';
+import { ContactsService } from './contacts.service.js';
+import type { CreateContactDTO, UpdateContactDTO } from '../crm.types.js';
 
 export class ContactsController {
   constructor(private readonly service: ContactsService) {}
@@ -34,7 +34,7 @@ export class ContactsController {
 
   getContactById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const contact = await this.service.getContactById(req.params.id);
+      const contact = await this.service.getContactById(req.params.id as string);
       res.json(contact);
     } catch (err) {
       next(err);
@@ -43,7 +43,7 @@ export class ContactsController {
 
   createContact = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = CreateContactSchema.parse(req.body);
+      const dto = req.body as CreateContactDTO;
       const meta = this.getRequestMeta(req);
       const contact = await this.service.createContact(dto, meta);
       res.status(201).json(contact);
@@ -54,9 +54,9 @@ export class ContactsController {
 
   updateContact = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dto = UpdateContactSchema.parse(req.body);
+      const dto = req.body as UpdateContactDTO;
       const meta = this.getRequestMeta(req);
-      const contact = await this.service.updateContact(req.params.id, dto, meta);
+      const contact = await this.service.updateContact(req.params.id as string, dto, meta);
       res.json(contact);
     } catch (err) {
       next(err);
@@ -66,7 +66,7 @@ export class ContactsController {
   deleteContact = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      await this.service.deleteContact(req.params.id, meta);
+      await this.service.deleteContact(req.params.id as string, meta);
       res.status(204).send();
     } catch (err) {
       next(err);

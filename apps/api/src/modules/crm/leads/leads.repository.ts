@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
-import type { Database, LeadRow, NewLead, UpdateLead } from '../../../../db/types';
-import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta } from './leads.types';
+import type { Database, LeadRow, NewLead, UpdateLead } from '../../../db/types.js';
+import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta } from './leads.types.js';
 
 export class LeadsRepository {
   constructor(private readonly db: Kysely<Database>) {}

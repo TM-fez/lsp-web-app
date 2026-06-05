@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { AppError } from './AppError.js';
 import { env } from '../../config/env.js';
 
@@ -15,6 +16,17 @@ export function errorHandler(
       statusCode: err.statusCode,
       error: err.error,
       message: err.message,
+      requestId,
+    });
+    return;
+  }
+
+  // Zod validation errors not caught by validateBody (e.g. query-param parsing)
+  if (err instanceof ZodError) {
+    res.status(400).json({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: err.errors.map((e) => e.message).join('; '),
       requestId,
     });
     return;
