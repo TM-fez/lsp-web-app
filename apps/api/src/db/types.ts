@@ -142,6 +142,27 @@ export interface OccupancyTable {
   document_file_id?: string | null;
 }
 
+export interface MaintenanceWorkOrdersTable {
+  id: Generated<string>;
+  room_id: string;
+  title: string;
+  description: string | null;
+  status: 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'CANCELLED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  reported_by: string;
+  assigned_to: string | null;
+  before_file_id: string | null;
+  after_file_id: string | null;
+  opened_at: Generated<Date>;
+  started_at: Date | null;
+  completed_at: Date | null;
+  cancelled_at: Date | null;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface AuditLogsTable {
   id: Generated<string>;
   request_id: string | null;
@@ -177,6 +198,7 @@ export interface Database {
   reservations: ReservationsTable;
   rooms: RoomsTable;
   occupancy: OccupancyTable;
+  maintenance_work_orders: MaintenanceWorkOrdersTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
 }
@@ -215,3 +237,7 @@ export type FlagRow       = Selectable<FeatureFlagsTable>;
 export type FileRow       = Selectable<FilesTable>;
 export type NewFile       = Insertable<FilesTable>;
 export type UpdateFile    = Updateable<FilesTable>;
+
+export type MaintenanceWorkOrderRow       = Selectable<MaintenanceWorkOrdersTable>;
+export type NewMaintenanceWorkOrder       = Insertable<MaintenanceWorkOrdersTable>;
+export type UpdateMaintenanceWorkOrder    = Updateable<MaintenanceWorkOrdersTable>;

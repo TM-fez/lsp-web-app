@@ -8,6 +8,7 @@ import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
+import { createMaintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 
 const router = Router();
 
@@ -33,8 +34,11 @@ router.use('/checkins', createCheckinsRouter());
 // ── Sprint 5 — Availability ───────────────────────────────────────────────────
 router.use('/availability', createAvailabilityRouter());
 
-// ── Sprint 6 — Files & Media ──────────────────────────────────────────────────
+// ── Sprint 6 — Files ──────────────────────────────────────────────────────────
 router.use('/files', createFilesRouter());
+
+// ── Sprint 7 — Maintenance ────────────────────────────────────────────────────
+router.use('/maintenance', createMaintenanceRouter());
 
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);
