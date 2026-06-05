@@ -6,6 +6,7 @@ import { createLeadsRouter } from './modules/crm/leads/leads.routes.js';
 import { createReservationsRouter } from './modules/reservations/reservations.routes.js';
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
+import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 
 const router = Router();
 
@@ -27,6 +28,9 @@ router.use('/rooms', createRoomsRouter());
 
 // ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
 router.use('/checkins', createCheckinsRouter());
+// ── Sprint 5 — Availability ───────────────────────────────────────────────────
+router.use('/availability', createAvailabilityRouter());
+
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);
 // router.use('/flags',     flagsRouter);
