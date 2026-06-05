@@ -15,6 +15,19 @@ export class ReservationsRepository {
   }
 
   async checkAvailability(roomId: string, checkIn: Date, checkOut: Date, excludeReservationId?: string): Promise<boolean> {
+    // Rooms are the source of truth: a room must exist, be active, and not be
+    // blocked by status (MAINTENANCE / OUT_OF_SERVICE) to accept reservations.
+    const room = await this.db
+      .selectFrom('rooms')
+      .select('status')
+      .where('id', '=', roomId)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+
+    if (!room || room.status === 'MAINTENANCE' || room.status === 'OUT_OF_SERVICE') {
+      return false;
+    }
+
     // Check for overlaps: NewCheckIn < ExistCheckOut AND NewCheckOut > ExistCheckIn
     let query = this.db
       .selectFrom('reservations')

@@ -98,6 +98,22 @@ export interface ReservationsTable {
   updated_at: Generated<Date>;
 }
 
+export interface RoomsTable {
+  id: Generated<string>;
+  name: string;
+  code: string;
+  type: 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+  capacity: number;
+  notes: string | null;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface AuditLogsTable {
   id: Generated<string>;
   request_id: string | null;
@@ -131,6 +147,7 @@ export interface Database {
   contacts: ContactsTable;
   leads: LeadsTable;
   reservations: ReservationsTable;
+  rooms: RoomsTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
 }
@@ -152,6 +169,10 @@ export type UpdateLead    = Updateable<LeadsTable>;
 export type ReservationRow    = Selectable<ReservationsTable>;
 export type NewReservation    = Insertable<ReservationsTable>;
 export type UpdateReservation = Updateable<ReservationsTable>;
+
+export type RoomRow       = Selectable<RoomsTable>;
+export type NewRoom       = Insertable<RoomsTable>;
+export type UpdateRoom    = Updateable<RoomsTable>;
 
 export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;
