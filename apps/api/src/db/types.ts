@@ -114,6 +114,23 @@ export interface RoomsTable {
   updated_at: Generated<Date>;
 }
 
+export interface OccupancyTable {
+  id: Generated<string>;
+  reservation_id: string;
+  room_id: string;
+  status: 'CHECKED_IN' | 'CHECKED_OUT';
+  checked_in_at: Generated<Date>;
+  checked_out_at: Date | null;
+  guest_count: Generated<number>;
+  notes: string | null;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface AuditLogsTable {
   id: Generated<string>;
   request_id: string | null;
@@ -148,6 +165,7 @@ export interface Database {
   leads: LeadsTable;
   reservations: ReservationsTable;
   rooms: RoomsTable;
+  occupancy: OccupancyTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
 }
@@ -173,6 +191,10 @@ export type UpdateReservation = Updateable<ReservationsTable>;
 export type RoomRow       = Selectable<RoomsTable>;
 export type NewRoom       = Insertable<RoomsTable>;
 export type UpdateRoom    = Updateable<RoomsTable>;
+
+export type OccupancyRow    = Selectable<OccupancyTable>;
+export type NewOccupancy    = Insertable<OccupancyTable>;
+export type UpdateOccupancy = Updateable<OccupancyTable>;
 
 export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;

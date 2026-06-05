@@ -5,6 +5,7 @@ import { createContactsRouter } from './modules/crm/contacts/contacts.routes.js'
 import { createLeadsRouter } from './modules/crm/leads/leads.routes.js';
 import { createReservationsRouter } from './modules/reservations/reservations.routes.js';
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
+import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 
 const router = Router();
 
@@ -23,6 +24,9 @@ router.use('/reservations', createReservationsRouter());
 
 // ── Sprint 3 — Rooms ──────────────────────────────────────────────────────────
 router.use('/rooms', createRoomsRouter());
+
+// ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
+router.use('/checkins', createCheckinsRouter());
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);
 // router.use('/flags',     flagsRouter);
