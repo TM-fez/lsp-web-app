@@ -41,13 +41,21 @@ export interface RefreshTokensTable {
 
 export interface FilesTable {
   id: Generated<string>;
-  uploaded_by: string;
-  driver: 'local' | 's3';
-  bucket: string | null;
-  key: string;
+  original_name: string;
+  stored_name: string;
   mime_type: string;
+  extension: string;
   size_bytes: number;
+  checksum: string;
+  storage_driver: 'local' | 's3';
+  bucket: string | null;
+  path: string;
+  is_public: Generated<boolean>;
+  created_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
   created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface ContactsTable {
@@ -96,6 +104,7 @@ export interface ReservationsTable {
   deleted_by: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  document_file_id?: string | null;
 }
 
 export interface RoomsTable {
@@ -112,6 +121,7 @@ export interface RoomsTable {
   deleted_by: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  image_file_id?: string | null;
 }
 
 export interface OccupancyTable {
@@ -129,6 +139,7 @@ export interface OccupancyTable {
   deleted_by: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  document_file_id?: string | null;
 }
 
 export interface AuditLogsTable {
@@ -200,4 +211,7 @@ export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;
 
 export type FlagRow       = Selectable<FeatureFlagsTable>;
+
 export type FileRow       = Selectable<FilesTable>;
+export type NewFile       = Insertable<FilesTable>;
+export type UpdateFile    = Updateable<FilesTable>;

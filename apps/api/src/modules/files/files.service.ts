@@ -1,0 +1,155 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { FilesRepository } from './files.repository.js';
+import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, type FileRequestMeta, type FileQueryDTO } from './files.types.js';
+import type { FileRow } from '../../db/types.js';
+
+export interface StorageAdapter {
+  save(inputStream: NodeJS.ReadableStream, destinationPath: string): Promise<void>;
+  delete(destinationPath: string): Promise<void>;
+  getUrl(file: FileRow): string;
+  getStream(destinationPath: string): NodeJS.ReadableStream;
+}
+
+export class LocalStorageDriver implements StorageAdapter {
+  constructor(private readonly baseDir: string) {
+    if (!fs.existsSync(baseDir)) {
+      fs.mkdirSync(baseDir, { recursive: true });
+    }
+  }
+
+  async save(inputStream: NodeJS.ReadableStream, destinationPath: string): Promise<void> {
+    const fullPath = path.join(this.baseDir, destinationPath);
+    const dir = path.dirname(fullPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const writeStream = fs.createWriteStream(fullPath);
+    await pipeline(inputStream, writeStream);
+  }
+
+  async delete(destinationPath: string): Promise<void> {
+    const fullPath = path.join(this.baseDir, destinationPath);
+    if (fs.existsSync(fullPath)) {
+      await fs.promises.unlink(fullPath);
+    }
+  }
+
+  getUrl(file: FileRow): string {
+    return `/api/files/${file.id}/download`;
+  }
+
+  getStream(destinationPath: string): NodeJS.ReadableStream {
+    const fullPath = path.join(this.baseDir, destinationPath);
+    if (!fs.existsSync(fullPath)) {
+      throw new Error('File not found on disk');
+    }
+    return fs.createReadStream(fullPath);
+  }
+}
+
+export class FilesService {
+  constructor(
+    private readonly repository: FilesRepository,
+    private readonly storageAdapter: StorageAdapter
+  ) {}
+
+  async upload(
+    inputStream: NodeJS.ReadableStream,
+    originalName: string,
+    mimeType: string,
+    sizeBytes: number,
+    isPublic: boolean,
+    meta: FileRequestMeta
+  ): Promise<FileRow> {
+    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+      throw new Error(`Disallowed MIME type: ${mimeType}`);
+    }
+
+    if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+      throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE_BYTES} bytes`);
+    }
+
+    // Hash the stream while writing to a temporary file
+    const hash = crypto.createHash('sha256');
+    const ext = path.extname(originalName).replace('.', '') || 'bin';
+    const tempFileName = `${crypto.randomUUID()}.tmp`;
+    
+    // Pipe to disk and hash simultaneously
+    const tempPath = path.join('/tmp', tempFileName);
+    const writeStream = fs.createWriteStream(tempPath);
+    
+    try {
+      // Manual piping to calculate hash during stream
+      await new Promise((resolve, reject) => {
+        inputStream.on('data', (chunk) => hash.update(chunk));
+        inputStream.on('error', reject);
+        writeStream.on('error', reject);
+        writeStream.on('finish', () => resolve(undefined));
+        inputStream.pipe(writeStream);
+      });
+
+      const checksum = hash.digest('hex');
+
+      // Duplicate prevention (Storage-only Dedupe)
+      const existing = await this.repository.findByChecksum(checksum);
+      let destinationPath = '';
+      
+      if (existing) {
+        destinationPath = existing.path;
+      } else {
+        const storedName = `${checksum}.${ext}`;
+        destinationPath = `${new Date().getFullYear()}/${new Date().getMonth() + 1}/${storedName}`;
+
+        // Move from temp to permanent storage via adapter
+        const readStream = fs.createReadStream(tempPath);
+        await this.storageAdapter.save(readStream, destinationPath);
+      }
+
+      return await this.repository.create({
+        original_name: originalName,
+        stored_name: existing ? existing.stored_name : `${checksum}.${ext}`,
+        mime_type: mimeType,
+        extension: ext,
+        size_bytes: sizeBytes,
+        checksum,
+        storage_driver: existing ? existing.storage_driver : 'local',
+        bucket: existing ? existing.bucket : null,
+        path: destinationPath,
+        is_public: isPublic
+      } as any, meta);
+    } finally {
+      // Safe async cleanup of temp file
+      await fs.promises.unlink(tempPath).catch(() => {});
+    }
+  }
+
+  async getMetadata(id: string): Promise<FileRow> {
+    const file = await this.repository.findById(id);
+    if (!file) throw new Error(`File ${id} not found`);
+    return file;
+  }
+
+  async getDownloadStream(id: string): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
+    const file = await this.getMetadata(id);
+    const stream = this.storageAdapter.getStream(file.path);
+    return { stream, file };
+  }
+
+  async listFiles(query: FileQueryDTO, meta: FileRequestMeta) {
+    // Usually admins see all, users see their own, but depending on RBAC we can filter.
+    // For now we just return paginated results without owner filter unless specified.
+    return this.repository.findPaginated(query.page, query.limit);
+  }
+
+  async delete(id: string, meta: FileRequestMeta): Promise<void> {
+    const file = await this.repository.findById(id);
+    if (!file) throw new Error(`File ${id} not found`);
+
+    // Soft delete only, preserving the binary just in case, but adapter can optionally delete.
+    // The prompt says "soft delete only", meaning we do NOT call storageAdapter.delete.
+    await this.repository.softDelete(id, meta);
+  }
+}

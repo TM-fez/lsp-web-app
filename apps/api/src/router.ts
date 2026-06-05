@@ -7,6 +7,7 @@ import { createReservationsRouter } from './modules/reservations/reservations.ro
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
+import { createFilesRouter } from './modules/files/files.routes.js';
 
 const router = Router();
 
@@ -28,8 +29,12 @@ router.use('/rooms', createRoomsRouter());
 
 // ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
 router.use('/checkins', createCheckinsRouter());
+
 // ── Sprint 5 — Availability ───────────────────────────────────────────────────
 router.use('/availability', createAvailabilityRouter());
+
+// ── Sprint 6 — Files & Media ──────────────────────────────────────────────────
+router.use('/files', createFilesRouter());
 
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);

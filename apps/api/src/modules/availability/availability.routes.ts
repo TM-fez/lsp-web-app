@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AvailabilityController } from './availability.controller.js';
 import { AvailabilityService } from './availability.service.js';
 import { AvailabilityRepository } from './availability.repository.js';
-import { db } from '../../db/index.js'; 
+import { db } from '../../config/db.js'; 
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 
