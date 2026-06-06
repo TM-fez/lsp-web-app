@@ -20,6 +20,14 @@ export default defineConfig({
       'tests/integration/auth.test.ts',
       'tests/integration/dashboard.test.ts',
     ],
+    // The auth suite issues ~18 logins; the production auth rate limit
+    // (RATE_LIMIT_AUTH_MAX=10/min) throttles the later ones (429), which made
+    // logout / me / logout-all fail (no cookie / 401). Relax it for the live-DB
+    // test run ONLY — application behaviour in dev/prod is unchanged. Set before
+    // dotenv/config runs, which does not override already-present vars.
+    env: {
+      RATE_LIMIT_AUTH_MAX: '1000',
+    },
     // Give live-DB tests more time — DB setup can be slow
     testTimeout: 30000,
     hookTimeout: 30000,
