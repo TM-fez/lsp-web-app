@@ -27,7 +27,14 @@
       "Bash(echo \"exit=$?\")",
       "Bash(node -e 'const p=require\\(\"./apps/api/package.json\"\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)')",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run tests/unit/modules/commercial --reporter=dot)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run tests/integration/modules/commercial.test.ts --reporter=dot)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run tests/unit --reporter=dot)",
+      "Bash(grep -m1 -o '\\\\.\\\\./\\\\\\(\\\\.\\\\./\\\\\\)*src' apps/api/__TRACKED_VAR__)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run --reporter=dot)",
+      "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run --config vitest.live.config.ts --reporter=dot)",
+      "Bash(git commit *)"
     ]
   }
 }

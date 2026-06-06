@@ -184,6 +184,127 @@ export interface FeatureFlagsTable {
   updated_at: Generated<Date>;
 }
 
+// ── Sprint 8 — Commercial Core ────────────────────────────────────────────────
+// All money columns are INTEGER minor units (thebe; 100 = 1 BWP).
+
+export interface RatePlansTable {
+  id: Generated<string>;
+  unit_type: 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
+  name: string;
+  nightly_rate: number;
+  weekly_rate: number;
+  monthly_rate: number;
+  min_nights: Generated<number>;
+  max_guests: Generated<number>;
+  deposit_pct: Generated<number>;
+  tax_rate_bps: Generated<number>;
+  currency: Generated<string>;
+  active: Generated<boolean>;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface QuotesTable {
+  id: Generated<string>;
+  rate_plan_id: string;
+  unit_type: 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
+  check_in_date: Date;
+  check_out_date: Date;
+  guests: Generated<number>;
+  nights: number;
+  currency: Generated<string>;
+  base_amount: number;
+  adjustment_amount: Generated<number>;
+  adjustment_reason: string | null;
+  tax_rate_bps: number;
+  tax_amount: number;
+  deposit_amount: number;
+  total_amount: number;
+  breakdown: Generated<unknown>;
+  status: Generated<'ACTIVE' | 'EXPIRED' | 'CONSUMED'>;
+  created_by: string;
+  override_by: string | null;
+  expires_at: Date;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface HoldsTable {
+  id: Generated<string>;
+  quote_id: string;
+  reservation_id: string | null;
+  room_id: string | null;
+  status: Generated<'HELD' | 'CONFIRMED' | 'EXPIRED' | 'RELEASED'>;
+  held_until: Date;
+  retry_count: Generated<number>;
+  release_reason: string | null;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface PaymentIntentsTable {
+  id: Generated<string>;
+  hold_id: string;
+  quote_id: string;
+  invoice_id: string | null;
+  purpose: Generated<'DEPOSIT' | 'BALANCE'>;
+  amount: number;
+  currency: Generated<string>;
+  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+  status: Generated<'PENDING' | 'RETRY' | 'PAID' | 'FAILED' | 'EXPIRED'>;
+  attempts: Generated<number>;
+  max_attempts: Generated<number>;
+  last_error: string | null;
+  paid_at: Date | null;
+  created_by: string;
+  updated_by: string;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface PaymentAttemptsTable {
+  id: Generated<string>;
+  payment_intent_id: string;
+  attempt_no: number;
+  outcome: 'INITIATED' | 'SUCCESS' | 'FAILURE';
+  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+  reference: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: Generated<Date>;
+}
+
+export interface InvoicesTable {
+  id: Generated<string>;
+  number: string;
+  hold_id: string | null;
+  quote_id: string | null;
+  reservation_id: string | null;
+  kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
+  currency: Generated<string>;
+  subtotal_amount: number;
+  tax_rate_bps: number;
+  tax_amount: number;
+  total_amount: number;
+  status: Generated<'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID'>;
+  receipt_file_id: string | null;
+  issued_by: string;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ── Database interface ────────────────────────────────────────────────────────
 
 export interface Database {
@@ -201,6 +322,12 @@ export interface Database {
   maintenance_work_orders: MaintenanceWorkOrdersTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
+  rate_plans: RatePlansTable;
+  quotes: QuotesTable;
+  holds: HoldsTable;
+  payment_intents: PaymentIntentsTable;
+  payment_attempts: PaymentAttemptsTable;
+  invoices: InvoicesTable;
 }
 
 // ── Row type helpers ──────────────────────────────────────────────────────────
@@ -241,3 +368,28 @@ export type UpdateFile    = Updateable<FilesTable>;
 export type MaintenanceWorkOrderRow       = Selectable<MaintenanceWorkOrdersTable>;
 export type NewMaintenanceWorkOrder       = Insertable<MaintenanceWorkOrdersTable>;
 export type UpdateMaintenanceWorkOrder    = Updateable<MaintenanceWorkOrdersTable>;
+
+// ── Sprint 8 — Commercial Core row helpers ────────────────────────────────────
+
+export type RatePlanRow    = Selectable<RatePlansTable>;
+export type NewRatePlan    = Insertable<RatePlansTable>;
+export type UpdateRatePlan = Updateable<RatePlansTable>;
+
+export type QuoteRow       = Selectable<QuotesTable>;
+export type NewQuote       = Insertable<QuotesTable>;
+export type UpdateQuote    = Updateable<QuotesTable>;
+
+export type HoldRow        = Selectable<HoldsTable>;
+export type NewHold        = Insertable<HoldsTable>;
+export type UpdateHold     = Updateable<HoldsTable>;
+
+export type PaymentIntentRow    = Selectable<PaymentIntentsTable>;
+export type NewPaymentIntent    = Insertable<PaymentIntentsTable>;
+export type UpdatePaymentIntent = Updateable<PaymentIntentsTable>;
+
+export type PaymentAttemptRow   = Selectable<PaymentAttemptsTable>;
+export type NewPaymentAttempt   = Insertable<PaymentAttemptsTable>;
+
+export type InvoiceRow     = Selectable<InvoicesTable>;
+export type NewInvoice     = Insertable<InvoicesTable>;
+export type UpdateInvoice  = Updateable<InvoicesTable>;

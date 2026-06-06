@@ -9,6 +9,11 @@ import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
 import { createMaintenanceRouter } from './modules/maintenance/maintenance.routes.js';
+import { createPricingRouter } from './modules/pricing/pricing.routes.js';
+import { createQuotesRouter } from './modules/quotes/quotes.routes.js';
+import { createHoldsRouter } from './modules/holds/holds.routes.js';
+import { createPaymentsRouter } from './modules/payments/payments.routes.js';
+import { createInvoicesRouter } from './modules/invoices/invoices.routes.js';
 
 const router = Router();
 
@@ -39,6 +44,13 @@ router.use('/files', createFilesRouter());
 
 // ── Sprint 7 — Maintenance ────────────────────────────────────────────────────
 router.use('/maintenance', createMaintenanceRouter());
+
+// ── Sprint 8 — Commercial Core (Availability → Quote → Hold → Payment → Confirm)
+router.use('/pricing',  createPricingRouter());
+router.use('/quotes',   createQuotesRouter());
+router.use('/holds',    createHoldsRouter());
+router.use('/payments', createPaymentsRouter());
+router.use('/invoices', createInvoicesRouter());
 
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);
