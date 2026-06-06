@@ -34,7 +34,10 @@
       "Bash(grep -m1 -o '\\\\.\\\\./\\\\\\(\\\\.\\\\./\\\\\\)*src' apps/api/__TRACKED_VAR__)",
       "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run --reporter=dot)",
       "Bash(NODE_ENV=test DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 npx vitest run --config vitest.live.config.ts --reporter=dot)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 NODE_ENV=test npx vitest run --config vitest.live.config.ts tests/integration/auth.test.ts --reporter=dot)",
+      "Bash(DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 NODE_ENV=test RATE_LIMIT_AUTH_MAX=1000 npx vitest run --config vitest.live.config.ts tests/integration/auth.test.ts --reporter=dot)",
+      "Bash(DATABASE_URL=postgresql://lsp:lsp@localhost:5432/lsp_dev JWT_PRIVATE_KEY_PATH=./keys/private.pem JWT_PUBLIC_KEY_PATH=./keys/public.pem CORS_ORIGIN=http://localhost:5173 NODE_ENV=test npx vitest run --config vitest.live.config.ts --reporter=dot)"
     ]
   }
 }
