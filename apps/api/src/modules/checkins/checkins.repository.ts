@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, OccupancyRow } from '../../db/types.js';
+import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
 import type {
   OccupancyFilters,
   OccupancyPaginationOptions,
@@ -16,7 +17,11 @@ interface CheckInParams {
 }
 
 export class CheckinsRepository {
-  constructor(private readonly db: Kysely<Database>) {}
+  private readonly housekeeping: HousekeepingRepository;
+
+  constructor(private readonly db: Kysely<Database>) {
+    this.housekeeping = new HousekeepingRepository(db);
+  }
 
   async findById(id: string): Promise<OccupancyRow | undefined> {
     return this.db
@@ -40,7 +45,7 @@ export class CheckinsRepository {
   async findRoom(id: string) {
     return this.db
       .selectFrom('rooms')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'housekeeping_status'])
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
@@ -174,6 +179,10 @@ export class CheckinsRepository {
         { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'reservations', entity_id: reservationId, diff: { status: 'CHECKED_OUT' }, ip_address: meta.ip ?? null },
         { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'rooms', entity_id: roomId, diff: { status: 'AVAILABLE' }, ip_address: meta.ip ?? null },
       ]).execute();
+
+      // A departure dirties the unit and queues its turn — same transaction, so
+      // a vacated unit is never silently re-bookable before it has been cleaned.
+      await this.housekeeping.openTaskOnCheckout(roomId, occupancyId, meta, trx);
 
       return occupancy;
     });

@@ -80,6 +80,7 @@ export class PaymentsService {
     const base = {
       intentId: intent.id,
       holdId: intent.hold_id,
+      reservationId: hold.reservation_id,
       attemptNo: intent.attempts + 1,
       method: intent.method,
       reference: dto.reference ?? null,

@@ -55,6 +55,13 @@ export class CheckinsService {
       throw AppError.conflict(`Room is not available for check-in (current status: ${room.status})`);
     }
 
+    // Readiness gate: a vacated-but-not-yet-cleaned unit cannot take a guest.
+    if (room.housekeeping_status !== 'READY') {
+      throw AppError.conflict(
+        `Room is not ready for check-in (housekeeping status: ${room.housekeeping_status})`
+      );
+    }
+
     return this.repository.checkIn(
       {
         reservationId: reservation.id,

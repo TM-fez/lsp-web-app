@@ -48,6 +48,14 @@ describe('PaymentsService.attempt — retry before release', () => {
     expect(r.status).toBe('PAID');
   });
 
+  it('threads the linked reservation id into settlePaid (closes the money loop)', async () => {
+    const { svc, repo, holds } = setup();
+    holds.findById.mockResolvedValue({ id: 'h1', quote_id: 'q1', status: 'HELD', reservation_id: 'res-42' });
+    repo.findById.mockResolvedValue({ id: 'pi1', hold_id: 'h1', status: 'PENDING', attempts: 0, max_attempts: 3, method: 'CARD' });
+    await svc.attempt('pi1', { outcome: 'SUCCESS' } as any, { userId: 'u1' });
+    expect(repo.settlePaid.mock.calls[0][0]).toMatchObject({ holdId: 'h1', reservationId: 'res-42' });
+  });
+
   it('FAILURE with attempts remaining keeps the hold (RETRY)', async () => {
     const { svc, repo } = setup();
     repo.findById.mockResolvedValue({ id: 'pi1', hold_id: 'h1', status: 'PENDING', attempts: 0, max_attempts: 3, method: 'CARD' });

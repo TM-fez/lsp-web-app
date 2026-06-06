@@ -43,9 +43,16 @@ describe('CheckinsService', () => {
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
-    it('checks in when reservation is CONFIRMED and room AVAILABLE', async () => {
+    it('throws 409 when the room is not READY (housekeeping)', async () => {
       repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1' } as any);
-      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE' } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'DIRTY' } as any);
+      await expect(service.checkIn(dto, meta)).rejects.toThrow('not ready');
+      expect(repository.checkIn).not.toHaveBeenCalled();
+    });
+
+    it('checks in when reservation is CONFIRMED and room AVAILABLE + READY', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1' } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY' } as any);
       repository.checkIn.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN' } as any);
 
       const result = await service.checkIn(dto, meta);
