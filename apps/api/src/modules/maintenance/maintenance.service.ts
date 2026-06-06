@@ -1,7 +1,6 @@
 import { MaintenanceRepository } from './maintenance.repository.js';
 import type { FilesRepository } from '../files/files.repository.js';
-import { sql } from 'kysely';
-import type { 
+import type {
   CreateWorkOrderDTO, 
   UpdateWorkOrderDTO, 
   CompleteWorkOrderDTO, 

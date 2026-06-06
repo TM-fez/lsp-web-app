@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { FilesService } from './files.service.js';
-import { FileQuerySchema, UploadFileSchema, MAX_FILE_SIZE_BYTES } from './files.types.js';
+import { FileQuerySchema, MAX_FILE_SIZE_BYTES } from './files.types.js';
 
 export class FilesController {
   public readonly uploadMiddleware: any;
@@ -52,7 +52,7 @@ export class FilesController {
     };
   }
 
-  uploadFile = (req: Request, res: Response, next: NextFunction) => {
+  uploadFile = (req: Request, res: Response, _next: NextFunction) => {
     // The actual upload is handled by multer storage engine
     // If it succeeds, the result is in req.file
     if (!req.file) {
