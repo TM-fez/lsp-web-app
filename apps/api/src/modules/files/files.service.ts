@@ -138,7 +138,7 @@ export class FilesService {
     return { stream, file };
   }
 
-  async listFiles(query: FileQueryDTO, meta: FileRequestMeta) {
+  async listFiles(query: FileQueryDTO, _meta: FileRequestMeta) {
     // Usually admins see all, users see their own, but depending on RBAC we can filter.
     // For now we just return paginated results without owner filter unless specified.
     return this.repository.findPaginated(query.page, query.limit);

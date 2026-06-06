@@ -1,5 +1,5 @@
 import { Kysely, sql } from 'kysely';
-import type { Database, FileRow, NewFile, UpdateFile } from '../../db/types.js';
+import type { Database, FileRow, NewFile } from '../../db/types.js';
 import type { FileRequestMeta, PaginatedResult } from './files.types.js';
 
 type NewFileRecord = Omit<NewFile, 'id' | 'created_at' | 'updated_at'>;
