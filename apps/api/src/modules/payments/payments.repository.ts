@@ -1,11 +1,12 @@
 import { Kysely, sql } from 'kysely';
-import type { Database, PaymentIntentRow, NewPaymentIntent, PaymentAttemptRow } from '../../db/types.js';
+import type { Database, PaymentIntentRow, NewPaymentIntent, PaymentAttemptRow, NewAuditLog } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { PaymentFilters, PaymentMethod, PaymentRequestMeta } from './payments.types.js';
 
 interface AttemptParams {
   intentId: string;
   holdId: string;
+  reservationId?: string | null;
   attemptNo: number;
   method: PaymentMethod;
   reference: string | null;
@@ -96,10 +97,29 @@ export class PaymentsRepository {
         .where('status', '=', 'HELD')
         .execute();
 
-      await trx.insertInto('audit_logs').values([
+      const auditRows: NewAuditLog[] = [
         { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'payment_intents', entity_id: params.intentId, diff: { status: 'PAID' }, ip_address: meta.ip ?? null },
         { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'holds', entity_id: params.holdId, diff: { status: 'CONFIRMED' }, ip_address: meta.ip ?? null },
-      ]).execute();
+      ];
+
+      // Close the money loop: a paid hold confirms its linked reservation.
+      // Guarded so a re-run or a non-PENDING reservation is a safe no-op.
+      if (params.reservationId) {
+        const confirmed = await trx
+          .updateTable('reservations')
+          .set({ status: 'CONFIRMED', updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', '=', params.reservationId)
+          .where('status', '=', 'PENDING')
+          .where('deleted_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst();
+
+        if (confirmed) {
+          auditRows.push({ request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'reservations', entity_id: params.reservationId, diff: { status: 'CONFIRMED' }, ip_address: meta.ip ?? null });
+        }
+      }
+
+      await trx.insertInto('audit_logs').values(auditRows).execute();
 
       return intent;
     });
