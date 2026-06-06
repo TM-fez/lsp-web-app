@@ -8,11 +8,14 @@ export default defineConfig({
     // Default run: everything EXCEPT tests that require a live PostgreSQL
     // instance. Those tests document their requirement at the top of each file
     // ("Requires a running PostgreSQL instance with migrations applied.").
-    // Run them with:  npx vitest run --config vitest.live.config.ts
+    // Live-DB suites run via their own configs:
+    //   auth/dashboard:  npx vitest run --config vitest.live.config.ts
+    //   cockpit E2E:     npx vitest run --config vitest.e2e.config.ts (needs a migrated DB)
     include: ['tests/**/*.test.ts'],
     exclude: [
       'tests/integration/auth.test.ts',
       'tests/integration/dashboard.test.ts',
+      'tests/e2e/**',
     ],
     coverage: {
       provider: 'v8',
