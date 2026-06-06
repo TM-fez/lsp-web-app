@@ -113,6 +113,7 @@ export interface RoomsTable {
   code: string;
   type: 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
   status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+  housekeeping_status: Generated<'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED'>;
   capacity: number;
   notes: string | null;
   created_by: string;
@@ -157,6 +158,25 @@ export interface MaintenanceWorkOrdersTable {
   started_at: Date | null;
   completed_at: Date | null;
   cancelled_at: Date | null;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface HousekeepingTasksTable {
+  id: Generated<string>;
+  room_id: string;
+  occupancy_id: string | null;
+  status: Generated<'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE'>;
+  assigned_to: string | null;
+  notes: string | null;
+  opened_at: Generated<Date>;
+  started_at: Date | null;
+  inspected_at: Date | null;
+  completed_at: Date | null;
+  created_by: string;
+  updated_by: string;
   deleted_at: Date | null;
   deleted_by: string | null;
   created_at: Generated<Date>;
@@ -320,6 +340,7 @@ export interface Database {
   rooms: RoomsTable;
   occupancy: OccupancyTable;
   maintenance_work_orders: MaintenanceWorkOrdersTable;
+  housekeeping_tasks: HousekeepingTasksTable;
   audit_logs: AuditLogsTable;
   feature_flags: FeatureFlagsTable;
   rate_plans: RatePlansTable;
@@ -368,6 +389,10 @@ export type UpdateFile    = Updateable<FilesTable>;
 export type MaintenanceWorkOrderRow       = Selectable<MaintenanceWorkOrdersTable>;
 export type NewMaintenanceWorkOrder       = Insertable<MaintenanceWorkOrdersTable>;
 export type UpdateMaintenanceWorkOrder    = Updateable<MaintenanceWorkOrdersTable>;
+
+export type HousekeepingTaskRow    = Selectable<HousekeepingTasksTable>;
+export type NewHousekeepingTask    = Insertable<HousekeepingTasksTable>;
+export type UpdateHousekeepingTask = Updateable<HousekeepingTasksTable>;
 
 // ── Sprint 8 — Commercial Core row helpers ────────────────────────────────────
 

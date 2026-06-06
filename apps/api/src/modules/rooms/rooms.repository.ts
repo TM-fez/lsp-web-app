@@ -24,13 +24,14 @@ export class RoomsRepository {
       .executeTakeFirst();
   }
 
-  // Active rooms that are bookable right now (status AVAILABLE).
+  // Active units bookable right now: operationally AVAILABLE and housekeeping READY.
   async listAvailable(): Promise<RoomRow[]> {
     return this.db
       .selectFrom('rooms')
       .selectAll()
       .where('deleted_at', 'is', null)
       .where('status', '=', 'AVAILABLE')
+      .where('housekeeping_status', '=', 'READY')
       .orderBy('code', 'asc')
       .execute();
   }
