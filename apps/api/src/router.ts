@@ -11,6 +11,7 @@ import { createFilesRouter } from './modules/files/files.routes.js';
 import { createMaintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 import { createPricingRouter } from './modules/pricing/pricing.routes.js';
 import { createHousekeepingRouter } from './modules/housekeeping/housekeeping.routes.js';
+import { createCockpitRouter } from './modules/cockpit/cockpit.routes.js';
 import { createQuotesRouter } from './modules/quotes/quotes.routes.js';
 import { createHoldsRouter } from './modules/holds/holds.routes.js';
 import { createPaymentsRouter } from './modules/payments/payments.routes.js';
@@ -55,6 +56,7 @@ router.use('/invoices', createInvoicesRouter());
 
 // ── Sprint 9 — Operations Cockpit: housekeeping turn workflow ─────────────────
 router.use('/housekeeping', createHousekeepingRouter());
+router.use('/cockpit',      createCockpitRouter());
 
 // router.use('/users',     usersRouter);
 // router.use('/files',     filesRouter);
