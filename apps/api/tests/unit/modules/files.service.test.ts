@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FilesService, LocalStorageDriver } from '../../../../src/modules/files/files.service.js';
-import { FilesRepository } from '../../../../src/modules/files/files.repository.js';
+import { FilesService, LocalStorageDriver } from '../../../src/modules/files/files.service.js';
+import { FilesRepository } from '../../../src/modules/files/files.repository.js';
 import { Readable } from 'node:stream';
 
 describe('FilesService', () => {

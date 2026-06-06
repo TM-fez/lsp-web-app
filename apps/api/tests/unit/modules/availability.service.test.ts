@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AvailabilityService } from '../../../../src/modules/availability/availability.service.js';
-import { AvailabilityRepository } from '../../../../src/modules/availability/availability.repository.js';
+import { AvailabilityService } from '../../../src/modules/availability/availability.service.js';
+import { AvailabilityRepository } from '../../../src/modules/availability/availability.repository.js';
 
 describe('AvailabilityService', () => {
   let service: AvailabilityService;

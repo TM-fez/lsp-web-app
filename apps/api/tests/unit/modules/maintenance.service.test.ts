@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MaintenanceService } from '../../../../src/modules/maintenance/maintenance.service.js';
-import { MaintenanceRepository } from '../../../../src/modules/maintenance/maintenance.repository.js';
-import { FilesRepository } from '../../../../src/modules/files/files.repository.js';
+import { MaintenanceService } from '../../../src/modules/maintenance/maintenance.service.js';
+import { MaintenanceRepository } from '../../../src/modules/maintenance/maintenance.repository.js';
+import { FilesRepository } from '../../../src/modules/files/files.repository.js';
 
 describe('MaintenanceService', () => {
   let service: MaintenanceService;
