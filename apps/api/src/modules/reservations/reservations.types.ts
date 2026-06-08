@@ -9,10 +9,10 @@ export const ReservationStatusEnum = z.enum([
   'CANCELLED',
 ]);
 
-// Exclude statuses that user shouldn't force create with
+// A reservation can only be CREATED as PENDING. CONFIRMED is reached solely
+// through settlePaid() (payment) — it can never be set directly by a client.
 export const UserInputReservationStatusEnum = z.enum([
   'PENDING',
-  'CONFIRMED',
 ]);
 
 export const CreateReservationSchema = z.object({

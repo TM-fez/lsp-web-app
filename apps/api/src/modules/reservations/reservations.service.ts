@@ -49,6 +49,7 @@ export class ReservationsService {
 
     const newReservation: NewReservation = {
       ...dto,
+      status: 'PENDING', // commercial invariant: new reservations are always PENDING; only settlePaid() confirms
       created_by: meta.userId,
       updated_by: meta.userId,
     };
@@ -57,7 +58,16 @@ export class ReservationsService {
 
   async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta): Promise<ReservationRow> {
     const existing = await this.getReservationById(id);
-    
+
+    // Commercial invariant: CONFIRMED / CHECKED_IN / CHECKED_OUT are owned by the
+    // system (payment via settlePaid(), and the check-in flow) — never set by a
+    // direct edit. This keeps settlePaid() the sole commercial confirmer.
+    if (dto.status && ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(dto.status)) {
+      throw AppError.badRequest(
+        `Reservation status '${dto.status}' is set by the system (payment / check-in), not by direct edit`
+      );
+    }
+
     // Status transitions enforced
     if (dto.status && existing.status === 'CANCELLED' && dto.status !== 'CANCELLED') {
       throw AppError.conflict('Cannot modify a cancelled reservation');
