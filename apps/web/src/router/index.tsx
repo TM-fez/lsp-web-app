@@ -3,8 +3,10 @@ import { useAuthStore } from '@/store/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { CockpitPage } from '@/features/cockpit/CockpitPage';
+import { GuestsPage } from '@/features/guests/GuestsPage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
+import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -21,8 +23,10 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/', element: <CockpitPage /> },
+          { path: '/guests', element: <GuestsPage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },
+          { path: '/finance', element: <ComingSoonPage /> },
         ],
       },
     ],

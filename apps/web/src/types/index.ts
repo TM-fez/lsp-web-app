@@ -74,11 +74,19 @@ export interface CockpitBoard {
 
 // ── Commercial flow entities ──────────────────────────────────────────────────
 
+export type ContactType = 'individual' | 'company';
+
 export interface Contact {
   id: string;
+  type: ContactType;
   name: string;
   email: string | null;
   phone: string | null;
+  company: string | null;
+  address: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Room {
