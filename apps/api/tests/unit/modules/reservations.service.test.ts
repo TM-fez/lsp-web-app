@@ -71,5 +71,34 @@ describe('ReservationsService', () => {
       expect(res.id).toBe('res1');
       expect(repository.create).toHaveBeenCalled();
     });
+
+    it('forces new reservations to PENDING even when a client supplies CONFIRMED', async () => {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
+      repository.checkAvailability.mockResolvedValue(true);
+      repository.create.mockResolvedValue({ id: 'res1', status: 'PENDING' } as any);
+
+      const dto = { contact_id: 'c1', room_id: 'r1', check_in_date: tomorrow, check_out_date: nextWeek, status: 'CONFIRMED' };
+      await service.createReservation(dto as any, { userId: 'u1' } as any);
+
+      const passed = (repository.create as any).mock.calls[0][0];
+      expect(passed.status).toBe('PENDING'); // only settlePaid() may confirm
+    });
+  });
+
+  describe('modifyReservation — commercial invariant', () => {
+    it('rejects a direct edit to CONFIRMED (only settlePaid may confirm)', async () => {
+      repository.findById.mockResolvedValue({ id: 'res1', status: 'PENDING' } as any);
+      await expect(
+        service.modifyReservation('res1', { status: 'CONFIRMED' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow(/set by the system/i);
+    });
+
+    it('rejects a direct edit to CHECKED_IN', async () => {
+      repository.findById.mockResolvedValue({ id: 'res1', status: 'CONFIRMED' } as any);
+      await expect(
+        service.modifyReservation('res1', { status: 'CHECKED_IN' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow(/set by the system/i);
+    });
   });
 });

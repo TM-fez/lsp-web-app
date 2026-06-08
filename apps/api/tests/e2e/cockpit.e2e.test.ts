@@ -164,6 +164,8 @@ describe('Operations Cockpit — end to end', () => {
   });
 
   it('refuses to check a guest into a not-yet-cleaned unit', async () => {
+    // A reservation reaches CONFIRMED only through the money loop (settlePaid),
+    // never by setting status directly — so confirm reservation #2 by paying.
     const resv = await request(app)
       .post('/api/v1/reservations')
       .set('Authorization', bearer())
@@ -172,10 +174,33 @@ describe('Operations Cockpit — end to end', () => {
         room_id: roomId,
         check_in_date: iso(3),
         check_out_date: iso(5),
-        status: 'CONFIRMED',
       });
     expect(resv.status).toBe(201);
+    expect(resv.body.status).toBe('PENDING');
     reservation2Id = resv.body.id;
+
+    const quote2 = await request(app)
+      .post('/api/v1/quotes')
+      .set('Authorization', bearer())
+      .send({ unit_type: 'STANDARD', check_in: iso(3), check_out: iso(5), guests: 1 });
+    const hold2 = await request(app)
+      .post('/api/v1/holds')
+      .set('Authorization', bearer())
+      .send({ quote_id: quote2.body.id, room_id: roomId, reservation_id: reservation2Id });
+    const intent2 = await request(app)
+      .post('/api/v1/payments')
+      .set('Authorization', bearer())
+      .send({ hold_id: hold2.body.id, method: 'CASH', purpose: 'DEPOSIT' });
+    const paid2 = await request(app)
+      .post(`/api/v1/payments/${intent2.body.id}/attempt`)
+      .set('Authorization', bearer())
+      .send({ outcome: 'SUCCESS' });
+    expect(paid2.body.status).toBe('PAID');
+
+    const confirmed2 = await request(app)
+      .get(`/api/v1/reservations/${reservation2Id}`)
+      .set('Authorization', bearer());
+    expect(confirmed2.body.status).toBe('CONFIRMED');
 
     const blocked = await request(app)
       .post('/api/v1/checkins')
