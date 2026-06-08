@@ -89,6 +89,24 @@ export interface Room {
   status: RoomStatus;
   housekeeping_status: HousekeepingStatus;
   capacity: number;
+  notes?: string | null;
+}
+
+export type RoomCreateStatus = 'AVAILABLE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+
+export interface RatePlan {
+  id: string;
+  unit_type: UnitType;
+  name: string;
+  nightly_rate: number; // thebe
+  weekly_rate: number; // thebe
+  monthly_rate: number; // thebe
+  min_nights: number;
+  max_guests: number;
+  deposit_pct: number; // 0–100
+  tax_rate_bps: number; // basis points (1400 = 14%)
+  currency: string;
+  active: boolean;
 }
 
 export interface Reservation {

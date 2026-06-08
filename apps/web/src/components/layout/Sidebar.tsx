@@ -1,10 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Sparkles } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Tags, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils/cn';
 
 const nav = [
   { to: '/', label: 'Cockpit', icon: LayoutDashboard, perm: 'cockpit.read' },
+  { to: '/rooms', label: 'Rooms', icon: BedDouble, perm: 'rooms.read' },
+  { to: '/pricing', label: 'Pricing', icon: Tags, perm: 'pricing.read' },
 ];
 
 export function Sidebar() {
