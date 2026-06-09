@@ -19,6 +19,8 @@ export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
 export type UnitType = 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
 export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
+export type LeadSource = 'WHATSAPP' | 'WALK_IN' | 'BOOKING_COM' | 'WEBSITE' | 'REFERRAL' | 'CORPORATE' | 'OTHER';
 
 // ── Cockpit board ─────────────────────────────────────────────────────────────
 
@@ -130,6 +132,16 @@ export interface Reservation {
   guest_name?: string | null;
   room_code?: string | null;
   room_name?: string | null;
+}
+
+export interface Lead {
+  id: string;
+  title: string;
+  description: string | null;
+  status: LeadStatus;
+  source: LeadSource | null;
+  contact_id: string | null;
+  created_at: string;
 }
 
 export interface Quote {
