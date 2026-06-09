@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { LeadsService } from './leads.service.js';
-import { LeadStatusEnum } from './leads.types.js';
+import { LeadStatusEnum, LeadSourceEnum } from './leads.types.js';
 import type { CreateLeadDTO, UpdateLeadDTO } from './leads.types.js';
 
 export class LeadsController {
@@ -23,9 +23,11 @@ export class LeadsController {
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;
       const status = statusRaw ? LeadStatusEnum.parse(statusRaw) : undefined;
+      const sourceRaw = req.query.source;
+      const source = sourceRaw ? LeadSourceEnum.parse(sourceRaw) : undefined;
 
       const result = await this.service.getLeads(
-        { search, status },
+        { search, status, source },
         { page, limit }
       );
       res.json(result);

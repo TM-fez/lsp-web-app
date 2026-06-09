@@ -33,6 +33,11 @@ export class LeadsRepository {
       countQuery = countQuery.where('status', '=', filters.status);
     }
 
+    if (filters.source) {
+      query = query.where('source', '=', filters.source);
+      countQuery = countQuery.where('source', '=', filters.source);
+    }
+
     if (filters.search) {
       const searchPattern = `%${filters.search}%`;
       query = query.where((eb) =>

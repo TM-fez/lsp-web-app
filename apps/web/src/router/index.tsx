@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { CockpitPage } from '@/features/cockpit/CockpitPage';
 import { ReservationsPage } from '@/features/reservations/ReservationsPage';
+import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/', element: <CockpitPage /> },
           { path: '/reservations', element: <ReservationsPage /> },
+          { path: '/leads', element: <LeadsPage /> },
           { path: '/guests', element: <GuestsPage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },

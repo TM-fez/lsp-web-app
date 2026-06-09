@@ -82,6 +82,7 @@ export interface LeadsTable {
   description: string | null;
   status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
   contact_id: string | null;
+  source: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
