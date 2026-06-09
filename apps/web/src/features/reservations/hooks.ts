@@ -1,0 +1,77 @@
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import {
+  listReservations,
+  createReservation,
+  updateReservation,
+  cancelReservation,
+  checkAvailability,
+  type ReservationListParams,
+  type CreateReservationInput,
+  type UpdateReservationInput,
+} from '@/lib/api/reservations';
+import { errMessage } from '@/lib/api/errors';
+import { toast } from '@/store/toast';
+import type { Paginated, Reservation } from '@/types';
+
+const RES_KEY = ['reservations'] as const;
+
+export function useReservations(params: ReservationListParams) {
+  return useQuery<Paginated<Reservation>>({
+    queryKey: [...RES_KEY, params],
+    queryFn: () => listReservations(params),
+    placeholderData: keepPreviousData,
+  });
+}
+
+function useInvalidate() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: RES_KEY });
+}
+
+export function useCreateReservation() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (input: CreateReservationInput) => createReservation(input),
+    onSuccess: () => {
+      toast.success('Reservation created — pending payment');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useUpdateReservation() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateReservationInput }) => updateReservation(id, input),
+    onSuccess: () => {
+      toast.success('Reservation updated');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useCancelReservation() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => cancelReservation(id),
+    onSuccess: () => {
+      toast.success('Reservation cancelled');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+/** Live availability check for the create flow (server excludes self on edit). */
+export function useAvailability(
+  params: { room_id: string; check_in_date: string; check_out_date: string },
+  enabled: boolean,
+) {
+  return useQuery<boolean>({
+    queryKey: ['availability', params],
+    queryFn: () => checkAvailability(params),
+    enabled,
+  });
+}

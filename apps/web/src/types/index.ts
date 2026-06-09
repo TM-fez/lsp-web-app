@@ -124,6 +124,12 @@ export interface Reservation {
   check_in_date: string;
   check_out_date: string;
   status: ReservationStatus;
+  notes: string | null;
+  created_at: string;
+  // Enriched by the list endpoint's joins; absent on create/update responses.
+  guest_name?: string | null;
+  room_code?: string | null;
+  room_name?: string | null;
 }
 
 export interface Quote {
