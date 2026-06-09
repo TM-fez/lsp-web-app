@@ -1,5 +1,6 @@
 import { ReservationsRepository } from './reservations.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { todayInPropertyTZ } from '../../core/time.js';
 import type { ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
 import type {
   ReservationFilters, 
@@ -47,8 +48,9 @@ export class ReservationsService {
     const checkIn = new Date(dto.check_in_date);
     const checkOut = new Date(dto.check_out_date);
 
-    // Prevent check-in dates in past
-    if (checkIn < new Date(new Date().setHours(0, 0, 0, 0))) {
+    // Reject check-in dates before "today" in the property's timezone (Africa/Gaborone),
+    // so a booking made just after midnight in Gaborone isn't judged against the server's UTC day.
+    if (checkIn.toISOString().slice(0, 10) < todayInPropertyTZ()) {
       throw AppError.badRequest('Cannot create reservation with check-in date in the past');
     }
 

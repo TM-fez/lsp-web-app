@@ -9,10 +9,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { GuestPicker, type PickedGuest } from './GuestPicker';
 import { useCreateReservation, useUpdateReservation, useCancelReservation, useAvailability } from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate } from './util';
+import { todayISO } from '@/lib/utils/date';
 import type { Reservation, Room } from '@/types';
 
 const toDateInput = (s?: string | null) => (s ? s.slice(0, 10) : '');
-const today = () => new Date().toISOString().slice(0, 10);
 
 interface Props {
   open: boolean;
@@ -63,7 +63,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const stayNights = datesOrdered ? nights(checkIn, checkOut) : 0;
 
   // Live availability only on create (the modify endpoint can't exclude self).
-  const availEnabled = !isEdit && !!roomId && datesOrdered && checkIn >= today();
+  const availEnabled = !isEdit && !!roomId && datesOrdered && checkIn >= todayISO();
   const availability = useAvailability(
     { room_id: roomId, check_in_date: checkIn, check_out_date: checkOut },
     availEnabled,
@@ -71,7 +71,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const unavailable = availEnabled && availability.data === false;
 
   const valid =
-    !!guest && !!roomId && datesOrdered && (isEdit || checkIn >= today()) && !unavailable;
+    !!guest && !!roomId && datesOrdered && (isEdit || checkIn >= todayISO()) && !unavailable;
 
   async function submit() {
     if (!valid || !guest) return;
@@ -175,7 +175,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               <Input
                 id="res-in"
                 type="date"
-                min={isEdit ? undefined : today()}
+                min={isEdit ? undefined : todayISO()}
                 value={checkIn}
                 onChange={(e) => setCheckIn(e.target.value)}
                 disabled={busy}
@@ -186,7 +186,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               <Input
                 id="res-out"
                 type="date"
-                min={checkIn || (isEdit ? undefined : today())}
+                min={checkIn || (isEdit ? undefined : todayISO())}
                 value={checkOut}
                 onChange={(e) => setCheckOut(e.target.value)}
                 disabled={busy}

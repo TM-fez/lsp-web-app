@@ -41,8 +41,5 @@ export function formatMoney(minor: number, currency = 'BWP'): string {
   return `${currency} ${(minor / 100).toFixed(2)}`;
 }
 
-export function todayISO(offsetDays = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
-}
+// "Today" is anchored to the property's timezone (not the browser's); see lib/utils/date.
+export { todayISO } from '@/lib/utils/date';
