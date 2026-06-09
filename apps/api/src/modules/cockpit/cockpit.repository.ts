@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { propertyToday } from '../../core/time.js';
 import type { CockpitUnit, CockpitGuestCard } from './cockpit.types.js';
 
 export class CockpitRepository {
@@ -36,7 +37,7 @@ export class CockpitRepository {
   async arrivals(): Promise<CockpitGuestCard[]> {
     return this.guestCards()
       .where('res.status', '=', 'CONFIRMED')
-      .where(sql<boolean>`res.check_in_date = current_date`)
+      .where(sql<boolean>`res.check_in_date = ${propertyToday()}`)
       .orderBy('r.code', 'asc')
       .execute();
   }
@@ -49,7 +50,7 @@ export class CockpitRepository {
   // In-house guests whose reservation departs today.
   async departures(): Promise<CockpitGuestCard[]> {
     return this.occupancyCards()
-      .where(sql<boolean>`res.check_out_date = current_date`)
+      .where(sql<boolean>`res.check_out_date = ${propertyToday()}`)
       .orderBy('r.code', 'asc')
       .execute();
   }
