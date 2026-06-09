@@ -11,6 +11,16 @@ import type {
   ReservationListRow
 } from './reservations.types.js';
 
+/**
+ * True when an error is the `reservations_no_overlap` exclusion constraint firing —
+ * i.e. two bookings raced past the availability pre-check and the database caught
+ * the overlap. This is the storage-layer guarantee behind "no double-bookings, ever".
+ */
+export function isReservationOverlapError(e: unknown): boolean {
+  const err = e as { code?: string; constraint?: string };
+  return err?.code === '23P01' && err?.constraint === 'reservations_no_overlap';
+}
+
 export class ReservationsService {
   constructor(private readonly repository: ReservationsRepository) {}
 
@@ -54,7 +64,16 @@ export class ReservationsService {
       created_by: meta.userId,
       updated_by: meta.userId,
     };
-    return this.repository.create(newReservation, meta);
+    try {
+      return await this.repository.create(newReservation, meta);
+    } catch (e) {
+      // Race backstop: another booking took these dates between the pre-check
+      // above and this insert. The DB constraint caught it — surface a clean 409.
+      if (isReservationOverlapError(e)) {
+        throw AppError.conflict('Room is not available for the selected dates');
+      }
+      throw e;
+    }
   }
 
   async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta): Promise<ReservationRow> {
@@ -98,7 +117,15 @@ export class ReservationsService {
       updated_by: meta.userId,
     };
     
-    const updated = await this.repository.update(id, updatePayload, meta);
+    let updated: ReservationRow | undefined;
+    try {
+      updated = await this.repository.update(id, updatePayload, meta);
+    } catch (e) {
+      if (isReservationOverlapError(e)) {
+        throw AppError.conflict('Room is not available for the updated dates/room');
+      }
+      throw e;
+    }
     if (!updated) {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
