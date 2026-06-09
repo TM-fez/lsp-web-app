@@ -49,7 +49,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/leads', label: 'Leads', icon: MessageSquareText, perm: 'crm.leads.read', built: true },
       { to: '/reservations', label: 'Reservations', icon: CalendarCheck, perm: 'reservations.read', built: true },
       { to: '/guests', label: 'Guests', icon: Users, perm: 'crm.contacts.read', built: true },
-      { to: '/housekeeping', label: 'Housekeeping', icon: Sparkles, perm: 'housekeeping.read', built: false },
+      { to: '/housekeeping', label: 'Housekeeping', icon: Sparkles, perm: 'housekeeping.read', built: true },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench, perm: 'maintenance.read', built: false },
     ],
   },
