@@ -21,6 +21,14 @@ const schema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().default(200),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().default(10),
 
+  // Background auto-expiry sweep (expired holds + stale quotes).
+  // Opt out anywhere with DISABLE_SCHEDULER=1; it is also always off under NODE_ENV=test.
+  DISABLE_SCHEDULER: z
+    .string()
+    .optional()
+    .transform((v) => v === '1' || v?.toLowerCase() === 'true'),
+  SCHEDULER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_PATH: z.string().default('./uploads'),
   STORAGE_MAX_FILE_SIZE_MB: z.coerce.number().default(10),
