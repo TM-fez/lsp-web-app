@@ -5,9 +5,10 @@ import type {
   ReservationFilters, 
   ReservationPaginationOptions, 
   PaginatedReservationResult, 
-  ReservationRequestMeta, 
-  CreateReservationDTO, 
-  UpdateReservationDTO 
+  ReservationRequestMeta,
+  CreateReservationDTO,
+  UpdateReservationDTO,
+  ReservationListRow
 } from './reservations.types.js';
 
 export class ReservationsService {
@@ -24,7 +25,7 @@ export class ReservationsService {
   async getReservations(
     filters: ReservationFilters,
     pagination: ReservationPaginationOptions
-  ): Promise<PaginatedReservationResult<ReservationRow>> {
+  ): Promise<PaginatedReservationResult<ReservationListRow>> {
     return this.repository.findPaginated(filters, pagination);
   }
 

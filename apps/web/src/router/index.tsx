@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { CockpitPage } from '@/features/cockpit/CockpitPage';
+import { ReservationsPage } from '@/features/reservations/ReservationsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/', element: <CockpitPage /> },
+          { path: '/reservations', element: <ReservationsPage /> },
           { path: '/guests', element: <GuestsPage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },

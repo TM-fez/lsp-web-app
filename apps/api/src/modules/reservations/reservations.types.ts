@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ReservationRow } from '../../db/types.js';
 import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 
 export const ReservationStatusEnum = z.enum([
@@ -38,6 +39,14 @@ export const UpdateReservationSchema = z.object({
 
 export type CreateReservationDTO = z.infer<typeof CreateReservationSchema>;
 export type UpdateReservationDTO = z.infer<typeof UpdateReservationSchema>;
+
+// List rows are enriched with guest + room display fields via LEFT JOINs, so the
+// UI never shows bare UUIDs and can search by guest name / room code.
+export interface ReservationListRow extends ReservationRow {
+  guest_name: string | null;
+  room_code: string | null;
+  room_name: string | null;
+}
 
 export interface ReservationFilters {
   search?: string;

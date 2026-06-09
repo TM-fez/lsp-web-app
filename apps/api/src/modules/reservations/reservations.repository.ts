@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
-import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta } from './reservations.types.js';
+import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow } from './reservations.types.js';
 
 export class ReservationsRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -49,50 +49,64 @@ export class ReservationsRepository {
   async findPaginated(
     filters: ReservationFilters,
     pagination: ReservationPaginationOptions
-  ): Promise<PaginatedReservationResult<ReservationRow>> {
+  ): Promise<PaginatedReservationResult<ReservationListRow>> {
+    // LEFT JOIN guest + room so list rows carry display names (never bare UUIDs)
+    // and can be searched by guest name / room code. LEFT (not INNER) keeps a
+    // reservation visible even if its contact or room was later soft-deleted.
     let query = this.db
       .selectFrom('reservations')
-      .selectAll()
-      .where('deleted_at', 'is', null);
+      .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
+      .leftJoin('rooms', 'rooms.id', 'reservations.room_id')
+      .selectAll('reservations')
+      .select(['contacts.name as guest_name', 'rooms.code as room_code', 'rooms.name as room_name'])
+      .where('reservations.deleted_at', 'is', null);
 
     let countQuery = this.db
       .selectFrom('reservations')
-      .select(this.db.fn.count<number>('id').as('total'))
-      .where('deleted_at', 'is', null);
+      .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
+      .leftJoin('rooms', 'rooms.id', 'reservations.room_id')
+      .select(this.db.fn.count<number>('reservations.id').as('total'))
+      .where('reservations.deleted_at', 'is', null);
 
     if (filters.status) {
-      query = query.where('status', '=', filters.status);
-      countQuery = countQuery.where('status', '=', filters.status);
+      query = query.where('reservations.status', '=', filters.status);
+      countQuery = countQuery.where('reservations.status', '=', filters.status);
     }
-    
+
     if (filters.room_id) {
-      query = query.where('room_id', '=', filters.room_id);
-      countQuery = countQuery.where('room_id', '=', filters.room_id);
+      query = query.where('reservations.room_id', '=', filters.room_id);
+      countQuery = countQuery.where('reservations.room_id', '=', filters.room_id);
     }
 
     if (filters.contact_id) {
-      query = query.where('contact_id', '=', filters.contact_id);
-      countQuery = countQuery.where('contact_id', '=', filters.contact_id);
+      query = query.where('reservations.contact_id', '=', filters.contact_id);
+      countQuery = countQuery.where('reservations.contact_id', '=', filters.contact_id);
     }
 
     if (filters.search) {
-      const searchPattern = `%${filters.search}%`;
+      const pat = `%${filters.search}%`;
       query = query.where((eb) =>
         eb.or([
-          eb('notes', 'ilike', searchPattern),
-        ])
+          eb('reservations.notes', 'ilike', pat),
+          eb('contacts.name', 'ilike', pat),
+          eb('rooms.code', 'ilike', pat),
+          eb('rooms.name', 'ilike', pat),
+        ]),
       );
       countQuery = countQuery.where((eb) =>
         eb.or([
-          eb('notes', 'ilike', searchPattern),
-        ])
+          eb('reservations.notes', 'ilike', pat),
+          eb('contacts.name', 'ilike', pat),
+          eb('rooms.code', 'ilike', pat),
+          eb('rooms.name', 'ilike', pat),
+        ]),
       );
     }
 
     const offset = (pagination.page - 1) * pagination.limit;
-    
+
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('reservations.created_at', 'desc').execute(),
       countQuery.execute(),
     ]);
 
