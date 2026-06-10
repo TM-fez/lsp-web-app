@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MaintenanceService } from '../../../src/modules/maintenance/maintenance.service.js';
 import { MaintenanceRepository } from '../../../src/modules/maintenance/maintenance.repository.js';
 import { FilesRepository } from '../../../src/modules/files/files.repository.js';
+import { AppError } from '../../../src/core/errors/AppError.js';
 
 describe('MaintenanceService', () => {
   let service: MaintenanceService;
@@ -41,9 +42,19 @@ describe('MaintenanceService', () => {
     expect(repo.updateRoomStatus).toHaveBeenCalledWith('r1', 'AVAILABLE', { userId: 'u1' }, expect.anything());
   });
 
-  it('prevents illegal transitions', async () => {
+  it('rejects an illegal transition with a 409 AppError, not a generic 500', async () => {
     repo.findById.mockResolvedValue({ id: 'm1', status: 'COMPLETED' } as any);
-    await expect(service.start('m1', {}, { userId: 'u1' })).rejects.toThrow('Cannot start work order from status COMPLETED');
+    const err = await service.start('m1', {}, { userId: 'u1' }).catch((e) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(409);
+    expect(err.message).toContain('Cannot start work order from status COMPLETED');
+  });
+
+  it('surfaces a missing work order as a 404 AppError', async () => {
+    repo.findById.mockResolvedValue(undefined);
+    const err = await service.get('nope').catch((e) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.statusCode).toBe(404);
   });
 
   it('validates files integration on start', async () => {
