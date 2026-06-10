@@ -7,6 +7,7 @@ import { ReservationsPage } from '@/features/reservations/ReservationsPage';
 import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
+import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
           { path: '/leads', element: <LeadsPage /> },
           { path: '/guests', element: <GuestsPage /> },
           { path: '/housekeeping', element: <HousekeepingPage /> },
+          { path: '/maintenance', element: <MaintenancePage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },
           { path: '/finance', element: <ComingSoonPage /> },

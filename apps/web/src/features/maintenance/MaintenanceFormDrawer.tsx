@@ -1,0 +1,237 @@
+import { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { useCreateWorkOrder, useUpdateWorkOrder, useCancelWorkOrder } from './hooks';
+import { PRIORITIES, priorityLabel, statusLabel, statusTone, isClosed, fmtDate } from './util';
+import type { WorkOrder, Room, MaintenancePriority } from '@/types';
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  order?: WorkOrder | null;
+  rooms: Room[];
+  canUpdate?: boolean;
+}
+
+export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpdate }: Props) {
+  const isEdit = !!order;
+  const closed = !!order && isClosed(order.status);
+  const create = useCreateWorkOrder();
+  const update = useUpdateWorkOrder();
+  const cancel = useCancelWorkOrder();
+  const busy = create.isPending || update.isPending || cancel.isPending;
+
+  const [roomId, setRoomId] = useState('');
+  const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState<MaintenancePriority>('MEDIUM');
+  const [description, setDescription] = useState('');
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [restoreUnit, setRestoreUnit] = useState(true);
+
+  useEffect(() => {
+    if (!open) return;
+    setRoomId(order?.room_id ?? '');
+    setTitle(order?.title ?? '');
+    setPriority(order?.priority ?? 'MEDIUM');
+    setDescription(order?.description ?? '');
+    setConfirmCancel(false);
+    setRestoreUnit(true);
+  }, [open, order]);
+
+  const unitLabel = (id: string) => {
+    const r = rooms.find((x) => x.id === id);
+    return r ? `${r.code} · ${r.name}` : '—';
+  };
+
+  const valid = title.trim().length > 0 && (isEdit || roomId !== '');
+
+  async function submit() {
+    if (!valid) return;
+    try {
+      if (order) {
+        await update.mutateAsync({
+          id: order.id,
+          input: { title: title.trim(), description: description.trim() || null, priority },
+        });
+      } else {
+        await create.mutateAsync({
+          room_id: roomId,
+          title: title.trim(),
+          description: description.trim() || null,
+          priority,
+        });
+      }
+      onOpenChange(false);
+    } catch {
+      /* hook surfaces the error toast; keep the drawer open */
+    }
+  }
+
+  async function doCancel() {
+    if (!order) return;
+    try {
+      await cancel.mutateAsync({ id: order.id, restoreRoom: restoreUnit });
+      onOpenChange(false);
+    } catch {
+      /* toast shown by hook */
+    }
+  }
+
+  // Closed work orders are read-only — show the record, no inputs.
+  if (closed && order) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{order.title}</DialogTitle>
+            <DialogDescription>This work order is closed and can’t be changed.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Badge tone={statusTone[order.status]}>{statusLabel[order.status]}</Badge>
+              <span className="text-slate-500">Unit {unitLabel(order.room_id)}</span>
+            </div>
+            {order.description && <p className="whitespace-pre-line text-slate-600">{order.description}</p>}
+            <dl className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+              <div>
+                <dt className="text-slate-400">Opened</dt>
+                <dd>{fmtDate(order.opened_at ?? order.created_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-400">{order.status === 'COMPLETED' ? 'Completed' : 'Cancelled'}</dt>
+                <dd>{fmtDate((order.completed_at ?? order.cancelled_at) ?? order.created_at)}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Manage work order' : 'Log a repair'}</DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? 'Update this work order’s details.'
+              : 'Logging a repair marks the unit as under maintenance — it won’t be bookable until you mark the repair fixed.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="wo-unit">Unit</Label>
+            {isEdit ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {unitLabel(roomId)}
+              </div>
+            ) : (
+              <Select id="wo-unit" value={roomId} onChange={(e) => setRoomId(e.target.value)} disabled={busy}>
+                <option value="">— Choose unit —</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.code} · {r.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </div>
+
+          <div className="grid grid-cols-[1fr_10rem] gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="wo-title">Repair</Label>
+              <Input
+                id="wo-title"
+                placeholder="e.g. Aircon not cooling"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={busy}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="wo-priority">Priority</Label>
+              <Select
+                id="wo-priority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as MaintenancePriority)}
+                disabled={busy}
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {priorityLabel(p)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="wo-desc">Details (optional)</Label>
+            <textarea
+              id="wo-desc"
+              rows={3}
+              placeholder="What’s wrong? Anything the person fixing it should know…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={busy}
+              className="flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            />
+          </div>
+
+          <div className="flex justify-between pt-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={submit} disabled={busy || !valid}>
+              {busy && <Spinner className="text-white" />} {isEdit ? 'Save changes' : 'Log repair'}
+            </Button>
+          </div>
+
+          {isEdit && canUpdate && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
+              <Label className="text-rose-600">Danger zone</Label>
+              {!confirmCancel ? (
+                <Button variant="outline" onClick={() => setConfirmCancel(true)} disabled={busy}>
+                  Cancel this work order
+                </Button>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-md border border-rose-200 bg-rose-50 p-3">
+                  <span className="text-sm text-rose-700">Cancel this work order?</span>
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={restoreUnit}
+                      onChange={(e) => setRestoreUnit(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Also set the unit back to available
+                  </label>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={busy}>
+                      Keep
+                    </Button>
+                    <Button variant="danger" onClick={doCancel} disabled={busy}>
+                      {busy && <Spinner className="text-white" />} Cancel work order
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
