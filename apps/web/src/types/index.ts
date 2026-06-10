@@ -144,6 +144,25 @@ export interface Lead {
   created_at: string;
 }
 
+export type MaintenanceStatus = 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'CANCELLED';
+export type MaintenancePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface WorkOrder {
+  id: string;
+  room_id: string;
+  title: string;
+  description: string | null;
+  status: MaintenanceStatus;
+  priority: MaintenancePriority;
+  reported_by: string;
+  assigned_to: string | null;
+  opened_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+}
+
 export interface Quote {
   id: string;
   unit_type: UnitType;
