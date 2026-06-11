@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import { app, server } from '../../src/app.js';
+import { app } from '../../src/app.js';
 import { db, pool } from '../../src/config/db.js';
 import { clearStatsCache } from '../../src/modules/dashboard/dashboard.service.js';
 
@@ -55,7 +55,6 @@ afterAll(async () => {
   await db.deleteFrom('refresh_tokens').where('user_id', '=', testUserId).execute();
   await db.deleteFrom('audit_logs').where('user_id', '=', testUserId).execute();
   await db.deleteFrom('users').where('id', '=', testUserId).execute();
-  server.close();
   await pool.end();
 });
 

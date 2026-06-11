@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm install && npm run build -w @lsp/web",
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/index.ts": { "maxDuration": 30 }
+  },
+  "rewrites": [
+    { "source": "/health", "destination": "/api/index" },
+    { "source": "/api/v1/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/v1/cron/sweep", "schedule": "0 3 * * *" }
+  ]
+}
