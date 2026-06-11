@@ -10,6 +10,7 @@ import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
 import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
+import { UsersPage } from '@/features/users/UsersPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
 
 function ProtectedRoute() {
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
           { path: '/maintenance', element: <MaintenancePage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },
+          { path: '/users', element: <UsersPage /> },
           { path: '/finance', element: <ComingSoonPage /> },
         ],
       },

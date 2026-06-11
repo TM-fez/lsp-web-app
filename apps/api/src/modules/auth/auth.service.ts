@@ -47,7 +47,7 @@ async function buildAuthUser(userId: string): Promise<AuthUser> {
   const user = await authRepo.findUserById(userId);
   if (!user || !user.active) throw AppError.unauthorized('Account not found or inactive');
 
-  const permissions = await authRepo.findPermissionsByRoleId(user.roleId);
+  const permissions = await authRepo.findEffectivePermissions(user.id, user.roleId);
 
   return {
     id: user.id,
@@ -90,7 +90,7 @@ export async function login(
     throw AppError.unauthorized('Account is inactive');
   }
 
-  const permissions = await authRepo.findPermissionsByRoleId(userRow.roleId);
+  const permissions = await authRepo.findEffectivePermissions(userRow.id, userRow.roleId);
   const user: AuthUser = {
     id: userRow.id,
     name: userRow.name,

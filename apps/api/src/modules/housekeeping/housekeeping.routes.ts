@@ -20,8 +20,10 @@ export function createHousekeepingRouter(): Router {
   router.get('/:id', authorize('housekeeping.read'), controller.get);
 
   // Unit-keyed turn workflow: DIRTY -> CLEANING -> INSPECTED -> READY.
+  // Inspection is the approval step: cleaners (base housekeeping role) start cleans
+  // and mark ready; only leads/supervisors carry housekeeping.inspect.
   router.post('/rooms/:roomId/start', authorize('housekeeping.update'), controller.start);
-  router.post('/rooms/:roomId/inspect', authorize('housekeeping.update'), controller.inspect);
+  router.post('/rooms/:roomId/inspect', authorize('housekeeping.update', 'housekeeping.inspect'), controller.inspect);
   router.post('/rooms/:roomId/ready', authorize('housekeeping.update'), controller.ready);
 
   return router;
