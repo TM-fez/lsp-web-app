@@ -1,0 +1,36 @@
+# Render Blueprint — deploys the LSP engine (always-on Express API) + a Postgres database.
+# The website stays on Vercel and proxies /api/* to this service (wired into
+# apps/web/vercel.json once this is live), so the browser stays same-origin.
+#
+# The API runs with tsx (the same way it runs in dev) — no fragile build step. Migrations
+# and the admin seed run on start (both idempotent: migrations skip what's applied, the
+# admin seed is ON CONFLICT DO NOTHING).
+services:
+  - type: web
+    name: lsp-api
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev
+    startCommand: npm --prefix apps/api run db:migrate && npm --prefix apps/api run db:seed && npx tsx apps/api/src/server.ts
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lsp-db
+          property: connectionString
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: JWT_REFRESH_COOKIE_NAME
+        value: lsp_refresh
+      - key: CORS_ORIGIN
+        sync: false
+
+databases:
+  - name: lsp-db
+    plan: free
+    databaseName: lsp
+    user: lsp
