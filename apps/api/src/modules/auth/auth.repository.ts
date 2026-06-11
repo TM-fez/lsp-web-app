@@ -69,6 +69,24 @@ export async function findPermissionsByRoleId(roleId: number): Promise<string[]>
   return rows.map((r) => r.name);
 }
 
+/**
+ * Effective permissions = role permissions ∪ per-user extra grants
+ * (user_permissions — second-hat staff, e.g. a cleaner who also covers reception).
+ */
+export async function findEffectivePermissions(userId: string, roleId: number): Promise<string[]> {
+  const [rolePerms, extraRows] = await Promise.all([
+    findPermissionsByRoleId(roleId),
+    db
+      .selectFrom('permissions')
+      .innerJoin('user_permissions', 'user_permissions.permission_id', 'permissions.id')
+      .select('permissions.name')
+      .where('user_permissions.user_id', '=', userId)
+      .execute(),
+  ]);
+
+  return [...new Set([...rolePerms, ...extraRows.map((r) => r.name)])];
+}
+
 // ── Refresh token queries ──────────────────────────────────────────────────────
 
 export async function saveRefreshToken(data: {

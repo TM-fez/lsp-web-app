@@ -200,3 +200,27 @@ export interface Paginated<T> {
   page: number;
   limit: number;
 }
+
+// ── Users & Roles ─────────────────────────────────────────────────────────────
+
+export type RoleName = 'admin' | 'operations' | 'reception' | 'accounts' | 'maintenance' | 'housekeeping';
+
+export interface StaffUser {
+  id: string;
+  name: string;
+  email: string;
+  role: RoleName;
+  active: boolean;
+  /** Team rank within a role (head cleaner / vice) — not a separate role. */
+  is_lead: boolean;
+  /** Permission names granted on top of the role (second-hat staff). */
+  extra_permissions: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoleInfo {
+  id: number;
+  name: RoleName;
+  permissions: string[];
+}

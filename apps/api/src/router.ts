@@ -17,6 +17,7 @@ import { createHoldsRouter } from './modules/holds/holds.routes.js';
 import { createPaymentsRouter } from './modules/payments/payments.routes.js';
 import { createInvoicesRouter } from './modules/invoices/invoices.routes.js';
 import { createCronRouter } from './modules/cron/cron.routes.js';
+import { createUsersRouter } from './modules/users/users.routes.js';
 
 const router = Router();
 
@@ -62,8 +63,9 @@ router.use('/cockpit',      createCockpitRouter());
 // ── Scheduled jobs — platform cron hits this (secret-guarded), not RBAC ───────
 router.use('/cron',         createCronRouter());
 
-// router.use('/users',     usersRouter);
-// router.use('/files',     filesRouter);
+// ── Users & Roles — staff login management (admin-only via users.* perms) ─────
+router.use('/users',        createUsersRouter());
+
 // router.use('/flags',     flagsRouter);
 
 export { router };

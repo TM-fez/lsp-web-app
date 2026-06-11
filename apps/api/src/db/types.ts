@@ -25,9 +25,18 @@ export interface UsersTable {
   email: string;
   password_hash: string;
   active: Generated<boolean>;
+  // Team rank within a role (e.g. head cleaner / vice) — not a separate role.
+  is_lead: Generated<boolean>;
   avatar_file_id: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+}
+
+// Per-user EXTRA permission grants on top of the role (second-hat staff,
+// e.g. a cleaner who also covers reception). Unioned at login.
+export interface UserPermissionsTable {
+  user_id: string;
+  permission_id: number;
 }
 
 export interface RefreshTokensTable {
@@ -332,6 +341,7 @@ export interface Database {
   roles: RolesTable;
   permissions: PermissionsTable;
   role_permissions: RolePermissionsTable;
+  user_permissions: UserPermissionsTable;
   users: UsersTable;
   refresh_tokens: RefreshTokensTable;
   files: FilesTable;

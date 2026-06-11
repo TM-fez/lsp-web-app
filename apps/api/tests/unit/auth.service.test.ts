@@ -46,6 +46,7 @@ vi.mock('../../src/modules/auth/auth.repository.js', () => ({
   findUserByEmail:             vi.fn(),
   findUserById:                vi.fn(),
   findPermissionsByRoleId:     vi.fn(),
+  findEffectivePermissions:    vi.fn(),
   saveRefreshToken:            vi.fn().mockResolvedValue(undefined),
   findRefreshTokenByHash:      vi.fn(),
   revokeRefreshToken:          vi.fn().mockResolvedValue(undefined),
@@ -88,7 +89,7 @@ describe('authService.login', () => {
   it('returns tokens and user on valid credentials', async () => {
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
     vi.mocked(authRepo.findUserByEmail).mockResolvedValue(USER_RECORD);
-    vi.mocked(authRepo.findPermissionsByRoleId).mockResolvedValue(['contacts:read']);
+    vi.mocked(authRepo.findEffectivePermissions).mockResolvedValue(['contacts:read']);
 
     const result = await authService.login('admin@lsp.local', 'Correct@1', META);
 
@@ -147,7 +148,7 @@ describe('authService.refresh', () => {
   it('rotates token and returns new pair', async () => {
     vi.mocked(authRepo.findRefreshTokenByHash).mockResolvedValue(REFRESH_TOKEN_RECORD);
     vi.mocked(authRepo.findUserById).mockResolvedValue(USER_RECORD);
-    vi.mocked(authRepo.findPermissionsByRoleId).mockResolvedValue(['contacts:read']);
+    vi.mocked(authRepo.findEffectivePermissions).mockResolvedValue(['contacts:read']);
 
     const result = await authService.refresh('some-raw-token', META);
 
