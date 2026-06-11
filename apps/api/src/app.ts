@@ -7,10 +7,12 @@ import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env.js';
 import { requestId } from './core/middleware/requestId.middleware.js';
 import { errorHandler } from './core/errors/errorHandler.middleware.js';
-import { startScheduler } from './core/scheduler.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { router } from './router.js';
 
+// The configured Express app, with NO `listen()` — so it can be imported both by the
+// long-running server (server.ts) and by a serverless handler (api/index.ts) without
+// binding a port. Starting the HTTP listener + the background scheduler lives in server.ts.
 const app = express();
 
 // ── Security headers ──────────────────────────────────────────────────────────
@@ -52,11 +54,5 @@ app.use((_req, res) => {
 // ── Error handler (must be last) ──────────────────────────────────────────────
 app.use(errorHandler);
 
-const server = app.listen(env.PORT, () => {
-  console.log(`[api] listening  → http://localhost:${env.PORT}`);
-  console.log(`[api] health     → http://localhost:${env.PORT}/health`);
-  console.log(`[api] api prefix → http://localhost:${env.PORT}${env.API_PREFIX}`);
-  startScheduler();
-});
-
-export { app, server };
+export { app };
+export default app;

@@ -9,13 +9,21 @@ const schema = z.object({
   DATABASE_POOL_MIN: z.coerce.number().default(2),
   DATABASE_POOL_MAX: z.coerce.number().default(10),
 
-  JWT_PRIVATE_KEY_PATH: z.string(),
-  JWT_PUBLIC_KEY_PATH: z.string(),
+  // Keys can come from a file (local dev) OR inline PEM in an env var (serverless,
+  // where there's no key file). jwt.ts prefers the inline value, then the path.
+  JWT_PRIVATE_KEY_PATH: z.string().optional(),
+  JWT_PUBLIC_KEY_PATH: z.string().optional(),
+  JWT_PRIVATE_KEY: z.string().optional(),
+  JWT_PUBLIC_KEY: z.string().optional(),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('7d'),
   JWT_REFRESH_COOKIE_NAME: z.string().default('lsp_refresh'),
 
   CORS_ORIGIN: z.string(),
+
+  // Shared secret the scheduled sweep endpoint (GET /cron/sweep) requires, so only the
+  // platform cron can trigger it. When unset, the endpoint refuses every caller.
+  CRON_SECRET: z.string().optional(),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(200),

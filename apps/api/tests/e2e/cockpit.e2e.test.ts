@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, afterAll } from 'vitest';
 import request from 'supertest';
-import { app, server } from '../../src/app.js';
+import { app } from '../../src/app.js';
 import { pool } from '../../src/config/db.js';
 
 const stamp = Date.now();
@@ -33,7 +33,6 @@ let occupancyId = '';
 let reservation2Id = '';
 
 afterAll(async () => {
-  server.close();
   await pool.end();
 });
 
