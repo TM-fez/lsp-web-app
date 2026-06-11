@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "mkdir -p public && echo LSP API > public/index.html",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ]
+}
