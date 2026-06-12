@@ -1,5 +1,4 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils/cn';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
@@ -17,54 +16,68 @@ export function Sidebar() {
     navigate(landingRoute(id, hasPerm));
   }
 
-  // Built items the user can access become links; not-yet-built items stay as
-  // muted "Soon" roadmap entries so the full planned workspace is visible.
   const items = workspace.items.filter((item) => (item.built ? !item.perm || hasPerm(item.perm) : true));
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-white">
-      <div className="flex items-center gap-2 px-4 py-4">
-        <Sparkles className="h-5 w-5 text-emerald-600" />
-        <span className="text-sm font-semibold tracking-tight">LSP Operations</span>
+    <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-paper">
+      <div className="px-6 pb-5 pt-7">
+        <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-ink">Lifestyle</div>
+        <div className="-mt-0.5 font-display text-2xl italic text-forest">Apartments</div>
       </div>
 
-      <div className="px-2 pb-3">
+      <div className="px-4 pb-4">
         <WorkspaceSwitcher current={currentWorkspace} onSelect={switchWorkspace} />
       </div>
 
-      <nav className="flex flex-col gap-1 px-2">
-        {items.map((item) =>
-          item.built ? (
+      <nav className="flex flex-1 flex-col gap-0.5 px-3">
+        {items.map((item, i) => {
+          const no = String(i + 1).padStart(2, '0');
+          return item.built ? (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
+                  'group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-[background-color,color] duration-300 ease-[cubic-bezier(.19,1,.22,1)]',
+                  isActive ? 'bg-forest text-cream' : 'text-char hover:bg-cream-2',
                 )
               }
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={cn(
+                      'font-display text-[11px] italic',
+                      isActive ? 'text-oncream' : 'text-terra',
+                    )}
+                  >
+                    {no}
+                  </span>
+                  <item.icon className="h-[17px] w-[17px] opacity-80 transition-transform duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:translate-x-0.5" />
+                  <span className="tracking-[0.01em]">{item.label}</span>
+                </>
+              )}
             </NavLink>
           ) : (
             <div
               key={item.to}
               aria-disabled="true"
               title="Coming soon"
-              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-300"
+              className="flex cursor-default items-center gap-3 rounded-md px-3 py-2.5 text-sm text-faint"
             >
-              <item.icon className="h-4 w-4" />
+              <span className="font-display text-[11px] italic text-faint">{no}</span>
+              <item.icon className="h-[17px] w-[17px] opacity-70" />
               <span className="flex-1">{item.label}</span>
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Soon
-              </span>
+              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-faint">Soon</span>
             </div>
-          ),
-        )}
+          );
+        })}
       </nav>
+
+      <div className="px-6 py-5">
+        <div className="font-display text-sm italic text-muted">Normal is boring.</div>
+      </div>
     </aside>
   );
 }
