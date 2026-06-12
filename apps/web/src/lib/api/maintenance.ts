@@ -41,8 +41,19 @@ export async function startWorkOrder(id: string): Promise<WorkOrder> {
   return data;
 }
 
+export async function assignWorkOrder(id: string, assignedTo: string | null): Promise<WorkOrder> {
+  const { data } = await api.patch<WorkOrder>(`/maintenance/${id}/assign`, { assigned_to: assignedTo });
+  return data;
+}
+
 export async function completeWorkOrder(id: string, notes?: string | null): Promise<WorkOrder> {
   const { data } = await api.post<WorkOrder>(`/maintenance/${id}/complete`, { notes: notes ?? null });
+  return data;
+}
+
+// Management sign-off on a completed repair (requires maintenance.approve).
+export async function approveWorkOrder(id: string): Promise<WorkOrder> {
+  const { data } = await api.post<WorkOrder>(`/maintenance/${id}/approve`, {});
   return data;
 }
 

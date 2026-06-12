@@ -30,6 +30,24 @@ export class MaintenanceRepository {
     return inserted;
   }
 
+  // Base select that LEFT-joins users for the accountability names. selectAll('wo')
+  // keeps every work-order column, then we add the four resolved names.
+  private withPeople(trx: DB = this.db) {
+    return trx
+      .selectFrom('maintenance_work_orders as wo')
+      .leftJoin('users as reporter', 'reporter.id', 'wo.reported_by')
+      .leftJoin('users as assignee', 'assignee.id', 'wo.assigned_to')
+      .leftJoin('users as completer', 'completer.id', 'wo.completed_by')
+      .leftJoin('users as approver', 'approver.id', 'wo.approved_by')
+      .selectAll('wo')
+      .select([
+        'reporter.name as reported_by_name',
+        'assignee.name as assigned_to_name',
+        'completer.name as completed_by_name',
+        'approver.name as approved_by_name',
+      ]);
+  }
+
   async findById(id: string, trx: DB = this.db): Promise<MaintenanceWorkOrderRow | undefined> {
     return trx
       .selectFrom('maintenance_work_orders')
@@ -39,27 +57,46 @@ export class MaintenanceRepository {
       .executeTakeFirst();
   }
 
+  /** Single work order with the accountability names resolved (for GET /:id). */
+  async findByIdWithPeople(id: string) {
+    return this.withPeople()
+      .where('wo.id', '=', id)
+      .where('wo.deleted_at', 'is', null)
+      .executeTakeFirst();
+  }
+
+  /** Is this id an active staff user? Guards assignment against dangling refs. */
+  async isActiveUser(id: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('users')
+      .select('id')
+      .where('id', '=', id)
+      .where('active', '=', true)
+      .executeTakeFirst();
+    return !!row;
+  }
+
   async findPaginated(query: MaintenanceQueryDTO) {
-    let q = this.db.selectFrom('maintenance_work_orders').selectAll().where('deleted_at', 'is', null);
+    let q = this.withPeople().where('wo.deleted_at', 'is', null);
     let countQ = this.db.selectFrom('maintenance_work_orders').select(this.db.fn.count<number>('id').as('total')).where('deleted_at', 'is', null);
 
     if (query.room_id) {
-      q = q.where('room_id', '=', query.room_id);
+      q = q.where('wo.room_id', '=', query.room_id);
       countQ = countQ.where('room_id', '=', query.room_id);
     }
     if (query.status) {
-      q = q.where('status', '=', query.status);
+      q = q.where('wo.status', '=', query.status);
       countQ = countQ.where('status', '=', query.status);
     }
     if (query.assigned_to) {
-      q = q.where('assigned_to', '=', query.assigned_to);
+      q = q.where('wo.assigned_to', '=', query.assigned_to);
       countQ = countQ.where('assigned_to', '=', query.assigned_to);
     }
 
     const offset = (query.page - 1) * query.limit;
 
     const [data, [{ total }]] = await Promise.all([
-      q.limit(query.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      q.limit(query.limit).offset(offset).orderBy('wo.created_at', 'desc').execute(),
       countQ.execute(),
     ]);
 

@@ -117,6 +117,8 @@ export interface RatePlan {
   tax_rate_bps: number; // basis points (1400 = 14%)
   currency: string;
   active: boolean;
+  updated_at?: string;
+  updated_by_name?: string | null;
 }
 
 export interface Reservation {
@@ -156,11 +158,27 @@ export interface WorkOrder {
   priority: MaintenancePriority;
   reported_by: string;
   assigned_to: string | null;
+  completed_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
   opened_at: string;
   started_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
   created_at: string;
+  // Resolved names (LEFT-joined by the list/get endpoints).
+  reported_by_name?: string | null;
+  assigned_to_name?: string | null;
+  completed_by_name?: string | null;
+  approved_by_name?: string | null;
+}
+
+/** Minimal staff entry for pickers (assign-to). */
+export interface StaffDirectoryEntry {
+  id: string;
+  name: string;
+  role: RoleName;
+  is_lead: boolean;
 }
 
 export interface Quote {

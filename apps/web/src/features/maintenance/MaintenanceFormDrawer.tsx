@@ -6,9 +6,37 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { useCreateWorkOrder, useUpdateWorkOrder, useCancelWorkOrder } from './hooks';
+import { useAuthStore } from '@/store/auth';
+import {
+  useCreateWorkOrder,
+  useUpdateWorkOrder,
+  useCancelWorkOrder,
+  useAssignWorkOrder,
+  useApproveWorkOrder,
+  useStaffDirectory,
+} from './hooks';
 import { PRIORITIES, priorityLabel, statusLabel, statusTone, isClosed, fmtDate } from './util';
 import type { WorkOrder, Room, MaintenancePriority } from '@/types';
+
+/** Read-only "who did what" summary shown in the manage/record drawer. */
+function People({ order }: { order: WorkOrder }) {
+  const rows: [string, string | null | undefined][] = [
+    ['Reported by', order.reported_by_name],
+    ['Assigned to', order.assigned_to_name],
+    ['Completed by', order.completed_by_name],
+    ['Approved by', order.approved_by_name],
+  ];
+  return (
+    <dl className="grid grid-cols-2 gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-3 text-xs">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-slate-400">{label}</dt>
+          <dd className="text-slate-700">{value ?? '—'}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -21,10 +49,15 @@ interface Props {
 export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpdate }: Props) {
   const isEdit = !!order;
   const closed = !!order && isClosed(order.status);
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const canApprove = hasPerm('maintenance.approve');
   const create = useCreateWorkOrder();
   const update = useUpdateWorkOrder();
   const cancel = useCancelWorkOrder();
-  const busy = create.isPending || update.isPending || cancel.isPending;
+  const assign = useAssignWorkOrder();
+  const approve = useApproveWorkOrder();
+  const { data: staff } = useStaffDirectory();
+  const busy = create.isPending || update.isPending || cancel.isPending || assign.isPending || approve.isPending;
 
   const [roomId, setRoomId] = useState('');
   const [title, setTitle] = useState('');
@@ -107,6 +140,19 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
                 <dd>{fmtDate((order.completed_at ?? order.cancelled_at) ?? order.created_at)}</dd>
               </div>
             </dl>
+            <People order={order} />
+            {order.status === 'COMPLETED' &&
+              (order.approved_at ? (
+                <p className="text-xs text-emerald-600">
+                  ✓ Approved by {order.approved_by_name ?? 'a manager'} on {fmtDate(order.approved_at)}
+                </p>
+              ) : canApprove ? (
+                <Button variant="primary" onClick={() => approve.mutate(order.id)} disabled={busy}>
+                  {busy && <Spinner className="text-white" />} Approve this repair
+                </Button>
+              ) : (
+                <p className="text-xs text-amber-600">Awaiting a manager’s approval.</p>
+              ))}
           </div>
           <div className="flex justify-end pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -189,6 +235,28 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
               className="flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
             />
           </div>
+
+          {isEdit && order && canUpdate && (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="wo-assign">Assign to</Label>
+              <Select
+                id="wo-assign"
+                value={order.assigned_to ?? ''}
+                onChange={(e) => assign.mutate({ id: order.id, assignedTo: e.target.value || null })}
+                disabled={busy}
+              >
+                <option value="">— Unassigned —</option>
+                {(staff ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+              <span className="text-xs text-slate-500">The staff member responsible for this repair.</span>
+            </div>
+          )}
+
+          {isEdit && order && <People order={order} />}
 
           <div className="flex justify-between pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>

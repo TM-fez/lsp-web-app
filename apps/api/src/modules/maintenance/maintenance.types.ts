@@ -49,6 +49,15 @@ export type CompleteWorkOrderDTO = z.infer<typeof CompleteWorkOrderSchema>;
 export type StartWorkOrderDTO = z.infer<typeof StartWorkOrderSchema>;
 export type AssignWorkOrderDTO = z.infer<typeof AssignWorkOrderSchema>;
 
+// The names behind a work order's accountability columns: who reported it, who
+// it's assigned to, who completed it, who approved it. LEFT-joined from users.
+export interface WorkOrderPeople {
+  reported_by_name: string | null;
+  assigned_to_name: string | null;
+  completed_by_name: string | null;
+  approved_by_name: string | null;
+}
+
 export interface MaintenanceQueryDTO {
   page: number;
   limit: number;

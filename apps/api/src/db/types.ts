@@ -162,6 +162,9 @@ export interface MaintenanceWorkOrdersTable {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   reported_by: string;
   assigned_to: string | null;
+  completed_by: string | null;
+  approved_by: string | null;
+  approved_at: Date | null;
   before_file_id: string | null;
   after_file_id: string | null;
   opened_at: Generated<Date>;

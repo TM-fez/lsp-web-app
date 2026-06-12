@@ -16,7 +16,10 @@ export function createUsersRouter(dbInstance = db): Router {
 
   router.use(authenticate);
 
-  // /roles before /:id so "roles" never matches as a user id.
+  // Static paths before /:id so they never match as a user id.
+  // Directory is intentionally open to any authenticated staff (names + roles only)
+  // so pickers like maintenance "assign to" work without users.read (admin-only).
+  router.get('/directory', controller.listDirectory);
   router.get('/roles', authorize('users.read'), controller.listRoles);
   router.get('/', authorize('users.read'), controller.listUsers);
   router.get('/:id', authorize('users.read'), controller.getUserById);

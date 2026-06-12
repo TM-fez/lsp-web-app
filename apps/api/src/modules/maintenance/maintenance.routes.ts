@@ -24,6 +24,7 @@ export function createMaintenanceRouter(): Router {
   router.patch('/:id/assign', authorize('maintenance.update'), controller.assign);
   router.post('/:id/start', authorize('maintenance.update'), controller.start);
   router.post('/:id/complete', authorize('maintenance.complete'), controller.complete);
+  router.post('/:id/approve', authorize('maintenance.approve'), controller.approve);
   router.post('/:id/cancel', authorize('maintenance.update'), controller.cancel);
 
   return router;

@@ -21,7 +21,7 @@ export class MaintenanceService {
   }
 
   async get(id: string) {
-    const order = await this.repo.findById(id);
+    const order = await this.repo.findByIdWithPeople(id);
     if (!order) throw AppError.notFound('Work order not found');
     return order;
   }
@@ -49,6 +49,10 @@ export class MaintenanceService {
     const order = await this.get(id);
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw AppError.conflict(`Cannot assign a ${order.status} work order`);
+    }
+
+    if (data.assigned_to && !(await this.repo.isActiveUser(data.assigned_to))) {
+      throw AppError.badRequest('Cannot assign to an unknown or inactive staff member');
     }
 
     return this.repo.update(id, { assigned_to: data.assigned_to }, meta);
@@ -90,7 +94,8 @@ export class MaintenanceService {
         status: 'COMPLETED',
         after_file_id: data.after_file_id ?? null,
         description: data.notes ? (order.description ? order.description + '\n' + data.notes : data.notes) : order.description,
-        completed_at: new Date() as any
+        completed_at: new Date() as any,
+        completed_by: meta.userId,
       }, meta, trx);
 
       // Restore room status
@@ -98,6 +103,26 @@ export class MaintenanceService {
 
       return updated;
     });
+  }
+
+  /**
+   * Management sign-off on a completed repair (separate, higher bar than completing
+   * it). Records who approved and when. Idempotent guard: only an un-approved,
+   * COMPLETED order can be approved.
+   */
+  async approve(id: string, meta: { userId: string, requestId?: string }) {
+    const order = await this.get(id);
+    if (order.status !== 'COMPLETED') {
+      throw AppError.conflict(`Only a completed work order can be approved (current status: ${order.status})`);
+    }
+    if (order.approved_at) {
+      throw AppError.conflict('This work order has already been approved');
+    }
+
+    return this.repo.update(id, {
+      approved_by: meta.userId,
+      approved_at: new Date() as any,
+    }, meta);
   }
 
   async cancel(id: string, restoreRoom: boolean, meta: { userId: string, requestId?: string }) {

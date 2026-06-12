@@ -119,4 +119,14 @@ export class MaintenanceController {
       next(err);
     }
   };
+
+  approve = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      const result = await this.service.approve(req.params.id as string, meta);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

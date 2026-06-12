@@ -6,15 +6,26 @@ import {
   startWorkOrder,
   completeWorkOrder,
   cancelWorkOrder,
+  assignWorkOrder,
+  approveWorkOrder,
   type WorkOrderListParams,
   type CreateWorkOrderInput,
   type UpdateWorkOrderInput,
 } from '@/lib/api/maintenance';
+import { listStaffDirectory } from '@/lib/api/users';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
-import type { WorkOrder, Paginated } from '@/types';
+import type { WorkOrder, Paginated, StaffDirectoryEntry } from '@/types';
 
 const MAINTENANCE_KEY = ['maintenance'] as const;
+
+export function useStaffDirectory() {
+  return useQuery<StaffDirectoryEntry[]>({
+    queryKey: ['staff-directory'],
+    queryFn: listStaffDirectory,
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useWorkOrders(params: WorkOrderListParams) {
   return useQuery<Paginated<WorkOrder>>({
@@ -94,6 +105,30 @@ export function useCancelWorkOrder() {
     mutationFn: ({ id, restoreRoom }: { id: string; restoreRoom: boolean }) => cancelWorkOrder(id, restoreRoom),
     onSuccess: () => {
       toast.success('Work order cancelled');
+      refresh();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useAssignWorkOrder() {
+  const refresh = useRefresh(false);
+  return useMutation({
+    mutationFn: ({ id, assignedTo }: { id: string; assignedTo: string | null }) => assignWorkOrder(id, assignedTo),
+    onSuccess: () => {
+      toast.success('Assignment updated');
+      refresh();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useApproveWorkOrder() {
+  const refresh = useRefresh(false);
+  return useMutation({
+    mutationFn: (id: string) => approveWorkOrder(id),
+    onSuccess: () => {
+      toast.success('Repair approved ✓');
       refresh();
     },
     onError: (e) => toast.error(errMessage(e)),

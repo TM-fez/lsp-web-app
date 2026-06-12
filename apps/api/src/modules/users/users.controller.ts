@@ -32,6 +32,16 @@ export class UsersController {
     }
   };
 
+  // Minimal staff directory for pickers — any authenticated staff member may read it.
+  listDirectory = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const staff = await this.service.listDirectory();
+      res.json({ data: staff });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   getUserById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = await this.service.getUserById(req.params.id as string);
