@@ -108,6 +108,13 @@ export interface ReservationsTable {
   check_out_date: Date;
   status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
   notes: string | null;
+  // Build 2b — per-booking discount + manager sign-off.
+  discount_type: 'PERCENT' | 'FIXED' | null;
+  discount_value: number | null;
+  discount_reason: string | null;
+  discount_requested_by: string | null;
+  discount_approved_by: string | null;
+  discount_approved_at: Date | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;

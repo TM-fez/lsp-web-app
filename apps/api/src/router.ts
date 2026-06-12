@@ -19,6 +19,7 @@ import { createInvoicesRouter } from './modules/invoices/invoices.routes.js';
 import { createCronRouter } from './modules/cron/cron.routes.js';
 import { createUsersRouter } from './modules/users/users.routes.js';
 import { createExpensesRouter } from './modules/expenses/expenses.routes.js';
+import { createActivityRouter } from './modules/activity/activity.routes.js';
 
 const router = Router();
 
@@ -59,6 +60,9 @@ router.use('/invoices', createInvoicesRouter());
 
 // ── Build 2a — Expenses (repair costs; managers approve, Accounts reconciles) ──
 router.use('/expenses', createExpensesRouter());
+
+// ── Build 2c — Activity feed (shared "what's changed", all staff) ─────────────
+router.use('/activity', createActivityRouter());
 
 // ── Sprint 9 — Operations Cockpit: housekeeping turn workflow ─────────────────
 router.use('/housekeeping', createHousekeepingRouter());

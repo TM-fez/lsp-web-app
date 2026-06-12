@@ -9,6 +9,7 @@ import type {
   ReservationRequestMeta,
   CreateReservationDTO,
   UpdateReservationDTO,
+  SetDiscountDTO,
   ReservationListRow
 } from './reservations.types.js';
 
@@ -131,6 +132,57 @@ export class ReservationsService {
     if (!updated) {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
+    return updated;
+  }
+
+  /**
+   * Apply (request) a discount on a PENDING booking. If the actor can approve
+   * (Tameem/admin), it's signed off immediately; otherwise it waits for approval.
+   */
+  async setDiscount(id: string, dto: SetDiscountDTO, meta: ReservationRequestMeta, canApprove: boolean): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id);
+    if (existing.status !== 'PENDING') {
+      throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
+    }
+    const updated = await this.repository.update(id, {
+      discount_type: dto.discount_type,
+      discount_value: dto.discount_value,
+      discount_reason: dto.discount_reason ?? null,
+      discount_requested_by: meta.userId,
+      discount_approved_by: canApprove ? meta.userId : null,
+      discount_approved_at: canApprove ? new Date() : null,
+      updated_by: meta.userId,
+    }, meta);
+    if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    return updated;
+  }
+
+  /** Manager sign-off on a pending discount. */
+  async approveDiscount(id: string, meta: ReservationRequestMeta): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id);
+    if (existing.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
+    if (existing.discount_approved_at) throw AppError.conflict('This discount has already been approved');
+    const updated = await this.repository.update(id, {
+      discount_approved_by: meta.userId,
+      discount_approved_at: new Date(),
+      updated_by: meta.userId,
+    }, meta);
+    if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    return updated;
+  }
+
+  async removeDiscount(id: string, meta: ReservationRequestMeta): Promise<ReservationRow> {
+    await this.getReservationById(id);
+    const updated = await this.repository.update(id, {
+      discount_type: null,
+      discount_value: null,
+      discount_reason: null,
+      discount_requested_by: null,
+      discount_approved_by: null,
+      discount_approved_at: null,
+      updated_by: meta.userId,
+    }, meta);
+    if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
     return updated;
   }
 
