@@ -13,6 +13,7 @@ import {
   useCancelWorkOrder,
   useAssignWorkOrder,
   useApproveWorkOrder,
+  useSetWorkOrderCost,
   useStaffDirectory,
 } from './hooks';
 import { PRIORITIES, priorityLabel, statusLabel, statusTone, isClosed, fmtDate } from './util';
@@ -57,7 +58,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
   const assign = useAssignWorkOrder();
   const approve = useApproveWorkOrder();
   const { data: staff } = useStaffDirectory();
-  const busy = create.isPending || update.isPending || cancel.isPending || assign.isPending || approve.isPending;
+  const setCostM = useSetWorkOrderCost();
+  const busy = create.isPending || update.isPending || cancel.isPending || assign.isPending || approve.isPending || setCostM.isPending;
 
   const [roomId, setRoomId] = useState('');
   const [title, setTitle] = useState('');
@@ -65,6 +67,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
   const [description, setDescription] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [restoreUnit, setRestoreUnit] = useState(true);
+  const [contractor, setContractor] = useState('');
+  const [cost, setCost] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -74,6 +78,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     setDescription(order?.description ?? '');
     setConfirmCancel(false);
     setRestoreUnit(true);
+    setContractor(order?.contractor_name ?? '');
+    setCost(order?.cost_amount != null ? String(order.cost_amount / 100) : '');
   }, [open, order]);
 
   const unitLabel = (id: string) => {
@@ -97,6 +103,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
           title: title.trim(),
           description: description.trim() || null,
           priority,
+          contractor_name: contractor.trim() || null,
+          cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
         });
       }
       onOpenChange(false);
@@ -110,6 +118,21 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     try {
       await cancel.mutateAsync({ id: order.id, restoreRoom: restoreUnit });
       onOpenChange(false);
+    } catch {
+      /* toast shown by hook */
+    }
+  }
+
+  async function saveCost() {
+    if (!order) return;
+    try {
+      await setCostM.mutateAsync({
+        id: order.id,
+        input: {
+          contractor_name: contractor.trim() || null,
+          cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
+        },
+      });
     } catch {
       /* toast shown by hook */
     }
@@ -257,6 +280,51 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
           )}
 
           {isEdit && order && <People order={order} />}
+
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
+            <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Contractor &amp; cost</Label>
+            <div className="grid grid-cols-[1fr_9rem] gap-3">
+              <Input
+                placeholder="Contractor (e.g. Teko Plumbing)"
+                value={contractor}
+                onChange={(e) => setContractor(e.target.value)}
+                disabled={busy}
+              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">P</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={cost}
+                  onChange={(e) => setCost(e.target.value)}
+                  disabled={busy}
+                  className="pl-7"
+                />
+              </div>
+            </div>
+            {isEdit && order ? (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-muted">
+                  {order.cost_amount == null
+                    ? 'Recorded costs go to Accounts to approve.'
+                    : order.cost_reconciled_at
+                      ? '✓ Reconciled by Accounts'
+                      : order.cost_approved_at
+                        ? 'Approved — awaiting reconciliation'
+                        : 'Pending manager approval'}
+                </span>
+                <Button variant="outline" size="sm" disabled={busy} onClick={saveCost}>
+                  Save cost
+                </Button>
+              </div>
+            ) : (
+              <span className="text-xs text-muted">
+                Optional — the outside contractor and what it costs. Accounts approves the spend.
+              </span>
+            )}
+          </div>
 
           <div className="flex justify-between pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>

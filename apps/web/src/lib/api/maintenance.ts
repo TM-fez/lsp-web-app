@@ -11,6 +11,9 @@ export interface CreateWorkOrderInput {
   title: string;
   description?: string | null;
   priority?: MaintenancePriority;
+  assigned_to?: string | null;
+  contractor_name?: string | null;
+  cost_amount?: number | null; // thebe
 }
 
 export type UpdateWorkOrderInput = Partial<Pick<CreateWorkOrderInput, 'title' | 'description' | 'priority'>>;
@@ -43,6 +46,14 @@ export async function startWorkOrder(id: string): Promise<WorkOrder> {
 
 export async function assignWorkOrder(id: string, assignedTo: string | null): Promise<WorkOrder> {
   const { data } = await api.patch<WorkOrder>(`/maintenance/${id}/assign`, { assigned_to: assignedTo });
+  return data;
+}
+
+export async function setWorkOrderCost(
+  id: string,
+  input: { contractor_name?: string | null; cost_amount?: number | null },
+): Promise<WorkOrder> {
+  const { data } = await api.patch<WorkOrder>(`/maintenance/${id}/cost`, input);
   return data;
 }
 

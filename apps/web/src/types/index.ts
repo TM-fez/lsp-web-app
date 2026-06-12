@@ -161,6 +161,10 @@ export interface WorkOrder {
   completed_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  contractor_name: string | null;
+  cost_amount: number | null;
+  cost_approved_at: string | null;
+  cost_reconciled_at: string | null;
   opened_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -171,6 +175,24 @@ export interface WorkOrder {
   assigned_to_name?: string | null;
   completed_by_name?: string | null;
   approved_by_name?: string | null;
+}
+
+export type ExpenseStatus = 'PENDING' | 'APPROVED' | 'RECONCILED';
+
+/** A repair cost as Accounts sees it (Finance → Expenses). */
+export interface Expense {
+  id: string;
+  room_id: string;
+  room_code: string | null;
+  title: string;
+  contractor_name: string | null;
+  cost_amount: number; // thebe
+  status: ExpenseStatus;
+  cost_approved_by_name: string | null;
+  cost_approved_at: string | null;
+  cost_reconciled_by_name: string | null;
+  cost_reconciled_at: string | null;
+  opened_at: string;
 }
 
 /** Minimal staff entry for pickers (assign-to). */
