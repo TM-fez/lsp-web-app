@@ -30,24 +30,31 @@ export class PricingRepository {
     filters: RatePlanFilters,
     pagination: PaginationOptions
   ): Promise<PaginatedResult<RatePlanRow>> {
-    let query = this.db.selectFrom('rate_plans').selectAll().where('deleted_at', 'is', null);
+    // LEFT-join the editor so the screen can show "Updated by <name>" — price
+    // changes shouldn't be a surprise to the rest of the team.
+    let query = this.db
+      .selectFrom('rate_plans as rp')
+      .leftJoin('users as editor', 'editor.id', 'rp.updated_by')
+      .selectAll('rp')
+      .select('editor.name as updated_by_name')
+      .where('rp.deleted_at', 'is', null);
     let countQuery = this.db
       .selectFrom('rate_plans')
       .select(this.db.fn.count<number>('id').as('total'))
       .where('deleted_at', 'is', null);
 
     if (filters.unit_type) {
-      query = query.where('unit_type', '=', filters.unit_type);
+      query = query.where('rp.unit_type', '=', filters.unit_type);
       countQuery = countQuery.where('unit_type', '=', filters.unit_type);
     }
     if (filters.active !== undefined) {
-      query = query.where('active', '=', filters.active);
+      query = query.where('rp.active', '=', filters.active);
       countQuery = countQuery.where('active', '=', filters.active);
     }
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('rp.created_at', 'desc').execute(),
       countQuery.execute(),
     ]);
 

@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
-import { useWorkOrders, useStartWorkOrder, useCompleteWorkOrder } from './hooks';
+import { useWorkOrders, useStartWorkOrder, useCompleteWorkOrder, useApproveWorkOrder } from './hooks';
 import { MaintenanceFormDrawer } from './MaintenanceFormDrawer';
 import {
   FILTER_STATUSES,
@@ -27,6 +27,7 @@ export function MaintenancePage() {
   const canCreate = hasPerm('maintenance.create');
   const canUpdate = hasPerm('maintenance.update');
   const canComplete = hasPerm('maintenance.complete');
+  const canApprove = hasPerm('maintenance.approve');
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | MaintenanceStatus>('ALL');
@@ -48,7 +49,8 @@ export function MaintenancePage() {
 
   const start = useStartWorkOrder();
   const complete = useCompleteWorkOrder();
-  const actionBusy = start.isPending || complete.isPending;
+  const approve = useApproveWorkOrder();
+  const actionBusy = start.isPending || complete.isPending || approve.isPending;
 
   const orders = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -162,6 +164,7 @@ export function MaintenancePage() {
                 <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
                   <th className="px-4 py-3 font-medium">Repair</th>
                   <th className="px-4 py-3 font-medium">Unit</th>
+                  <th className="px-4 py-3 font-medium">Assigned to</th>
                   <th className="px-4 py-3 font-medium">Priority</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Opened</th>
@@ -180,11 +183,22 @@ export function MaintenancePage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{roomLabel(order.room_id)}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {order.assigned_to_name ?? <span className="text-slate-400">Unassigned</span>}
+                      </td>
                       <td className="px-4 py-3">
                         <Badge tone={priorityTone[order.priority]}>{priorityLabel(order.priority)}</Badge>
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={statusTone[order.status]}>{statusLabel[order.status]}</Badge>
+                        {order.status === 'COMPLETED' &&
+                          (order.approved_at ? (
+                            <div className="mt-1 text-xs text-emerald-600">
+                              ✓ Approved{order.approved_by_name ? ` · ${order.approved_by_name}` : ''}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-amber-600">Awaiting approval</div>
+                          ))}
                       </td>
                       <td className="px-4 py-3 text-slate-500">{fmtDate(order.opened_at ?? order.created_at)}</td>
                       <td className="px-4 py-3">
@@ -192,6 +206,11 @@ export function MaintenancePage() {
                           {action && canDo(action) && (
                             <Button size="sm" variant="primary" disabled={actionBusy} onClick={() => runAction(order)}>
                               {actionLabel[action]}
+                            </Button>
+                          )}
+                          {order.status === 'COMPLETED' && !order.approved_at && canApprove && (
+                            <Button size="sm" variant="primary" disabled={actionBusy} onClick={() => approve.mutate(order.id)}>
+                              Approve
                             </Button>
                           )}
                           <Button size="sm" variant="outline" onClick={() => openManage(order)}>

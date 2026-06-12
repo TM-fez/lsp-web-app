@@ -102,6 +102,12 @@ export function PricingPage() {
                         <span className="font-medium text-slate-900">{plan.name}</span>
                         <Badge tone={plan.active ? 'green' : 'slate'}>{plan.active ? 'active' : 'inactive'}</Badge>
                       </div>
+                      {plan.updated_by_name && (
+                        <div className="mt-0.5 text-xs text-slate-400">
+                          Updated by {plan.updated_by_name}
+                          {plan.updated_at ? ` · ${new Date(plan.updated_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{unitLabel(plan.unit_type)}</td>
                     <td className="px-4 py-3 text-slate-700">{formatMoney(plan.nightly_rate, plan.currency)}</td>

@@ -22,6 +22,10 @@ export class UsersService {
     return this.repository.listRoles();
   }
 
+  async listDirectory() {
+    return this.repository.listDirectory();
+  }
+
   async getUserById(id: string): Promise<StaffUser> {
     const user = await this.repository.findById(id);
     if (!user) throw AppError.notFound(`User with id ${id} not found`);

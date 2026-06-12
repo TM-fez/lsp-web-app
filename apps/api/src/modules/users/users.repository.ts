@@ -63,6 +63,17 @@ export class UsersRepository {
     return rows.map((r) => toStaffUser(r, extras.get(r.id) ?? []));
   }
 
+  /** Minimal active-staff directory for pickers (assign-to etc.) — names + roles only. */
+  async listDirectory(): Promise<{ id: string; name: string; role: string; is_lead: boolean }[]> {
+    return this.db
+      .selectFrom('users')
+      .innerJoin('roles', 'roles.id', 'users.role_id')
+      .select(['users.id', 'users.name', 'roles.name as role', 'users.is_lead'])
+      .where('users.active', '=', true)
+      .orderBy('users.name', 'asc')
+      .execute();
+  }
+
   async findById(id: string): Promise<StaffUser | null> {
     const row = await this.selectUserWithRole().where('users.id', '=', id).executeTakeFirst();
     if (!row) return null;

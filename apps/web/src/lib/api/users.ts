@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { RoleInfo, RoleName, StaffUser } from '@/types';
+import type { RoleInfo, RoleName, StaffDirectoryEntry, StaffUser } from '@/types';
 
 export interface CreateUserInput {
   name: string;
@@ -25,6 +25,12 @@ export async function listUsers(): Promise<StaffUser[]> {
 
 export async function listRoles(): Promise<RoleInfo[]> {
   const { data } = await api.get<{ data: RoleInfo[] }>('/users/roles');
+  return data.data;
+}
+
+/** Minimal active-staff list for pickers — any logged-in staff may read it. */
+export async function listStaffDirectory(): Promise<StaffDirectoryEntry[]> {
+  const { data } = await api.get<{ data: StaffDirectoryEntry[] }>('/users/directory');
   return data.data;
 }
 
