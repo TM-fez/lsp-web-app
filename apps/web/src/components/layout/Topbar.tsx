@@ -43,9 +43,7 @@ export function Topbar() {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-line bg-cream px-7">
-      <div className="font-display text-[15px] italic text-muted">
-        Keep units occupied. Make no guest feel processed.
-      </div>
+      <div />
       <div className="flex items-center gap-5">
         <div className="hidden items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted sm:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-terra" />

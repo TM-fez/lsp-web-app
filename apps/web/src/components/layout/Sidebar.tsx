@@ -2,6 +2,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils/cn';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { getWorkspace, landingRoute, workspaceForPath, type WorkspaceId } from './nav';
 
 export function Sidebar() {
@@ -20,9 +21,12 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-paper">
-      <div className="px-6 pb-5 pt-7">
-        <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-ink">Lifestyle</div>
-        <div className="-mt-0.5 font-display text-2xl italic text-forest">Apartments</div>
+      <div className="flex items-center gap-3 px-6 pb-5 pt-7">
+        <LifestyleMark className="h-9 w-9 shrink-0 text-forest" />
+        <div className="leading-[1.5]">
+          <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-ink">Lifestyle</div>
+          <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-ink">Apartments</div>
+        </div>
       </div>
 
       <div className="px-4 pb-4">

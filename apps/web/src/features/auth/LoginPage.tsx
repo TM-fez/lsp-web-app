@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { LifestyleMark } from '@/components/brand/LifestyleMark';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -43,11 +44,22 @@ export function LoginPage() {
   return (
     <div className="grain grid h-full grid-cols-1 bg-cream lg:grid-cols-[1.1fr_1fr]">
       <aside className="relative hidden flex-col justify-between overflow-hidden bg-forest p-12 text-cream lg:flex">
-        <div className="animate-rise">
-          <div className="text-[13px] font-semibold uppercase tracking-[0.32em]">Lifestyle</div>
-          <div className="-mt-1 font-display text-3xl italic text-oncream">Apartments</div>
+        <img
+          src="/lifestyle-building.jpg"
+          alt=""
+          className="absolute inset-0 h-full w-full scale-105 object-cover"
+        />
+        <div className="absolute inset-0 bg-forest/82" />
+        <div className="absolute inset-0 bg-gradient-to-t from-forest via-transparent to-forest/50" />
+
+        <div className="relative z-10 flex animate-rise items-center gap-3">
+          <LifestyleMark className="h-10 w-10 text-cream" />
+          <div className="leading-[1.5]">
+            <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-cream">Lifestyle</div>
+            <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-cream">Apartments</div>
+          </div>
         </div>
-        <div className="animate-rise d-2">
+        <div className="relative z-10 animate-rise d-2">
           <div className="mb-5 text-[11px] uppercase tracking-[0.28em] text-oncream">Gaborone — operations</div>
           <h1 className="font-display text-6xl font-medium leading-[0.95]">
             Where Gaborone
@@ -55,14 +67,17 @@ export function LoginPage() {
             <em className="italic text-cream">stays.</em>
           </h1>
         </div>
-        <div className="animate-rise d-3 font-display text-lg italic text-oncream">Normal is boring.</div>
+        <div className="relative z-10 animate-rise d-3 font-display text-lg italic text-oncream">Normal is boring.</div>
       </aside>
 
       <main className="flex items-center justify-center p-6">
         <div className="animate-rise d-2 w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-ink">Lifestyle</div>
-            <div className="-mt-1 font-display text-3xl italic text-forest">Apartments</div>
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <LifestyleMark className="h-9 w-9 text-forest" />
+            <div className="leading-[1.5]">
+              <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-ink">Lifestyle</div>
+              <div className="text-[12px] font-medium uppercase tracking-[0.3em] text-ink">Apartments</div>
+            </div>
           </div>
 
           <div className="mb-7">
