@@ -15,6 +15,7 @@ import {
   useSetDiscount,
   useApproveDiscount,
   useRemoveDiscount,
+  useReservationPricing,
 } from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate } from './util';
 import { todayISO } from '@/lib/utils/date';
@@ -48,6 +49,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const setDiscM = useSetDiscount();
   const approveDisc = useApproveDiscount();
   const removeDisc = useRemoveDiscount();
+  // Amount-due breakdown — only meaningful for an existing pending booking.
+  const showDiscountTools = isEdit && reservation!.status === 'PENDING' && canRequestDiscount;
+  const pricing = useReservationPricing(reservation?.id, open && showDiscountTools);
   const busy =
     create.isPending ||
     update.isPending ||
@@ -266,9 +270,50 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             </p>
           )}
 
-          {isEdit && reservation!.status === 'PENDING' && canRequestDiscount && (
+          {showDiscountTools && (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
               <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Discount</Label>
+
+              {pricing.data?.priceable && (
+                <div className="rounded-md border border-line bg-cream-2/40 px-3 py-2.5 text-sm">
+                  <div className="flex items-center justify-between text-muted">
+                    <span>Stay · {pricing.data.nights} night{pricing.data.nights === 1 ? '' : 's'}</span>
+                    <span className="text-ink">{formatMoney(pricing.data.base_amount)}</span>
+                  </div>
+                  {pricing.data.discount && pricing.data.discount.amount > 0 && (
+                    <div className="flex items-center justify-between text-terra">
+                      <span>
+                        Discount
+                        {pricing.data.discount.type === 'PERCENT' ? ` (${pricing.data.discount.value}%)` : ''}
+                      </span>
+                      <span>−{formatMoney(pricing.data.discount.amount)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-muted">
+                    <span>Tax ({(pricing.data.tax_rate_bps / 100).toFixed(0)}%)</span>
+                    <span className="text-ink">{formatMoney(pricing.data.tax_amount)}</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5 font-medium text-ink">
+                    <span>Total due</span>
+                    <span className="font-display">{formatMoney(pricing.data.total_amount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted">
+                    <span>Deposit to confirm ({pricing.data.deposit_pct}%)</span>
+                    <span>{formatMoney(pricing.data.deposit_amount)}</span>
+                  </div>
+                  {pricing.data.discount && !pricing.data.discount.approved && (
+                    <p className="mt-1.5 text-xs text-terra">
+                      Discount is pending approval — not applied to the total yet.
+                    </p>
+                  )}
+                </div>
+              )}
+              {pricing.data && !pricing.data.priceable && (
+                <p className="rounded-md border border-line bg-cream-2/40 px-3 py-2 text-xs text-muted">
+                  Can’t price this booking automatically — {pricing.data.reason}.
+                </p>
+              )}
+
               {reservation!.discount_value != null ? (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-cream-2/60 px-3 py-2.5">
                   <div className="min-w-0">

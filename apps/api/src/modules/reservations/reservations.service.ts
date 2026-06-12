@@ -1,6 +1,11 @@
 import { ReservationsRepository } from './reservations.repository.js';
+import { RoomsRepository } from '../rooms/rooms.repository.js';
+import { PricingService } from '../pricing/pricing.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { todayInPropertyTZ } from '../../core/time.js';
+import { nightsBetween } from '../quotes/quotes.util.js';
+import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
+import type { UnitType } from '../pricing/pricing.types.js';
 import type { ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
 import type {
   ReservationFilters, 
@@ -24,7 +29,57 @@ export function isReservationOverlapError(e: unknown): boolean {
 }
 
 export class ReservationsService {
-  constructor(private readonly repository: ReservationsRepository) {}
+  // rooms + pricing are optional so unit tests can construct the service with just
+  // a repository; the live router (reservations.routes) always wires them in, which
+  // is what GET /:id/pricing needs.
+  constructor(
+    private readonly repository: ReservationsRepository,
+    private readonly rooms?: RoomsRepository,
+    private readonly pricing?: PricingService,
+  ) {}
+
+  /**
+   * Price a booking and apply its (approved) discount — this is what turns a
+   * recorded discount into a real amount due. Prices the room's stay off its
+   * active rate plan, then discounts it the same way a quote discounts a stay.
+   * Returns { priceable: false } when the room type has no active rate plan,
+   * so the drawer degrades gracefully instead of erroring.
+   */
+  async priceReservation(id: string): Promise<ReservationPricing | NotPriceable> {
+    const reservation = await this.getReservationById(id);
+    if (!this.rooms || !this.pricing) {
+      throw AppError.internal('Pricing is not configured for this service');
+    }
+    const nights = nightsBetween(reservation.check_in_date, reservation.check_out_date);
+
+    const room = await this.rooms.findById(reservation.room_id);
+    if (!room) return { priceable: false, reason: 'Unit not found', nights };
+
+    let plan;
+    try {
+      plan = await this.pricing.getActivePlan(room.type as UnitType);
+    } catch {
+      return { priceable: false, reason: `No active rate plan for a ${room.type} unit`, nights };
+    }
+
+    const price = this.pricing.priceStay(plan, nights);
+    return buildReservationPricing({
+      currency: price.currency,
+      nights,
+      baseAmount: price.base_amount,
+      taxRateBps: plan.tax_rate_bps,
+      depositPct: plan.deposit_pct,
+      discount:
+        reservation.discount_value != null && reservation.discount_type != null
+          ? {
+              type: reservation.discount_type,
+              value: reservation.discount_value,
+              reason: reservation.discount_reason,
+              approved: reservation.discount_approved_at != null,
+            }
+          : null,
+    });
+  }
 
   async getReservationById(id: string): Promise<ReservationRow> {
     const reservation = await this.repository.findById(id);
