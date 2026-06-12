@@ -7,6 +7,7 @@ import { TodayRail } from './TodayRail';
 import { UnitBoard } from './UnitBoard';
 import { HousekeepingQueue } from './HousekeepingQueue';
 import { AssignBookingDrawer } from './AssignBookingDrawer';
+import { ActivityFeed } from './ActivityFeed';
 import { isAssignable } from './status';
 import { summarize } from './board';
 import { todayISO } from '@/lib/utils/date';
@@ -119,6 +120,8 @@ export function CockpitPage() {
           <HousekeepingQueue items={data.housekeeping_queue} />
         </div>
       </div>
+
+      <ActivityFeed />
 
       <AssignBookingDrawer
         open={drawerOpen}

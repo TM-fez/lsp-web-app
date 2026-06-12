@@ -27,5 +27,10 @@ export function createReservationsRouter(dbInstance = db): Router {
   // Specific endpoint for cancellation could be POST /:id/cancel or DELETE /:id
   router.delete('/:id', authorize('reservations.delete'), controller.cancelReservation);
 
+  // Build 2b — per-booking discount: request (operations) → approve (Tameem/admin).
+  router.post('/:id/discount', authorize('reservations.discount.request'), controller.setDiscount);
+  router.post('/:id/discount/approve', authorize('reservations.discount.approve'), controller.approveDiscount);
+  router.delete('/:id/discount', authorize('reservations.discount.request'), controller.removeDiscount);
+
   return router;
 }

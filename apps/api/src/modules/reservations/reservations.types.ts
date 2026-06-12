@@ -37,8 +37,22 @@ export const UpdateReservationSchema = z.object({
   status: ReservationStatusEnum.optional(), // Allow status updates explicitly
 });
 
+export const DiscountTypeEnum = z.enum(['PERCENT', 'FIXED']);
+
+export const SetDiscountSchema = z
+  .object({
+    discount_type: DiscountTypeEnum,
+    discount_value: z.number().int().positive(), // percent points, or thebe for FIXED
+    discount_reason: z.string().max(500).optional().nullable(),
+  })
+  .refine((d) => d.discount_type !== 'PERCENT' || d.discount_value <= 100, {
+    message: 'A percentage discount cannot exceed 100',
+    path: ['discount_value'],
+  });
+
 export type CreateReservationDTO = z.infer<typeof CreateReservationSchema>;
 export type UpdateReservationDTO = z.infer<typeof UpdateReservationSchema>;
+export type SetDiscountDTO = z.infer<typeof SetDiscountSchema>;
 
 // List rows are enriched with guest + room display fields via LEFT JOINs, so the
 // UI never shows bare UUIDs and can search by guest name / room code.

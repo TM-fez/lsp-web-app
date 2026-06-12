@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
-import { ReservationStatusEnum } from './reservations.types.js';
+import { ReservationStatusEnum, SetDiscountSchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO } from './reservations.types.js';
 
 export class ReservationsController {
@@ -81,6 +81,33 @@ export class ReservationsController {
       const meta = this.getRequestMeta(req);
       const reservation = await this.service.modifyReservation(req.params.id as string, dto, meta);
       res.json(reservation);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  setDiscount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = SetDiscountSchema.parse(req.body);
+      const meta = this.getRequestMeta(req);
+      const canApprove = (((req as any).user?.permissions ?? []) as string[]).includes('reservations.discount.approve');
+      res.json(await this.service.setDiscount(req.params.id as string, dto, meta, canApprove));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  approveDiscount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.approveDiscount(req.params.id as string, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  removeDiscount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.removeDiscount(req.params.id as string, this.getRequestMeta(req)));
     } catch (err) {
       next(err);
     }
