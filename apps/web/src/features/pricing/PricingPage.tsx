@@ -36,7 +36,7 @@ export function PricingPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Pricing</h1>
+          <h1 className="font-display text-4xl text-ink">Pricing</h1>
           <p className="text-sm text-slate-500">
             {plans ? `${plans.length} rate plan${plans.length === 1 ? '' : 's'}` : 'Set the rates quotes are built from'}
           </p>

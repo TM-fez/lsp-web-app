@@ -63,7 +63,7 @@ export function RoomsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Rooms</h1>
+          <h1 className="font-display text-4xl text-ink">Rooms</h1>
           <p className="text-sm text-slate-500">
             {rooms ? `${rooms.length} unit${rooms.length === 1 ? '' : 's'} in inventory` : 'Manage your units'}
           </p>

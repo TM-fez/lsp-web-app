@@ -12,7 +12,7 @@ export function ComingSoonPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">{workspace.label}</h1>
+        <h1 className="font-display text-4xl text-ink">{workspace.label}</h1>
         <p className="text-sm text-slate-500">This workspace is being built out.</p>
       </div>
       <EmptyState

@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
 import { login as apiLogin } from '@/lib/api/auth';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
@@ -42,35 +41,57 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <Sparkles className="h-7 w-7 text-emerald-600" />
-          <h1 className="text-lg font-semibold">LSP Operations</h1>
-          <p className="text-sm text-slate-500">Sign in to the cockpit</p>
+    <div className="grain grid h-full grid-cols-1 bg-cream lg:grid-cols-[1.1fr_1fr]">
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-forest p-12 text-cream lg:flex">
+        <div className="animate-rise">
+          <div className="text-[13px] font-semibold uppercase tracking-[0.32em]">Lifestyle</div>
+          <div className="-mt-1 font-display text-3xl italic text-oncream">Apartments</div>
         </div>
+        <div className="animate-rise d-2">
+          <div className="mb-5 text-[11px] uppercase tracking-[0.28em] text-oncream">Gaborone — operations</div>
+          <h1 className="font-display text-6xl font-medium leading-[0.95]">
+            Where Gaborone
+            <br />
+            <em className="italic text-cream">stays.</em>
+          </h1>
+        </div>
+        <div className="animate-rise d-3 font-display text-lg italic text-oncream">Normal is boring.</div>
+      </aside>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="username" {...register('email')} />
-            {errors.email && <p className="text-xs text-rose-600">{errors.email.message}</p>}
+      <main className="flex items-center justify-center p-6">
+        <div className="animate-rise d-2 w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-ink">Lifestyle</div>
+            <div className="-mt-1 font-display text-3xl italic text-forest">Apartments</div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
-            {errors.password && <p className="text-xs text-rose-600">{errors.password.message}</p>}
+          <div className="mb-7">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.28em] text-muted">The house, this morning</div>
+            <h2 className="font-display text-4xl text-ink">Welcome back.</h2>
           </div>
 
-          {error && <p className="text-sm text-rose-600">{error}</p>}
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email" className="text-[11px] uppercase tracking-[0.18em] text-muted">Email</Label>
+              <Input id="email" type="email" autoComplete="username" {...register('email')} />
+              {errors.email && <p className="text-xs text-terra">{errors.email.message}</p>}
+            </div>
 
-          <Button type="submit" variant="primary" disabled={isSubmitting} className="mt-2">
-            {isSubmitting && <Spinner className="text-white" />}
-            Sign in
-          </Button>
-        </form>
-      </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password" className="text-[11px] uppercase tracking-[0.18em] text-muted">Password</Label>
+              <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
+              {errors.password && <p className="text-xs text-terra">{errors.password.message}</p>}
+            </div>
+
+            {error && <p className="text-sm text-terra">{error}</p>}
+
+            <Button type="submit" variant="primary" disabled={isSubmitting} className="mt-3 h-11">
+              {isSubmitting && <Spinner className="text-cream" />}
+              Enter the cockpit
+            </Button>
+          </form>
+        </div>
+      </main>
     </div>
   );
 }

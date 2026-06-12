@@ -69,7 +69,7 @@ export function GuestsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Guests</h1>
+          <h1 className="font-display text-4xl text-ink">Guests</h1>
           <p className="text-sm text-slate-500">{countLabel}</p>
         </div>
         {canCreate && (
