@@ -67,6 +67,41 @@ export async function removeDiscount(id: string): Promise<Reservation> {
   return data;
 }
 
+export interface ReservationPricing {
+  priceable: true;
+  currency: string;
+  nights: number;
+  base_amount: number;
+  discount: {
+    type: 'PERCENT' | 'FIXED';
+    value: number;
+    reason: string | null;
+    approved: boolean;
+    amount: number; // thebe actually applied (0 until approved)
+  } | null;
+  subtotal: number;
+  tax_rate_bps: number;
+  tax_amount: number;
+  total_amount: number;
+  deposit_pct: number;
+  deposit_amount: number;
+}
+
+export interface ReservationNotPriceable {
+  priceable: false;
+  reason: string;
+  nights: number;
+}
+
+export async function getReservationPricing(
+  id: string,
+): Promise<ReservationPricing | ReservationNotPriceable> {
+  const { data } = await api.get<ReservationPricing | ReservationNotPriceable>(
+    `/reservations/${id}/pricing`,
+  );
+  return data;
+}
+
 export async function checkAvailability(params: {
   room_id: string;
   check_in_date: string;

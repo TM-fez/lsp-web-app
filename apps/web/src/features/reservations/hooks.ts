@@ -8,10 +8,13 @@ import {
   setDiscount,
   approveDiscount,
   removeDiscount,
+  getReservationPricing,
   type ReservationListParams,
   type CreateReservationInput,
   type UpdateReservationInput,
   type SetDiscountInput,
+  type ReservationPricing,
+  type ReservationNotPriceable,
 } from '@/lib/api/reservations';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
@@ -101,6 +104,19 @@ export function useRemoveDiscount() {
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+/**
+ * Amount-due breakdown for a booking (stay price + applied discount). Keyed under
+ * RES_KEY so the discount mutations' invalidation also refreshes it — approve a
+ * discount and the amount due updates without a manual refetch.
+ */
+export function useReservationPricing(id: string | undefined, enabled: boolean) {
+  return useQuery<ReservationPricing | ReservationNotPriceable>({
+    queryKey: [...RES_KEY, 'pricing', id],
+    queryFn: () => getReservationPricing(id as string),
+    enabled: enabled && !!id,
   });
 }
 

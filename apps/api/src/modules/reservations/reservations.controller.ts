@@ -86,6 +86,14 @@ export class ReservationsController {
     }
   };
 
+  getPricing = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.priceReservation(req.params.id as string));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   setDiscount = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = SetDiscountSchema.parse(req.body);
