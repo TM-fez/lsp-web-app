@@ -13,7 +13,7 @@ describe('LoginPage', () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /enter the cockpit/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toHaveValue('admin@lsp.local');
     expect(screen.getByLabelText('Password')).toHaveValue('Admin@123!');
   });
