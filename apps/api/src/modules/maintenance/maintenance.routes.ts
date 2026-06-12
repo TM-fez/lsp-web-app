@@ -22,6 +22,7 @@ export function createMaintenanceRouter(): Router {
   router.post('/', authorize('maintenance.create'), controller.create);
   router.patch('/:id', authorize('maintenance.update'), controller.update);
   router.patch('/:id/assign', authorize('maintenance.update'), controller.assign);
+  router.patch('/:id/cost', authorize('maintenance.update'), controller.setCost);
   router.post('/:id/start', authorize('maintenance.update'), controller.start);
   router.post('/:id/complete', authorize('maintenance.complete'), controller.complete);
   router.post('/:id/approve', authorize('maintenance.approve'), controller.approve);

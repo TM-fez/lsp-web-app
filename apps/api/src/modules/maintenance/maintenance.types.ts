@@ -20,12 +20,17 @@ export const CreateWorkOrderSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional().nullable(),
   priority: MaintenancePriorityEnum.default('MEDIUM'),
+  assigned_to: z.string().uuid().optional().nullable(),
+  contractor_name: z.string().max(255).optional().nullable(),
+  cost_amount: z.number().int().min(0).optional().nullable(), // thebe
 });
 
 export const UpdateWorkOrderSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   description: z.string().optional().nullable(),
   priority: MaintenancePriorityEnum.optional(),
+  contractor_name: z.string().max(255).optional().nullable(),
+  cost_amount: z.number().int().min(0).optional().nullable(),
 });
 
 export const CompleteWorkOrderSchema = z.object({
@@ -39,6 +44,11 @@ export const StartWorkOrderSchema = z.object({
 
 export const AssignWorkOrderSchema = z.object({
   assigned_to: z.string().uuid().nullable(),
+});
+
+export const SetCostSchema = z.object({
+  contractor_name: z.string().max(255).optional().nullable(),
+  cost_amount: z.number().int().min(0).optional().nullable(), // thebe
 });
 
 export type MaintenanceStatus = z.infer<typeof MaintenanceStatusEnum>;
