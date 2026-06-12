@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, RoomRow, NewRoom, UpdateRoom } from '../../db/types.js';
-import type { RoomFilters, RoomPaginationOptions, PaginatedRoomResult, RoomRequestMeta } from './rooms.types.js';
+import type { RoomFilters, RoomPaginationOptions, PaginatedRoomResult, RoomRequestMeta, RoomListRow } from './rooms.types.js';
 
 export class RoomsRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -39,39 +39,57 @@ export class RoomsRepository {
   async findPaginated(
     filters: RoomFilters,
     pagination: RoomPaginationOptions
-  ): Promise<PaginatedRoomResult<RoomRow>> {
+  ): Promise<PaginatedRoomResult<RoomListRow>> {
     let query = this.db
       .selectFrom('rooms')
-      .selectAll()
-      .where('deleted_at', 'is', null);
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .leftJoin('properties', 'properties.id', 'buildings.property_id')
+      .selectAll('rooms')
+      .select([
+        'buildings.name as building_name',
+        'buildings.property_id as property_id',
+        'properties.name as property_name',
+      ])
+      .where('rooms.deleted_at', 'is', null);
 
     let countQuery = this.db
       .selectFrom('rooms')
-      .select(this.db.fn.count<number>('id').as('total'))
-      .where('deleted_at', 'is', null);
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select(this.db.fn.count<number>('rooms.id').as('total'))
+      .where('rooms.deleted_at', 'is', null);
 
     if (filters.status) {
-      query = query.where('status', '=', filters.status);
-      countQuery = countQuery.where('status', '=', filters.status);
+      query = query.where('rooms.status', '=', filters.status);
+      countQuery = countQuery.where('rooms.status', '=', filters.status);
     }
 
     if (filters.type) {
-      query = query.where('type', '=', filters.type);
-      countQuery = countQuery.where('type', '=', filters.type);
+      query = query.where('rooms.type', '=', filters.type);
+      countQuery = countQuery.where('rooms.type', '=', filters.type);
+    }
+
+    if (filters.property_id) {
+      query = query.where('buildings.property_id', '=', filters.property_id);
+      countQuery = countQuery.where('buildings.property_id', '=', filters.property_id);
+    }
+
+    if (filters.building_id) {
+      query = query.where('rooms.building_id', '=', filters.building_id);
+      countQuery = countQuery.where('rooms.building_id', '=', filters.building_id);
     }
 
     if (filters.search) {
       const searchPattern = `%${filters.search}%`;
       query = query.where((eb) =>
         eb.or([
-          eb('name', 'ilike', searchPattern),
-          eb('code', 'ilike', searchPattern),
+          eb('rooms.name', 'ilike', searchPattern),
+          eb('rooms.code', 'ilike', searchPattern),
         ])
       );
       countQuery = countQuery.where((eb) =>
         eb.or([
-          eb('name', 'ilike', searchPattern),
-          eb('code', 'ilike', searchPattern),
+          eb('rooms.name', 'ilike', searchPattern),
+          eb('rooms.code', 'ilike', searchPattern),
         ])
       );
     }
@@ -79,12 +97,12 @@ export class RoomsRepository {
     const offset = (pagination.page - 1) * pagination.limit;
 
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('rooms.created_at', 'desc').execute(),
       countQuery.execute(),
     ]);
 
     return {
-      data,
+      data: data as RoomListRow[],
       total: Number(total),
       page: pagination.page,
       limit: pagination.limit,

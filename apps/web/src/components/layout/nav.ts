@@ -8,6 +8,7 @@ import {
   Wallet,
   Receipt,
   BarChart3,
+  Building2,
   BedDouble,
   Tags,
   ShieldCheck,
@@ -69,6 +70,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Admin',
     icon: Settings,
     items: [
+      { to: '/properties', label: 'Properties', icon: Building2, perm: 'properties.read', built: true },
       { to: '/rooms', label: 'Rooms', icon: BedDouble, perm: 'rooms.read', built: true },
       { to: '/pricing', label: 'Pricing', icon: Tags, perm: 'pricing.read', built: true },
       { to: '/users', label: 'Users & Roles', icon: ShieldCheck, perm: 'users.read', built: true },

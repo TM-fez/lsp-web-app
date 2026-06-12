@@ -26,8 +26,10 @@ export class RoomsController {
       const status = statusRaw ? RoomStatusEnum.parse(statusRaw) : undefined;
       const typeRaw = req.query.type;
       const type = typeRaw ? RoomTypeEnum.parse(typeRaw) : undefined;
+      const property_id = (req.query.property_id as string) || undefined;
+      const building_id = (req.query.building_id as string) || undefined;
 
-      const result = await this.service.getRooms({ search, status, type }, { page, limit });
+      const result = await this.service.getRooms({ search, status, type, property_id, building_id }, { page, limit });
       res.json(result);
     } catch (err) {
       next(err);

@@ -5,6 +5,7 @@ import { createContactsRouter } from './modules/crm/contacts/contacts.routes.js'
 import { createLeadsRouter } from './modules/crm/leads/leads.routes.js';
 import { createReservationsRouter } from './modules/reservations/reservations.routes.js';
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
+import { createPropertiesRouter } from './modules/properties/properties.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
@@ -38,6 +39,9 @@ router.use('/reservations', createReservationsRouter());
 
 // ── Sprint 3 — Rooms ──────────────────────────────────────────────────────────
 router.use('/rooms', createRoomsRouter());
+
+// ── Multi-property — Property → Building → Unit (estate setup) ─────────────────
+router.use('/properties', createPropertiesRouter());
 
 // ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
 router.use('/checkins', createCheckinsRouter());

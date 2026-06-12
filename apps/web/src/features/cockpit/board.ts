@@ -54,14 +54,29 @@ export function matchesQuery(u: CockpitUnit, query: string): boolean {
 }
 
 /**
- * Derive a building/floor group label from a unit code: "304" -> "Floor 3",
- * "A101" -> "A · Floor 1". Codes that don't fit the pattern fall into "Other".
+ * Group label for a unit. Prefers the real building (multi-property): "J1" or
+ * "J1 · Floor 2". Falls back to deriving a floor from the unit code ("304" ->
+ * "Floor 3", "A101" -> "A · Floor 1"). Unmatched codes fall into "Other".
  */
-export function groupLabel(code: string): string {
-  const m = /^([A-Za-z]{0,2})[-\s]?(\d+)(\d{2})$/.exec(code.trim());
+export function groupLabel(unit: CockpitUnit): string {
+  if (unit.building_name) {
+    return unit.floor != null ? `${unit.building_name} · Floor ${unit.floor}` : unit.building_name;
+  }
+  const m = /^([A-Za-z]{0,2})[-\s]?(\d+)(\d{2})$/.exec(unit.code.trim());
   if (!m) return 'Other';
   const floor = `Floor ${parseInt(m[2], 10)}`;
   return m[1] ? `${m[1].toUpperCase()} · ${floor}` : floor;
+}
+
+/** Distinct {id,name} properties present in the board, for the property filter. */
+export function propertiesInBoard(units: CockpitUnit[]): Array<{ id: string; name: string }> {
+  const map = new Map<string, string>();
+  for (const u of units) if (u.property_id && u.property_name) map.set(u.property_id, u.property_name);
+  return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function matchesProperty(u: CockpitUnit, propertyId: string | 'ALL'): boolean {
+  return propertyId === 'ALL' || u.property_id === propertyId;
 }
 
 export interface UnitGroup {
@@ -69,11 +84,11 @@ export interface UnitGroup {
   units: CockpitUnit[];
 }
 
-/** Group units by floor/building label, "Other" last, units within a group sorted by code. */
+/** Group units by building/floor label, "Other" last, units within a group sorted by code. */
 export function groupUnits(units: CockpitUnit[]): UnitGroup[] {
   const map = new Map<string, CockpitUnit[]>();
   for (const u of units) {
-    const label = groupLabel(u.code);
+    const label = groupLabel(u);
     const bucket = map.get(label);
     if (bucket) bucket.push(u);
     else map.set(label, [u]);

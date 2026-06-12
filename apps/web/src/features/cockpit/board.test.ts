@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarize, countForFilter, matchesFilter, matchesQuery, groupLabel, groupUnits } from './board';
+import { summarize, countForFilter, matchesFilter, matchesQuery, groupLabel, groupUnits, propertiesInBoard, matchesProperty } from './board';
 import type { CockpitUnit } from '@/types';
 
 function unit(partial: Partial<CockpitUnit> & { code: string }): CockpitUnit {
@@ -55,10 +55,28 @@ describe('matchesQuery', () => {
 
 describe('groupLabel', () => {
   it('derives a floor (and optional building) from the code, else "Other"', () => {
-    expect(groupLabel('304')).toBe('Floor 3');
-    expect(groupLabel('1015')).toBe('Floor 10');
-    expect(groupLabel('A101')).toBe('A · Floor 1');
-    expect(groupLabel('E2E-9')).toBe('Other');
+    expect(groupLabel(unit({ code: '304' }))).toBe('Floor 3');
+    expect(groupLabel(unit({ code: '1015' }))).toBe('Floor 10');
+    expect(groupLabel(unit({ code: 'A101' }))).toBe('A · Floor 1');
+    expect(groupLabel(unit({ code: 'E2E-9' }))).toBe('Other');
+  });
+
+  it('prefers the real building (+floor) when present', () => {
+    expect(groupLabel(unit({ code: '101', building_name: 'J1' }))).toBe('J1');
+    expect(groupLabel(unit({ code: '101', building_name: 'J1', floor: 2 }))).toBe('J1 · Floor 2');
+  });
+});
+
+describe('propertiesInBoard / matchesProperty', () => {
+  it('lists distinct properties and filters units by property', () => {
+    const us = [
+      unit({ code: '1', property_id: 'v', property_name: 'Village' }),
+      unit({ code: '2', property_id: 'c', property_name: 'CBD' }),
+      unit({ code: '3', property_id: 'v', property_name: 'Village' }),
+    ];
+    expect(propertiesInBoard(us).map((p) => p.name)).toEqual(['CBD', 'Village']);
+    expect(us.filter((u) => matchesProperty(u, 'v')).map((u) => u.code)).toEqual(['1', '3']);
+    expect(us.filter((u) => matchesProperty(u, 'ALL'))).toHaveLength(3);
   });
 });
 

@@ -57,14 +57,23 @@ export class ReservationsRepository {
       .selectFrom('reservations')
       .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
       .leftJoin('rooms', 'rooms.id', 'reservations.room_id')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .leftJoin('properties', 'properties.id', 'buildings.property_id')
       .selectAll('reservations')
-      .select(['contacts.name as guest_name', 'rooms.code as room_code', 'rooms.name as room_name'])
+      .select([
+        'contacts.name as guest_name',
+        'rooms.code as room_code',
+        'rooms.name as room_name',
+        'properties.id as property_id',
+        'properties.name as property_name',
+      ])
       .where('reservations.deleted_at', 'is', null);
 
     let countQuery = this.db
       .selectFrom('reservations')
       .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
       .leftJoin('rooms', 'rooms.id', 'reservations.room_id')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
       .select(this.db.fn.count<number>('reservations.id').as('total'))
       .where('reservations.deleted_at', 'is', null);
 
@@ -81,6 +90,11 @@ export class ReservationsRepository {
     if (filters.contact_id) {
       query = query.where('reservations.contact_id', '=', filters.contact_id);
       countQuery = countQuery.where('reservations.contact_id', '=', filters.contact_id);
+    }
+
+    if (filters.property_id) {
+      query = query.where('buildings.property_id', '=', filters.property_id);
+      countQuery = countQuery.where('buildings.property_id', '=', filters.property_id);
     }
 
     if (filters.search) {

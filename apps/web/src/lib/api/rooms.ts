@@ -8,14 +8,20 @@ export interface CreateRoomInput {
   status: RoomCreateStatus;
   capacity: number;
   notes?: string | null;
+  building_id?: string | null;
+  floor?: number | null;
 }
 
-export type UpdateRoomInput = Partial<Pick<CreateRoomInput, 'name' | 'code' | 'type' | 'capacity' | 'notes'>>;
+export type UpdateRoomInput = Partial<
+  Pick<CreateRoomInput, 'name' | 'code' | 'type' | 'capacity' | 'notes' | 'building_id' | 'floor'>
+>;
 
 export interface RoomListParams {
   search?: string;
   status?: RoomStatus;
   type?: UnitType;
+  property_id?: string;
+  building_id?: string;
 }
 
 function unwrap(data: unknown): Room[] {

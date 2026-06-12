@@ -6,6 +6,7 @@ export interface ReservationListParams {
   status?: ReservationStatus;
   room_id?: string;
   contact_id?: string;
+  property_id?: string;
 }
 
 export interface CreateReservationInput {

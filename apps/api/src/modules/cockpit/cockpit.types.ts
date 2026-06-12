@@ -9,6 +9,11 @@ export interface CockpitUnit {
   status: string;               // operational: AVAILABLE | OCCUPIED | MAINTENANCE | OUT_OF_SERVICE
   housekeeping_status: string;  // READY | DIRTY | CLEANING | INSPECTED
   capacity: number;
+  floor: number | null;
+  building_id: string | null;
+  building_name: string | null;
+  property_id: string | null;
+  property_name: string | null;
   guest_name: string | null;        // current in-house guest, if any
   occupancy_id: string | null;
   reservation_id: string | null;

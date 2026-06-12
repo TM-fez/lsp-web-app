@@ -60,6 +60,8 @@ export interface ReservationListRow extends ReservationRow {
   guest_name: string | null;
   room_code: string | null;
   room_name: string | null;
+  property_id: string | null;
+  property_name: string | null;
 }
 
 export interface ReservationFilters {
@@ -67,6 +69,7 @@ export interface ReservationFilters {
   status?: z.infer<typeof ReservationStatusEnum>;
   room_id?: string;
   contact_id?: string;
+  property_id?: string;
 }
 
 export type { CRMRequestMeta as ReservationRequestMeta, PaginatedResult as PaginatedReservationResult, PaginationOptions as ReservationPaginationOptions };
