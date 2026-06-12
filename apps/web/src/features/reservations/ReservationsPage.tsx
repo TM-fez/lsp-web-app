@@ -14,7 +14,6 @@ import { nights, statusTone, statusLabel, fmtDate } from './util';
 import type { Reservation, ReservationStatus } from '@/types';
 
 const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'];
-const dash = <span className="text-slate-300">—</span>;
 
 export function ReservationsPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
@@ -135,60 +134,41 @@ export function ReservationsPage() {
       ) : reservations.length === 0 ? (
         <EmptyState title="No matches" description="No reservations match your search or filter. Try clearing them." />
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-medium">Guest</th>
-                  <th className="px-4 py-3 font-medium">Unit</th>
-                  <th className="px-4 py-3 font-medium">Stay</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reservations.map((r) => {
-                  const n = nights(r.check_in_date, r.check_out_date);
-                  return (
-                    <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-4 py-3 font-medium text-slate-900">{r.guest_name || dash}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {r.room_code ? (
-                          <>
-                            <span className="font-medium text-slate-700">{r.room_code}</span>
-                            {r.room_name ? <span className="text-slate-400"> · {r.room_name}</span> : null}
-                          </>
-                        ) : (
-                          dash
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        <div>
-                          {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)}
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {n} night{n === 1 ? '' : 's'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge tone={statusTone[r.status]}>{statusLabel(r.status)}</Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end">
-                          <Button size="sm" variant="outline" onClick={() => openRow(r)}>
-                            {canUpdate && (r.status === 'PENDING' || r.status === 'CONFIRMED') ? 'Manage' : 'View'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="flex flex-col gap-3">
+          <div className="border-t border-line">
+            {reservations.map((r, i) => {
+              const n = nights(r.check_in_date, r.check_out_date);
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => openRow(r)}
+                  className="group relative flex w-full items-center gap-5 overflow-hidden border-b border-line py-4 text-left"
+                >
+                  <div className="absolute inset-0 origin-bottom scale-y-0 bg-forest transition-transform duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:scale-y-100" />
+                  <span className="relative w-6 shrink-0 font-display text-xs italic text-terra">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <div className="relative min-w-0 flex-1">
+                    <div className="truncate font-display text-xl text-ink transition-colors duration-500 group-hover:text-cream">
+                      {r.guest_name || 'Unnamed guest'}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
+                      {r.room_code ? `${r.room_code}${r.room_name ? ` · ${r.room_name}` : ''}` : 'No unit'} ·{' '}
+                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  <Badge tone={statusTone[r.status]} className="relative shrink-0">
+                    {statusLabel(r.status)}
+                  </Badge>
+                  <span className="relative w-4 shrink-0 -translate-x-2 font-display text-xl text-terra opacity-0 transition-all duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:translate-x-0 group-hover:text-cream group-hover:opacity-100">
+                    →
+                  </span>
+                </button>
+              );
+            })}
           </div>
           {truncated && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               Showing the first {reservations.length} of {total}. Refine your search to narrow results.
             </p>
           )}

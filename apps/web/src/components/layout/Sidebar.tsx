@@ -80,7 +80,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-6 py-5">
-        <div className="font-display text-sm italic text-muted">Normal is boring.</div>
+        <div className="font-display text-sm italic leading-snug text-muted">Boutique Luxury Serviced Apartments</div>
       </div>
     </aside>
   );

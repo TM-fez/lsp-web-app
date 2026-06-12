@@ -12,7 +12,7 @@ export function LifestyleMark({ className }: Props) {
       strokeWidth={1.5}
       strokeLinejoin="round"
       strokeLinecap="round"
-      className={className}
+      className={['lf-mark', className].filter(Boolean).join(' ')}
       aria-hidden="true"
     >
       <path d="M24 3 L45 41 H3 Z" />

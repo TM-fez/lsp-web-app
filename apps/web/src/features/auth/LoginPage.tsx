@@ -67,7 +67,7 @@ export function LoginPage() {
             <em className="italic text-cream">stays.</em>
           </h1>
         </div>
-        <div className="relative z-10 animate-rise d-3 font-display text-lg italic text-oncream">Normal is boring.</div>
+        <div className="relative z-10 animate-rise d-3 font-display text-xl italic text-oncream">Boutique Luxury Serviced Apartments</div>
       </aside>
 
       <main className="flex items-center justify-center p-6">

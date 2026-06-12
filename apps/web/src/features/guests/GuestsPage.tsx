@@ -16,12 +16,9 @@ const fmtDate = (s: string) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
 };
 
-const dash = <span className="text-slate-300">—</span>;
-
 export function GuestsPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canCreate = hasPerm('crm.contacts.create');
-  const canUpdate = hasPerm('crm.contacts.update');
   const canDelete = hasPerm('crm.contacts.delete');
 
   const [searchInput, setSearchInput] = useState('');
@@ -134,52 +131,39 @@ export function GuestsPage() {
       ) : guests.length === 0 ? (
         <EmptyState title="No matches" description="No guests match your search or filter. Try clearing them." />
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-medium">Guest</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Phone</th>
-                  <th className="px-4 py-3 font-medium">Company</th>
-                  <th className="px-4 py-3 font-medium">Added</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {guests.map((guest) => (
-                  <tr key={guest.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-900">{guest.name}</span>
-                        <Badge tone={guest.type === 'company' ? 'violet' : 'slate'} className="capitalize">
-                          {guest.type}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{guest.email || dash}</td>
-                    <td className="px-4 py-3 text-slate-600">{guest.phone || dash}</td>
-                    <td className="px-4 py-3 text-slate-600">{guest.company || dash}</td>
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(guest.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {canUpdate ? (
-                          <Button size="sm" variant="outline" onClick={() => openEdit(guest)}>
-                            Edit
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-slate-400">View only</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="flex flex-col gap-3">
+          <div className="border-t border-line">
+            {guests.map((guest) => (
+              <button
+                key={guest.id}
+                onClick={() => openEdit(guest)}
+                className="group relative flex w-full items-center gap-5 overflow-hidden border-b border-line py-4 text-left"
+              >
+                <div className="absolute inset-0 origin-bottom scale-y-0 bg-forest transition-transform duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:scale-y-100" />
+                <div className="relative min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-display text-xl text-ink transition-colors duration-500 group-hover:text-cream">
+                      {guest.name}
+                    </span>
+                    <Badge tone={guest.type === 'company' ? 'green' : 'slate'} className="relative shrink-0 capitalize">
+                      {guest.type}
+                    </Badge>
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
+                    {[guest.email, guest.phone, guest.company].filter(Boolean).join(' · ') || 'No contact details'}
+                  </div>
+                </div>
+                <span className="relative hidden shrink-0 text-[11px] uppercase tracking-[0.12em] text-faint transition-colors duration-500 group-hover:text-oncream sm:block">
+                  {fmtDate(guest.created_at)}
+                </span>
+                <span className="relative w-4 shrink-0 -translate-x-2 font-display text-xl text-terra opacity-0 transition-all duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:translate-x-0 group-hover:text-cream group-hover:opacity-100">
+                  →
+                </span>
+              </button>
+            ))}
           </div>
           {truncated && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               Showing the first {guests.length} of {total}. Refine your search to narrow results.
             </p>
           )}
