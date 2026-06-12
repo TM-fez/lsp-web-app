@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { useCreateRoom, useUpdateRoom, useDeleteRoom } from './hooks';
+import { useProperties } from '@/features/properties/hooks';
 import type { Room, RoomCreateStatus, UnitType } from '@/types';
 
 const UNIT_TYPES: UnitType[] = ['STANDARD', 'DELUXE', 'SUITE', 'CONFERENCE', 'CUSTOM'];
@@ -31,7 +32,11 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
   const [status, setStatus] = useState<RoomCreateStatus>('AVAILABLE');
   const [capacity, setCapacity] = useState(2);
   const [notes, setNotes] = useState('');
+  const [buildingId, setBuildingId] = useState('');
+  const [floor, setFloor] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const { data: properties } = useProperties();
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +46,8 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
     setStatus('AVAILABLE');
     setCapacity(room?.capacity ?? 2);
     setNotes(room?.notes ?? '');
+    setBuildingId(room?.building_id ?? '');
+    setFloor(room?.floor != null ? String(room.floor) : '');
     setConfirmDelete(false);
   }, [open, room]);
 
@@ -48,11 +55,15 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
 
   async function submit() {
     if (!valid) return;
+    const placement = {
+      building_id: buildingId || null,
+      floor: floor.trim() === '' ? null : Number(floor),
+    };
     try {
       if (room) {
         await update.mutateAsync({
           id: room.id,
-          input: { name: name.trim(), code: code.trim(), type, capacity, notes: notes.trim() || null },
+          input: { name: name.trim(), code: code.trim(), type, capacity, notes: notes.trim() || null, ...placement },
         });
       } else {
         await create.mutateAsync({
@@ -62,6 +73,7 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
           status,
           capacity,
           notes: notes.trim() || null,
+          ...placement,
         });
       }
       onOpenChange(false);
@@ -143,6 +155,35 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
                 </Select>
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-[1fr_7rem] gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="room-building">Building</Label>
+              <Select id="room-building" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+                <option value="">— Unassigned —</option>
+                {(properties ?? []).map((p) => (
+                  <optgroup key={p.id} label={p.name}>
+                    {p.buildings.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="room-floor">Floor</Label>
+              <Input
+                id="room-floor"
+                type="number"
+                min={0}
+                placeholder="—"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">

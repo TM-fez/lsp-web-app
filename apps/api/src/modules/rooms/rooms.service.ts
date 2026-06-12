@@ -6,6 +6,7 @@ import type {
   RoomPaginationOptions,
   PaginatedRoomResult,
   RoomRequestMeta,
+  RoomListRow,
   CreateRoomDTO,
   UpdateRoomDTO,
 } from './rooms.types.js';
@@ -24,7 +25,7 @@ export class RoomsService {
   async getRooms(
     filters: RoomFilters,
     pagination: RoomPaginationOptions
-  ): Promise<PaginatedRoomResult<RoomRow>> {
+  ): Promise<PaginatedRoomResult<RoomListRow>> {
     return this.repository.findPaginated(filters, pagination);
   }
 

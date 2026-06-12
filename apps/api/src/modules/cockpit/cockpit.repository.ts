@@ -15,6 +15,8 @@ export class CockpitRepository {
       )
       .leftJoin('reservations as res', 'res.id', 'o.reservation_id')
       .leftJoin('contacts as c', 'c.id', 'res.contact_id')
+      .leftJoin('buildings as b', 'b.id', 'r.building_id')
+      .leftJoin('properties as p', 'p.id', 'b.property_id')
       .select([
         'r.id as room_id',
         'r.name as name',
@@ -23,6 +25,11 @@ export class CockpitRepository {
         'r.status as status',
         'r.housekeeping_status as housekeeping_status',
         'r.capacity as capacity',
+        'r.floor as floor',
+        'b.id as building_id',
+        'b.name as building_name',
+        'p.id as property_id',
+        'p.name as property_name',
         'c.name as guest_name',
         'o.id as occupancy_id',
         'res.id as reservation_id',

@@ -10,6 +10,8 @@ import {
   matchesFilter,
   matchesQuery,
   groupUnits,
+  propertiesInBoard,
+  matchesProperty,
   type UnitFilter,
 } from './board';
 
@@ -38,11 +40,15 @@ function cellClass(u: CockpitUnit): string {
 export function UnitBoard({ units, onAssign }: { units: CockpitUnit[]; onAssign: (unit: CockpitUnit) => void }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<UnitFilter>('ALL');
+  const [propertyId, setPropertyId] = useState<string | 'ALL'>('ALL');
 
-  const summary = useMemo(() => summarize(units), [units]);
+  const properties = useMemo(() => propertiesInBoard(units), [units]);
+  // Status counts + grid reflect the chosen property, so the numbers stay honest.
+  const scoped = useMemo(() => units.filter((u) => matchesProperty(u, propertyId)), [units, propertyId]);
+  const summary = useMemo(() => summarize(scoped), [scoped]);
   const filtered = useMemo(
-    () => units.filter((u) => matchesFilter(u, filter) && matchesQuery(u, query)),
-    [units, filter, query],
+    () => scoped.filter((u) => matchesFilter(u, filter) && matchesQuery(u, query)),
+    [scoped, filter, query],
   );
   const groups = useMemo(() => groupUnits(filtered), [filtered]);
 
@@ -65,6 +71,28 @@ export function UnitBoard({ units, onAssign }: { units: CockpitUnit[]; onAssign:
           </div>
         </div>
       </div>
+
+      {properties.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-[0.18em] text-muted">Property</span>
+          {[{ id: 'ALL' as const, name: 'All' }, ...properties].map((p) => {
+            const active = propertyId === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPropertyId(p.id)}
+                className={cn(
+                  'rounded-full border px-3.5 py-1.5 text-xs transition-[background-color,color,border-color] duration-300',
+                  active ? 'border-ink bg-ink text-cream' : 'border-line bg-paper text-char hover:border-ink',
+                )}
+              >
+                {p.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap gap-2">
         {FILTERS.map((f) => {

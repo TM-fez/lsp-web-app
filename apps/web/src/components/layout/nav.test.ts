@@ -33,7 +33,7 @@ describe('landingRoute', () => {
 
   it('lands on the first built + permitted screen', () => {
     expect(landingRoute('OPERATIONS', all)).toBe('/');
-    expect(landingRoute('ADMIN', all)).toBe('/rooms');
+    expect(landingRoute('ADMIN', all)).toBe('/properties');
   });
 
   it('lands on Finance’s first built screen (Expenses)', () => {

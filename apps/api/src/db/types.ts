@@ -133,6 +133,9 @@ export interface RoomsTable {
   housekeeping_status: Generated<'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED'>;
   capacity: number;
   notes: string | null;
+  // Multi-property (migration 040): a unit belongs to a building; floor is an optional label.
+  building_id: string | null;
+  floor: number | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
@@ -140,6 +143,30 @@ export interface RoomsTable {
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
   image_file_id?: string | null;
+}
+
+export interface PropertiesTable {
+  id: Generated<string>;
+  name: string;
+  code: string | null;
+  location: string | null;
+  active: Generated<boolean>;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface BuildingsTable {
+  id: Generated<string>;
+  property_id: string;
+  name: string;
+  code: string | null;
+  active: Generated<boolean>;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface OccupancyTable {
@@ -366,6 +393,8 @@ export interface Database {
   leads: LeadsTable;
   reservations: ReservationsTable;
   rooms: RoomsTable;
+  properties: PropertiesTable;
+  buildings: BuildingsTable;
   occupancy: OccupancyTable;
   maintenance_work_orders: MaintenanceWorkOrdersTable;
   housekeeping_tasks: HousekeepingTasksTable;
@@ -400,6 +429,14 @@ export type UpdateReservation = Updateable<ReservationsTable>;
 export type RoomRow       = Selectable<RoomsTable>;
 export type NewRoom       = Insertable<RoomsTable>;
 export type UpdateRoom    = Updateable<RoomsTable>;
+
+export type PropertyRow    = Selectable<PropertiesTable>;
+export type NewProperty    = Insertable<PropertiesTable>;
+export type UpdateProperty = Updateable<PropertiesTable>;
+
+export type BuildingRow    = Selectable<BuildingsTable>;
+export type NewBuilding    = Insertable<BuildingsTable>;
+export type UpdateBuilding = Updateable<BuildingsTable>;
 
 export type OccupancyRow    = Selectable<OccupancyTable>;
 export type NewOccupancy    = Insertable<OccupancyTable>;

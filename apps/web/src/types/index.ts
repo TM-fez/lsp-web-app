@@ -32,6 +32,11 @@ export interface CockpitUnit {
   status: RoomStatus;
   housekeeping_status: HousekeepingStatus;
   capacity: number;
+  floor?: number | null;
+  building_id?: string | null;
+  building_name?: string | null;
+  property_id?: string | null;
+  property_name?: string | null;
   guest_name: string | null;
   occupancy_id: string | null;
   reservation_id: string | null;
@@ -100,9 +105,34 @@ export interface Room {
   housekeeping_status: HousekeepingStatus;
   capacity: number;
   notes?: string | null;
+  // Multi-property (list endpoint enriches these via building → property).
+  building_id?: string | null;
+  floor?: number | null;
+  building_name?: string | null;
+  property_id?: string | null;
+  property_name?: string | null;
 }
 
 export type RoomCreateStatus = 'AVAILABLE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+
+export interface Building {
+  id: string;
+  property_id: string;
+  name: string;
+  code: string | null;
+  active: boolean;
+  units: number;
+}
+
+export interface Property {
+  id: string;
+  name: string;
+  code: string | null;
+  location: string | null;
+  active: boolean;
+  units: number;
+  buildings: Building[];
+}
 
 export interface RatePlan {
   id: string;

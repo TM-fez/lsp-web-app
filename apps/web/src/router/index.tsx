@@ -9,6 +9,7 @@ import { GuestsPage } from '@/features/guests/GuestsPage';
 import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
 import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
+import { PropertiesPage } from '@/features/properties/PropertiesPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
           { path: '/guests', element: <GuestsPage /> },
           { path: '/housekeeping', element: <HousekeepingPage /> },
           { path: '/maintenance', element: <MaintenancePage /> },
+          { path: '/properties', element: <PropertiesPage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },
           { path: '/users', element: <UsersPage /> },
