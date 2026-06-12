@@ -9,7 +9,7 @@ export function LifestyleMark({ className }: Props) {
       viewBox="0 0 48 44"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.5}
+      strokeWidth={2.4}
       strokeLinejoin="round"
       strokeLinecap="round"
       className={['lf-mark', className].filter(Boolean).join(' ')}
