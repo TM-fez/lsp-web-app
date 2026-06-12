@@ -6,6 +6,7 @@ import {
   Sparkles,
   Wrench,
   Wallet,
+  Receipt,
   BarChart3,
   BedDouble,
   Tags,
@@ -58,6 +59,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Finance',
     icon: Wallet,
     items: [
+      { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },
       { to: '/payments', label: 'Payments & Invoices', icon: Wallet, perm: 'payments.read', built: false },
       { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.read', built: false },
     ],

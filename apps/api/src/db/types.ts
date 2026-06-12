@@ -165,6 +165,13 @@ export interface MaintenanceWorkOrdersTable {
   completed_by: string | null;
   approved_by: string | null;
   approved_at: Date | null;
+  // Build 2a — contractor cost + spend-approval / reconciliation flow.
+  contractor_name: string | null;
+  cost_amount: number | null;
+  cost_approved_by: string | null;
+  cost_approved_at: Date | null;
+  cost_reconciled_by: string | null;
+  cost_reconciled_at: Date | null;
   before_file_id: string | null;
   after_file_id: string | null;
   opened_at: Generated<Date>;

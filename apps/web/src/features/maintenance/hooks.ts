@@ -8,6 +8,7 @@ import {
   cancelWorkOrder,
   assignWorkOrder,
   approveWorkOrder,
+  setWorkOrderCost,
   type WorkOrderListParams,
   type CreateWorkOrderInput,
   type UpdateWorkOrderInput,
@@ -129,6 +130,19 @@ export function useApproveWorkOrder() {
     mutationFn: (id: string) => approveWorkOrder(id),
     onSuccess: () => {
       toast.success('Repair approved ✓');
+      refresh();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useSetWorkOrderCost() {
+  const refresh = useRefresh(false);
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { contractor_name?: string | null; cost_amount?: number | null } }) =>
+      setWorkOrderCost(id, input),
+    onSuccess: () => {
+      toast.success('Cost saved');
       refresh();
     },
     onError: (e) => toast.error(errMessage(e)),

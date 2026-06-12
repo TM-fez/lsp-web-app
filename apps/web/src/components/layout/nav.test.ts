@@ -36,9 +36,10 @@ describe('landingRoute', () => {
     expect(landingRoute('ADMIN', all)).toBe('/rooms');
   });
 
-  it('falls back to the placeholder when nothing is built', () => {
-    expect(landingRoute('FINANCE', all)).toBe('/finance');
-    expect(landingRoute('FINANCE', all)).toBe(WORKSPACE_PLACEHOLDER.FINANCE);
+  it('lands on Finance’s first built screen (Expenses)', () => {
+    expect(landingRoute('FINANCE', all)).toBe('/expenses');
+    // the Finance placeholder still exists for the no-screens-built fallback path
+    expect(WORKSPACE_PLACEHOLDER.FINANCE).toBe('/finance');
   });
 
   it('skips screens the user lacks permission for', () => {

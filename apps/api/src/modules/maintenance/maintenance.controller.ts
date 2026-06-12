@@ -6,6 +6,7 @@ import {
   CompleteWorkOrderSchema, 
   StartWorkOrderSchema, 
   AssignWorkOrderSchema,
+  SetCostSchema,
   MaintenanceStatusEnum
 } from './maintenance.types.js';
 
@@ -81,6 +82,17 @@ export class MaintenanceController {
       const data = AssignWorkOrderSchema.parse(req.body);
       const meta = this.getRequestMeta(req);
       const result = await this.service.assign(req.params.id as string, data, meta);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  setCost = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = SetCostSchema.parse(req.body);
+      const meta = this.getRequestMeta(req);
+      const result = await this.service.setCost(req.params.id as string, data, meta);
       res.json(result);
     } catch (err) {
       next(err);
