@@ -7,9 +7,19 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { GuestPicker, type PickedGuest } from './GuestPicker';
-import { useCreateReservation, useUpdateReservation, useCancelReservation, useAvailability } from './hooks';
+import {
+  useCreateReservation,
+  useUpdateReservation,
+  useCancelReservation,
+  useAvailability,
+  useSetDiscount,
+  useApproveDiscount,
+  useRemoveDiscount,
+} from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate } from './util';
 import { todayISO } from '@/lib/utils/date';
+import { formatMoney } from '@/lib/utils/money';
+import { useAuthStore } from '@/store/auth';
 import type { Reservation, Room } from '@/types';
 
 const toDateInput = (s?: string | null) => (s ? s.slice(0, 10) : '');
@@ -28,10 +38,23 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   // Editable only if the user may update AND the reservation is still open.
   const editable = isEdit ? !!canUpdate && isOpen(reservation!.status) : true;
 
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const canRequestDiscount = hasPerm('reservations.discount.request');
+  const canApproveDiscount = hasPerm('reservations.discount.approve');
+
   const create = useCreateReservation();
   const update = useUpdateReservation();
   const cancel = useCancelReservation();
-  const busy = create.isPending || update.isPending || cancel.isPending;
+  const setDiscM = useSetDiscount();
+  const approveDisc = useApproveDiscount();
+  const removeDisc = useRemoveDiscount();
+  const busy =
+    create.isPending ||
+    update.isPending ||
+    cancel.isPending ||
+    setDiscM.isPending ||
+    approveDisc.isPending ||
+    removeDisc.isPending;
 
   const [guest, setGuest] = useState<PickedGuest | null>(null);
   const [roomId, setRoomId] = useState('');
@@ -39,6 +62,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [checkOut, setCheckOut] = useState('');
   const [notes, setNotes] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
+  const [discValue, setDiscValue] = useState('');
+  const [discReason, setDiscReason] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -48,6 +74,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setCheckOut(toDateInput(reservation?.check_out_date));
     setNotes(reservation?.notes ?? '');
     setConfirmCancel(false);
+    setDiscType('PERCENT');
+    setDiscValue('');
+    setDiscReason('');
   }, [open, reservation]);
 
   // Bookable rooms (always keep the currently-selected room visible on edit).
@@ -102,6 +131,15 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     } catch {
       /* toast shown by hook */
     }
+  }
+
+  function applyDiscount() {
+    if (!reservation || !discValue) return;
+    const value = discType === 'PERCENT' ? Math.round(parseFloat(discValue)) : Math.round(parseFloat(discValue) * 100);
+    setDiscM.mutate({
+      id: reservation.id,
+      input: { discount_type: discType, discount_value: value, discount_reason: discReason.trim() || null },
+    });
   }
 
   // ── Read-only view for closed reservations (checked-in/out, cancelled) ───────
@@ -226,6 +264,78 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               Bookings stay <strong>pending</strong> until payment is received — payment is what confirms a
               reservation. Take payment from the cockpit to confirm.
             </p>
+          )}
+
+          {isEdit && reservation!.status === 'PENDING' && canRequestDiscount && (
+            <div className="flex flex-col gap-3 border-t border-line pt-4">
+              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Discount</Label>
+              {reservation!.discount_value != null ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-cream-2/60 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-sm text-ink">
+                      {reservation!.discount_type === 'PERCENT'
+                        ? `${reservation!.discount_value}% off`
+                        : `${formatMoney(reservation!.discount_value)} off`}
+                      {reservation!.discount_reason ? (
+                        <span className="text-muted"> · {reservation!.discount_reason}</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-0.5 text-xs">
+                      {reservation!.discount_approved_at ? (
+                        <span className="text-forest">✓ Approved</span>
+                      ) : (
+                        <span className="text-terra">Pending Tameem’s approval</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    {!reservation!.discount_approved_at && canApproveDiscount && (
+                      <Button size="sm" variant="primary" disabled={busy} onClick={() => approveDisc.mutate(reservation!.id)}>
+                        Approve
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeDisc.mutate(reservation!.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[8.5rem_1fr] gap-3">
+                    <Select
+                      value={discType}
+                      onChange={(e) => setDiscType(e.target.value as 'PERCENT' | 'FIXED')}
+                      disabled={busy}
+                    >
+                      <option value="PERCENT">Percent %</option>
+                      <option value="FIXED">Amount (P)</option>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder={discType === 'PERCENT' ? 'e.g. 15' : 'e.g. 200'}
+                      value={discValue}
+                      onChange={(e) => setDiscValue(e.target.value)}
+                      disabled={busy}
+                    />
+                  </div>
+                  <Input
+                    placeholder="Reason (e.g. loyal guest, corporate)"
+                    value={discReason}
+                    onChange={(e) => setDiscReason(e.target.value)}
+                    disabled={busy}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted">
+                      {canApproveDiscount ? 'Applies immediately.' : 'Needs Tameem’s sign-off before it counts.'}
+                    </span>
+                    <Button size="sm" variant="outline" disabled={busy || !discValue} onClick={applyDiscount}>
+                      {canApproveDiscount ? 'Apply discount' : 'Request discount'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           <div className="flex justify-between pt-2">

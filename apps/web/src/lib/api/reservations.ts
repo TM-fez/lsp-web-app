@@ -46,6 +46,27 @@ export async function cancelReservation(id: string): Promise<Reservation> {
   return data;
 }
 
+export interface SetDiscountInput {
+  discount_type: 'PERCENT' | 'FIXED';
+  discount_value: number; // percent points, or thebe for FIXED
+  discount_reason?: string | null;
+}
+
+export async function setDiscount(id: string, input: SetDiscountInput): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/discount`, input);
+  return data;
+}
+
+export async function approveDiscount(id: string): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/discount/approve`, {});
+  return data;
+}
+
+export async function removeDiscount(id: string): Promise<Reservation> {
+  const { data } = await api.delete<Reservation>(`/reservations/${id}/discount`);
+  return data;
+}
+
 export async function checkAvailability(params: {
   room_id: string;
   check_in_date: string;

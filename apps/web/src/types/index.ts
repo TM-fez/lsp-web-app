@@ -129,6 +129,10 @@ export interface Reservation {
   check_out_date: string;
   status: ReservationStatus;
   notes: string | null;
+  discount_type: 'PERCENT' | 'FIXED' | null;
+  discount_value: number | null;
+  discount_reason: string | null;
+  discount_approved_at: string | null;
   created_at: string;
   // Enriched by the list endpoint's joins; absent on create/update responses.
   guest_name?: string | null;

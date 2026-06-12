@@ -5,9 +5,13 @@ import {
   updateReservation,
   cancelReservation,
   checkAvailability,
+  setDiscount,
+  approveDiscount,
+  removeDiscount,
   type ReservationListParams,
   type CreateReservationInput,
   type UpdateReservationInput,
+  type SetDiscountInput,
 } from '@/lib/api/reservations';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
@@ -58,6 +62,42 @@ export function useCancelReservation() {
     mutationFn: (id: string) => cancelReservation(id),
     onSuccess: () => {
       toast.success('Reservation cancelled');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useSetDiscount() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: SetDiscountInput }) => setDiscount(id, input),
+    onSuccess: () => {
+      toast.success('Discount applied');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useApproveDiscount() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => approveDiscount(id),
+    onSuccess: () => {
+      toast.success('Discount approved ✓');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useRemoveDiscount() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => removeDiscount(id),
+    onSuccess: () => {
+      toast.success('Discount removed');
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),
