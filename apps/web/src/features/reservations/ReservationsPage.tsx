@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
+import { useProperties } from '@/features/properties/hooks';
 import { useReservations } from './hooks';
 import { ReservationFormDrawer } from './ReservationFormDrawer';
 import { nights, statusTone, statusLabel, fmtDate } from './util';
@@ -24,6 +25,7 @@ export function ReservationsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ReservationStatus>('ALL');
+  const [propertyFilter, setPropertyFilter] = useState<'ALL' | string>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
 
@@ -36,16 +38,18 @@ export function ReservationsPage() {
     () => ({
       search: search.trim() || undefined,
       status: statusFilter === 'ALL' ? undefined : statusFilter,
+      property_id: propertyFilter === 'ALL' ? undefined : propertyFilter,
     }),
-    [search, statusFilter],
+    [search, statusFilter, propertyFilter],
   );
 
   const { data, isLoading, isError, isFetching, refetch } = useReservations(params);
   const { data: rooms } = useRooms();
+  const { data: properties } = useProperties();
   const reservations = data?.data ?? [];
   const total = data?.total ?? 0;
   const truncated = total > reservations.length;
-  const hasQuery = search.trim() !== '' || statusFilter !== 'ALL';
+  const hasQuery = search.trim() !== '' || statusFilter !== 'ALL' || propertyFilter !== 'ALL';
 
   const countLabel = !data
     ? 'Manage your bookings'
@@ -96,6 +100,20 @@ export function ReservationsPage() {
               </option>
             ))}
           </Select>
+          {(properties?.length ?? 0) > 1 && (
+            <Select
+              value={propertyFilter}
+              onChange={(e) => setPropertyFilter(e.target.value)}
+              className="max-w-[12rem]"
+            >
+              <option value="ALL">All properties</option>
+              {(properties ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          )}
           {isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
         </div>
       )}

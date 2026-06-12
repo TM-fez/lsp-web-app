@@ -168,6 +168,8 @@ export interface Reservation {
   guest_name?: string | null;
   room_code?: string | null;
   room_name?: string | null;
+  property_id?: string | null;
+  property_name?: string | null;
 }
 
 export interface Lead {

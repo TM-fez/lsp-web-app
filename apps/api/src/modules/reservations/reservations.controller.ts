@@ -26,9 +26,10 @@ export class ReservationsController {
       const status = statusRaw ? ReservationStatusEnum.parse(statusRaw) : undefined;
       const room_id = req.query.room_id as string | undefined;
       const contact_id = req.query.contact_id as string | undefined;
+      const property_id = (req.query.property_id as string) || undefined;
 
       const result = await this.service.getReservations(
-        { search, status, room_id, contact_id },
+        { search, status, room_id, contact_id, property_id },
         { page, limit }
       );
       res.json(result);

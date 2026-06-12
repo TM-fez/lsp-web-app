@@ -102,7 +102,7 @@ export function LoginPage() {
 
             <Button type="submit" variant="primary" disabled={isSubmitting} className="mt-3 h-11">
               {isSubmitting && <Spinner className="text-cream" />}
-              Enter the cockpit
+              Sign In
             </Button>
           </form>
         </div>
