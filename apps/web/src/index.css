@@ -1,19 +1,101 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: light;
+@theme {
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: 'Fraunces', Georgia, "Times New Roman", serif;
+
+  /* Editorial brand palette — cream, ink, forest green, terracotta */
+  --color-cream: #F2EDE3;
+  --color-cream-2: #EAE3D5;
+  --color-paper: #FBF9F4;
+  --color-ink: #1B1815;
+  --color-char: #262220;
+  --color-muted: #8E8576;
+  --color-faint: #BCB2A0;
+  --color-line: #E4DDD0;
+  --color-line-2: #D8D0C0;
+  --color-terra: #B5552D;
+  --color-terra-soft: #E7D3C6;
+  --color-forest: #22402F;
+  --color-forest-2: #2C4D3A;
+  --color-forest-soft: #DBE2D8;
+  --color-oncream: #AEC2B0;
+
+  /* Warm the slate ramp so every legacy screen shifts to the editorial palette
+     without touching each component. */
+  --color-slate-50: #FBF9F4;
+  --color-slate-100: #F0EBE1;
+  --color-slate-200: #E4DDD0;
+  --color-slate-300: #D8D0C0;
+  --color-slate-400: #B7AE9E;
+  --color-slate-500: #928A7B;
+  --color-slate-600: #6E665A;
+  --color-slate-700: #46403A;
+  --color-slate-800: #2E2A26;
+  --color-slate-900: #1B1815;
+
+  /* Warm the few accent ramps the app uses for status, keeping them legible. */
+  --color-emerald-100: #DBE2D8;
+  --color-emerald-600: #22402F;
+  --color-emerald-700: #1C3527;
+  --color-rose-100: #F1DBD0;
+  --color-rose-600: #B5552D;
+  --color-rose-700: #8E3F1E;
+  --color-amber-100: #F4E3C7;
+  --color-amber-800: #855218;
+  --color-sky-100: #DDE3E0;
+  --color-sky-700: #3D5346;
+  --color-white: #FBF9F4;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+:root { color-scheme: light; }
+
+html, body, #root { height: 100%; }
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  background-color: #f8fafc; /* slate-50 */
-  color: #0f172a; /* slate-900 */
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--color-ink); color: var(--color-cream); }
+
+/* Editorial helpers */
+.font-display { font-family: var(--font-serif); }
+.tracked { letter-spacing: 0.22em; text-transform: uppercase; }
+.tabnum { font-variant-numeric: tabular-nums; }
+
+/* Print-grain atmosphere — barely there */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Entrance motion */
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.animate-rise { animation: rise 0.7s cubic-bezier(.19,1,.22,1) both; }
+.animate-fade { animation: fade 0.6s ease both; }
+.d-1 { animation-delay: .05s; } .d-2 { animation-delay: .11s; } .d-3 { animation-delay: .17s; }
+.d-4 { animation-delay: .23s; } .d-5 { animation-delay: .29s; } .d-6 { animation-delay: .35s; }
+
+/* Lifestyle mark — subtle draw-on entrance + gentle hover lift */
+.lf-mark { transition: transform .7s cubic-bezier(.19,1,.22,1); }
+.lf-mark:hover { transform: scale(1.06) rotate(-1.5deg); }
+.lf-mark path { stroke-dasharray: 150; stroke-dashoffset: 150; animation: lf-draw 1.5s cubic-bezier(.19,1,.22,1) forwards; }
+.lf-mark path:nth-of-type(2) { animation-delay: .3s; }
+@keyframes lf-draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  html { scroll-behavior: auto; }
 }

@@ -36,7 +36,7 @@ export function PricingPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Pricing</h1>
+          <h1 className="font-display text-4xl text-ink">Pricing</h1>
           <p className="text-sm text-slate-500">
             {plans ? `${plans.length} rate plan${plans.length === 1 ? '' : 's'}` : 'Set the rates quotes are built from'}
           </p>
@@ -78,10 +78,10 @@ export function PricingPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-lg border border-line bg-paper">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3 font-medium">Plan</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Nightly</th>
@@ -96,14 +96,14 @@ export function PricingPage() {
               {(plans ?? []).map((plan) => {
                 const pending = toggle.isPending && toggle.variables?.id === plan.id;
                 return (
-                  <tr key={plan.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
+                  <tr key={plan.id} className="border-b border-line last:border-0 transition-colors duration-300 hover:bg-cream-2">
+                    <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-900">{plan.name}</span>
+                        <span className="font-display text-lg text-ink">{plan.name}</span>
                         <Badge tone={plan.active ? 'green' : 'slate'}>{plan.active ? 'active' : 'inactive'}</Badge>
                       </div>
                       {plan.updated_by_name && (
-                        <div className="mt-0.5 text-xs text-slate-400">
+                        <div className="mt-0.5 text-xs text-muted">
                           Updated by {plan.updated_by_name}
                           {plan.updated_at ? ` · ${new Date(plan.updated_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}` : ''}
                         </div>

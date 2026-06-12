@@ -13,12 +13,10 @@ import { LEAD_SOURCES, statusTone, statusLabel, sourceText, fmtDate } from './ut
 import type { Lead, LeadStatus, LeadSource } from '@/types';
 
 const FILTER_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'];
-const dash = <span className="text-slate-300">—</span>;
 
 export function LeadsPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canCreate = hasPerm('crm.leads.create');
-  const canUpdate = hasPerm('crm.leads.update');
   const canDelete = hasPerm('crm.leads.delete');
 
   const [searchInput, setSearchInput] = useState('');
@@ -67,7 +65,7 @@ export function LeadsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Leads</h1>
+          <h1 className="font-display text-4xl text-ink">Leads</h1>
           <p className="text-sm text-slate-500">{countLabel}</p>
         </div>
         {canCreate && (
@@ -147,50 +145,38 @@ export function LeadsPage() {
       ) : leads.length === 0 ? (
         <EmptyState title="No matches" description="No enquiries match your search or filters. Try clearing them." />
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-medium">Enquiry</th>
-                  <th className="px-4 py-3 font-medium">Source</th>
-                  <th className="px-4 py-3 font-medium">Stage</th>
-                  <th className="px-4 py-3 font-medium">Logged</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((lead) => (
-                  <tr key={lead.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{lead.title}</div>
-                      {lead.description && (
-                        <div className="max-w-md truncate text-xs text-slate-400">{lead.description}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{lead.source ? sourceText(lead.source) : dash}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={statusTone[lead.status]}>{statusLabel(lead.status)}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(lead.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end">
-                        {canUpdate ? (
-                          <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>
-                            Manage
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-slate-400">View only</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="flex flex-col gap-3">
+          <div className="border-t border-line">
+            {leads.map((lead) => (
+              <button
+                key={lead.id}
+                onClick={() => openEdit(lead)}
+                className="group relative flex w-full items-center gap-5 overflow-hidden border-b border-line py-4 text-left"
+              >
+                <div className="absolute inset-0 origin-bottom scale-y-0 bg-forest transition-transform duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:scale-y-100" />
+                <div className="relative min-w-0 flex-1">
+                  <div className="truncate font-display text-xl text-ink transition-colors duration-500 group-hover:text-cream">
+                    {lead.title}
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
+                    {lead.source ? sourceText(lead.source) : 'No source'}
+                    {lead.description ? ` · ${lead.description}` : ''}
+                  </div>
+                </div>
+                <span className="relative hidden shrink-0 text-[11px] uppercase tracking-[0.12em] text-faint transition-colors duration-500 group-hover:text-oncream sm:block">
+                  {fmtDate(lead.created_at)}
+                </span>
+                <Badge tone={statusTone[lead.status]} className="relative shrink-0">
+                  {statusLabel(lead.status)}
+                </Badge>
+                <span className="relative w-4 shrink-0 -translate-x-2 font-display text-xl text-terra opacity-0 transition-all duration-500 ease-[cubic-bezier(.19,1,.22,1)] group-hover:translate-x-0 group-hover:text-cream group-hover:opacity-100">
+                  →
+                </span>
+              </button>
+            ))}
           </div>
           {truncated && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               Showing the first {leads.length} of {total}. Refine your search to narrow results.
             </p>
           )}

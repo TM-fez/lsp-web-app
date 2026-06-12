@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { CockpitUnit } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils/cn';
-import { UnitTile } from './UnitTile';
+import { isAssignable } from './status';
 import {
   summarize,
   countForFilter,
@@ -19,14 +18,26 @@ const FILTERS: { key: UnitFilter; label: string }[] = [
   { key: 'AVAILABLE', label: 'Available' },
   { key: 'OCCUPIED', label: 'Occupied' },
   { key: 'NEEDS_CLEANING', label: 'Needs cleaning' },
-  { key: 'MAINTENANCE', label: 'Maintenance' },
+  { key: 'MAINTENANCE', label: 'Repair' },
   { key: 'OUT_OF_SERVICE', label: 'Out of service' },
 ];
+
+function cellClass(u: CockpitUnit): string {
+  switch (u.status) {
+    case 'OCCUPIED':
+      return 'bg-ink text-cream border-ink hover:bg-char';
+    case 'MAINTENANCE':
+      return 'bg-paper text-terra border-terra';
+    case 'OUT_OF_SERVICE':
+      return 'bg-cream-2 text-faint border-line';
+    default:
+      return 'bg-paper text-ink border-line hover:border-ink';
+  }
+}
 
 export function UnitBoard({ units, onAssign }: { units: CockpitUnit[]; onAssign: (unit: CockpitUnit) => void }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<UnitFilter>('ALL');
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const summary = useMemo(() => summarize(units), [units]);
   const filtered = useMemo(
@@ -35,94 +46,100 @@ export function UnitBoard({ units, onAssign }: { units: CockpitUnit[]; onAssign:
   );
   const groups = useMemo(() => groupUnits(filtered), [filtered]);
 
-  function toggle(label: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>
-            Units <span className="ml-1 text-sm font-normal text-slate-400">{summary.total}</span>
-          </CardTitle>
+    <section>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
+        <h2 className="font-display text-3xl text-ink">
+          The <em className="italic text-terra">board</em>
+        </h2>
+        <div className="flex items-center gap-3">
+          <span className="font-display text-sm italic text-muted">( {summary.total} units, live )</span>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
             <Input
               placeholder="Search unit or guest"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-56 pl-8"
+              className="w-52 pl-8"
             />
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4 flex flex-wrap gap-2">
-          {FILTERS.map((f) => {
-            const count = countForFilter(summary, f.key);
-            const active = filter === f.key;
-            return (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setFilter(f.key)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  active
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
-                )}
-              >
-                {f.label}
-                <span
-                  className={cn(
-                    'rounded-full px-1.5 text-[11px]',
-                    active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500',
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      </div>
 
-        {filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-500">No units match this view.</p>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {groups.map((g) => {
-              const isCollapsed = collapsed.has(g.label);
-              return (
-                <div key={g.label}>
-                  <button
-                    type="button"
-                    onClick={() => toggle(g.label)}
-                    className="mb-2 flex w-full items-center gap-1.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700"
-                  >
-                    {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                    {g.label}
-                    <span className="font-normal text-slate-400">{g.units.length}</span>
-                  </button>
-                  {!isCollapsed && (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                      {g.units.map((u) => (
-                        <UnitTile key={u.room_id} unit={u} onAssign={onAssign} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <div className="mb-5 flex flex-wrap gap-2">
+        {FILTERS.map((f) => {
+          const count = countForFilter(summary, f.key);
+          const active = filter === f.key;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition-[background-color,color,border-color] duration-300',
+                active
+                  ? 'border-forest bg-forest text-cream'
+                  : 'border-line bg-paper text-char hover:border-ink',
+              )}
+            >
+              {f.label}
+              <span className={cn('font-display text-[11px] italic', active ? 'text-oncream' : 'text-terra')}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted">No units match this view.</p>
+      ) : (
+        <div className="flex flex-col gap-7">
+          {groups.map((g) => (
+            <div key={g.label}>
+              <div className="mb-3 flex items-baseline gap-3">
+                <span className="text-[11px] uppercase tracking-[0.22em] text-muted">{g.label}</span>
+                <span className="h-px flex-1 bg-line" />
+                <span className="font-display text-sm italic text-faint">{g.units.length}</span>
+              </div>
+              <div className="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-10 xl:grid-cols-12">
+                {g.units.map((u) => {
+                  const assignable = isAssignable(u.status, u.housekeeping_status);
+                  const needsClean = u.housekeeping_status !== 'READY' && u.status !== 'OCCUPIED';
+                  return (
+                    <button
+                      key={u.room_id}
+                      type="button"
+                      onClick={assignable ? () => onAssign(u) : undefined}
+                      title={`${u.code} · ${u.name}${u.guest_name ? ` · ${u.guest_name}` : ''} · ${u.status.toLowerCase().replace('_', ' ')}`}
+                      className={cn(
+                        'relative flex aspect-square items-center justify-center rounded-md border text-xs tabnum transition-transform duration-300 ease-[cubic-bezier(.19,1,.22,1)] hover:z-10 hover:scale-[1.12]',
+                        cellClass(u),
+                        assignable ? 'cursor-pointer' : 'cursor-default',
+                      )}
+                    >
+                      {u.code}
+                      {needsClean && (
+                        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-terra" />
+                      )}
+                      {u.status === 'MAINTENANCE' && (
+                        <span className="pointer-events-none absolute left-[-10%] top-1/2 h-px w-[120%] -rotate-45 bg-terra/70" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap gap-6 text-[10px] uppercase tracking-[0.18em] text-muted">
+        <span className="flex items-center gap-2"><i className="h-2.5 w-2.5 border border-line" />Available</span>
+        <span className="flex items-center gap-2"><i className="h-2.5 w-2.5 bg-ink" />Occupied</span>
+        <span className="flex items-center gap-2"><i className="relative h-2.5 w-2.5 border border-line"><span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-terra" /></i>Cleaning</span>
+        <span className="flex items-center gap-2"><i className="h-2.5 w-2.5 border border-terra" />Repair</span>
+      </div>
+    </section>
   );
 }

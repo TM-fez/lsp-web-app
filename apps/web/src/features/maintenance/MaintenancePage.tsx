@@ -89,7 +89,7 @@ export function MaintenancePage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Maintenance</h1>
+          <h1 className="font-display text-4xl text-ink">Maintenance</h1>
           <p className="text-sm text-slate-500">{countLabel}</p>
         </div>
         {canCreate && (
@@ -157,51 +157,51 @@ export function MaintenancePage() {
       ) : shown.length === 0 ? (
         <EmptyState title="No matches" description="No work orders match your search or filter. Try clearing them." />
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-col gap-3">
+          <div className="overflow-hidden rounded-lg border border-line bg-paper">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-medium">Repair</th>
-                  <th className="px-4 py-3 font-medium">Unit</th>
-                  <th className="px-4 py-3 font-medium">Assigned to</th>
-                  <th className="px-4 py-3 font-medium">Priority</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Opened</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
+                  <th className="px-4 py-3.5 font-medium">Repair</th>
+                  <th className="px-4 py-3.5 font-medium">Unit</th>
+                  <th className="px-4 py-3.5 font-medium">Assigned to</th>
+                  <th className="px-4 py-3.5 font-medium">Priority</th>
+                  <th className="px-4 py-3.5 font-medium">Status</th>
+                  <th className="px-4 py-3.5 font-medium">Opened</th>
+                  <th className="px-4 py-3.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((order) => {
                   const action = nextAction[order.status];
                   return (
-                    <tr key={order.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">{order.title}</div>
+                    <tr key={order.id} className="border-b border-line last:border-0 transition-colors duration-300 hover:bg-cream-2">
+                      <td className="px-4 py-3.5">
+                        <div className="font-display text-lg text-ink">{order.title}</div>
                         {order.description && (
-                          <div className="max-w-md truncate text-xs text-slate-400">{order.description}</div>
+                          <div className="max-w-md truncate text-xs text-muted">{order.description}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{roomLabel(order.room_id)}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {order.assigned_to_name ?? <span className="text-slate-400">Unassigned</span>}
+                      <td className="tabnum px-4 py-3.5 text-ink">{roomLabel(order.room_id)}</td>
+                      <td className="px-4 py-3.5 text-muted">
+                        {order.assigned_to_name ?? <span className="text-faint">Unassigned</span>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <Badge tone={priorityTone[order.priority]}>{priorityLabel(order.priority)}</Badge>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <Badge tone={statusTone[order.status]}>{statusLabel[order.status]}</Badge>
                         {order.status === 'COMPLETED' &&
                           (order.approved_at ? (
-                            <div className="mt-1 text-xs text-emerald-600">
+                            <div className="mt-1 text-xs text-forest">
                               ✓ Approved{order.approved_by_name ? ` · ${order.approved_by_name}` : ''}
                             </div>
                           ) : (
-                            <div className="mt-1 text-xs text-amber-600">Awaiting approval</div>
+                            <div className="mt-1 text-xs text-terra">Awaiting approval</div>
                           ))}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{fmtDate(order.opened_at ?? order.created_at)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5 text-muted">{fmtDate(order.opened_at ?? order.created_at)}</td>
+                      <td className="px-4 py-3.5">
                         <div className="flex justify-end gap-2">
                           {action && canDo(action) && (
                             <Button size="sm" variant="primary" disabled={actionBusy} onClick={() => runAction(order)}>
