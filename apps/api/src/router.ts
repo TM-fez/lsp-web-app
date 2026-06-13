@@ -82,6 +82,4 @@ router.use('/cron',         createCronRouter());
 // ── Users & Roles — staff login management (admin-only via users.* perms) ─────
 router.use('/users',        createUsersRouter());
 
-// router.use('/flags',     flagsRouter);
-
 export { router };

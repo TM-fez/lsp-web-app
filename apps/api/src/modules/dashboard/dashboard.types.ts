@@ -9,7 +9,6 @@ export type { DashboardStats, ActivityEntry, DashboardActivityResponse };
 export interface RawStatsRow {
   totalContacts: number;
   totalUsers: number;
-  activeFeatureFlags: number;
 }
 
 /** Raw audit log row joined with the acting user's name. */

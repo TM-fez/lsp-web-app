@@ -71,7 +71,6 @@ describe('GET /api/v1/dashboard/stats', () => {
     expect(res.status).toBe(200);
     expect(typeof res.body.totalContacts).toBe('number');
     expect(typeof res.body.totalUsers).toBe('number');
-    expect(typeof res.body.activeFeatureFlags).toBe('number');
     expect(res.body.cachedAt).toBeTruthy();
     expect(new Date(res.body.cachedAt).toISOString()).toBe(res.body.cachedAt);
   });
@@ -85,7 +84,6 @@ describe('GET /api/v1/dashboard/stats', () => {
 
     expect(res.body.totalContacts).toBeGreaterThanOrEqual(0);
     expect(res.body.totalUsers).toBeGreaterThanOrEqual(1); // at least our test user
-    expect(res.body.activeFeatureFlags).toBeGreaterThanOrEqual(0);
   });
 
   it('serves the same cachedAt on a second call within 30 seconds', async () => {

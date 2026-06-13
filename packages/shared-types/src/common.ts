@@ -38,21 +38,6 @@ export interface UpdateUserRequest {
   active?: boolean;
 }
 
-export interface FeatureFlag {
-  key: string;
-  enabled: boolean;
-  rolloutPct: number;
-  description: string | null;
-  metadata: Record<string, unknown>;
-  updatedAt: string;
-}
-
-export interface UpdateFlagRequest {
-  enabled?: boolean;
-  rolloutPct?: number;
-  description?: string;
-}
-
 export interface HealthResponse {
   status: 'ok' | 'error';
   uptime?: number;
