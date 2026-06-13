@@ -6,6 +6,7 @@ import { createLeadsRouter } from './modules/crm/leads/leads.routes.js';
 import { createReservationsRouter } from './modules/reservations/reservations.routes.js';
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
 import { createPropertiesRouter } from './modules/properties/properties.routes.js';
+import { createPublicRouter } from './modules/public/public.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
@@ -42,6 +43,9 @@ router.use('/rooms', createRoomsRouter());
 
 // ── Multi-property — Property → Building → Unit (estate setup) ─────────────────
 router.use('/properties', createPropertiesRouter());
+
+// ── PUBLIC booking — no auth (guest-facing front door, rate-limited) ───────────
+router.use('/public', createPublicRouter());
 
 // ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
 router.use('/checkins', createCheckinsRouter());
