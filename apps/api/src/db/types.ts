@@ -249,15 +249,6 @@ export interface AuditLogsTable {
   created_at: Generated<Date>;
 }
 
-export interface FeatureFlagsTable {
-  key: string;
-  enabled: Generated<boolean>;
-  rollout_pct: Generated<number>;
-  description: string | null;
-  metadata: Generated<Record<string, unknown>>;
-  updated_at: Generated<Date>;
-}
-
 // ── Sprint 8 — Commercial Core ────────────────────────────────────────────────
 // All money columns are INTEGER minor units (thebe; 100 = 1 BWP).
 
@@ -399,7 +390,6 @@ export interface Database {
   maintenance_work_orders: MaintenanceWorkOrdersTable;
   housekeeping_tasks: HousekeepingTasksTable;
   audit_logs: AuditLogsTable;
-  feature_flags: FeatureFlagsTable;
   rate_plans: RatePlansTable;
   quotes: QuotesTable;
   holds: HoldsTable;
@@ -444,8 +434,6 @@ export type UpdateOccupancy = Updateable<OccupancyTable>;
 
 export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;
-
-export type FlagRow       = Selectable<FeatureFlagsTable>;
 
 export type FileRow       = Selectable<FilesTable>;
 export type NewFile       = Insertable<FilesTable>;

@@ -46,7 +46,6 @@ export async function getStats(): Promise<DashboardStats> {
   const stats: DashboardStats = {
     totalContacts:      raw.totalContacts,
     totalUsers:         raw.totalUsers,
-    activeFeatureFlags: raw.activeFeatureFlags,
     cachedAt:           new Date().toISOString(),
   };
 

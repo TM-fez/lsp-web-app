@@ -1,7 +1,6 @@
 export interface DashboardStats {
   totalContacts: number;
   totalUsers: number;
-  activeFeatureFlags: number;
   cachedAt: string;
 }
 

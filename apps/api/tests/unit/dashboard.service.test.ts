@@ -15,7 +15,6 @@ import * as dashboardService from '../../src/modules/dashboard/dashboard.service
 const RAW_STATS = {
   totalContacts:      42,
   totalUsers:         7,
-  activeFeatureFlags: 3,
 };
 
 const RAW_ACTIVITY = [
@@ -54,7 +53,6 @@ describe('dashboardService.getStats', () => {
 
     expect(result.totalContacts).toBe(42);
     expect(result.totalUsers).toBe(7);
-    expect(result.activeFeatureFlags).toBe(3);
     expect(result.cachedAt).toBeTruthy();
     expect(new Date(result.cachedAt).toISOString()).toBe(result.cachedAt);
   });

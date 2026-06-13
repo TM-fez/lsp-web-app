@@ -4,11 +4,11 @@ import type { RawStatsRow, RawActivityRow } from './dashboard.types.js';
 // ── Aggregate queries — no business logic ─────────────────────────────────────
 
 /**
- * Runs three parallel COUNT queries and returns raw totals.
+ * Runs the COUNT queries in parallel and returns raw totals.
  * The caller is responsible for caching.
  */
 export async function getAggregateStats(): Promise<RawStatsRow> {
-  const [contacts, users, flags] = await Promise.all([
+  const [contacts, users] = await Promise.all([
     db
       .selectFrom('contacts')
       .select((eb) => eb.fn.countAll<string>().as('count'))
@@ -20,18 +20,11 @@ export async function getAggregateStats(): Promise<RawStatsRow> {
       .select((eb) => eb.fn.countAll<string>().as('count'))
       .where('active', '=', true)
       .executeTakeFirstOrThrow(),
-
-    db
-      .selectFrom('feature_flags')
-      .select((eb) => eb.fn.countAll<string>().as('count'))
-      .where('enabled', '=', true)
-      .executeTakeFirstOrThrow(),
   ]);
 
   return {
-    totalContacts:      parseInt(contacts.count, 10),
-    totalUsers:         parseInt(users.count, 10),
-    activeFeatureFlags: parseInt(flags.count, 10),
+    totalContacts: parseInt(contacts.count, 10),
+    totalUsers:    parseInt(users.count, 10),
   };
 }
 
