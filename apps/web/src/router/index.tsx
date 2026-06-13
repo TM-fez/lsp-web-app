@@ -14,6 +14,7 @@ import { PricingPage } from '@/features/pricing/PricingPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
+import { StayPage } from '@/features/stay/StayPage';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -23,6 +24,7 @@ function ProtectedRoute() {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/stay', element: <StayPage /> },
   {
     element: <ProtectedRoute />,
     children: [

@@ -1,0 +1,66 @@
+import { Kysely } from 'kysely';
+import type { Database, ContactRow } from '../../db/types.js';
+import type { UnitType } from '../pricing/pricing.types.js';
+import type { StayUnitOption } from './public.types.js';
+
+export class PublicRepository {
+  constructor(private readonly db: Kysely<Database>) {}
+
+  /**
+   * The actor a website booking is attributed to (created_by / audit). Web
+   * bookings have no logged-in user, so they're stamped to the oldest account
+   * (the system admin) — a valid users.id, which the FK requires.
+   */
+  async systemActorId(): Promise<string> {
+    const row = await this.db
+      .selectFrom('users')
+      .select('id')
+      .orderBy('created_at', 'asc')
+      .limit(1)
+      .executeTakeFirst();
+    if (!row) throw new Error('No system user to attribute website bookings to');
+    return row.id;
+  }
+
+  async activePlans(): Promise<StayUnitOption[]> {
+    const rows = await this.db
+      .selectFrom('rate_plans')
+      .select(['unit_type', 'name', 'nightly_rate', 'deposit_pct', 'max_guests', 'min_nights', 'currency'])
+      .where('active', '=', true)
+      .where('deleted_at', 'is', null)
+      .orderBy('nightly_rate', 'asc')
+      .execute();
+    return rows.map((r) => ({
+      unit_type: r.unit_type,
+      name: r.name,
+      nightly_rate: r.nightly_rate,
+      deposit_pct: r.deposit_pct,
+      max_guests: r.max_guests,
+      min_nights: r.min_nights,
+      currency: r.currency,
+    }));
+  }
+
+  async findContactByEmail(email: string): Promise<ContactRow | undefined> {
+    return this.db
+      .selectFrom('contacts')
+      .selectAll()
+      .where('email', 'ilike', email)
+      .where('deleted_at', 'is', null)
+      .orderBy('created_at', 'asc')
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /** Active units of a type that could take a booking (excludes maintenance / out-of-service). */
+  async bookableRoomsByType(unitType: UnitType): Promise<Array<{ id: string; code: string; name: string }>> {
+    return this.db
+      .selectFrom('rooms')
+      .select(['id', 'code', 'name'])
+      .where('type', '=', unitType)
+      .where('deleted_at', 'is', null)
+      .where('status', 'not in', ['MAINTENANCE', 'OUT_OF_SERVICE'])
+      .orderBy('code', 'asc')
+      .execute();
+  }
+}
