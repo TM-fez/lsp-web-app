@@ -370,6 +370,24 @@ export interface InvoicesTable {
   updated_at: Generated<Date>;
 }
 
+export interface OperatingExpensesTable {
+  id: Generated<string>;
+  property_id: string | null;
+  category: 'RENT' | 'PAYROLL' | 'UTILITIES' | 'MARKETING' | 'INSURANCE' | 'SUPPLIES' | 'SOFTWARE' | 'OTHER';
+  description: string;
+  vendor: string | null;
+  amount: number;
+  currency: Generated<string>;
+  incurred_on: Date;
+  notes: string | null;
+  created_by: string;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ── Database interface ────────────────────────────────────────────────────────
 
 export interface Database {
@@ -396,6 +414,7 @@ export interface Database {
   payment_intents: PaymentIntentsTable;
   payment_attempts: PaymentAttemptsTable;
   invoices: InvoicesTable;
+  operating_expenses: OperatingExpensesTable;
 }
 
 // ── Row type helpers ──────────────────────────────────────────────────────────
@@ -471,3 +490,7 @@ export type NewPaymentAttempt   = Insertable<PaymentAttemptsTable>;
 export type InvoiceRow     = Selectable<InvoicesTable>;
 export type NewInvoice     = Insertable<InvoicesTable>;
 export type UpdateInvoice  = Updateable<InvoicesTable>;
+
+export type OperatingExpenseRow    = Selectable<OperatingExpensesTable>;
+export type NewOperatingExpense    = Insertable<OperatingExpensesTable>;
+export type UpdateOperatingExpense = Updateable<OperatingExpensesTable>;

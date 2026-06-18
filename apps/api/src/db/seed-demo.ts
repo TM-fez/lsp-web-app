@@ -101,6 +101,7 @@ const client = new Client({ connectionString: CONNECTION });
 async function teardown(): Promise<void> {
   // FK-safe order: children first.
   const steps: Array<[string, string]> = [
+    ['operating_expenses', `DELETE FROM operating_expenses WHERE notes = 'DEMO'`],
     ['invoices', `DELETE FROM invoices WHERE number LIKE 'INV-DEMO-%'`],
     ['quotes', `DELETE FROM quotes WHERE breakdown->>'demo' = 'true'`],
     ['reservations', `DELETE FROM reservations WHERE notes LIKE 'DEMO%'`],
@@ -214,8 +215,8 @@ async function run(): Promise<void> {
   }
 
   // 5. Reservations + quotes + invoices + (some) maintenance, per room over time.
-  let nRes = 0, nInv = 0, nWO = 0;
-  let revenue = 0, expenses = 0;
+  let nRes = 0, nInv = 0, nWO = 0, nOpex = 0;
+  let revenue = 0, expenses = 0, opexTotal = 0;
 
   const newInvoice = async (
     quoteId: string, resId: string, kind: 'DEPOSIT' | 'BALANCE' | 'REFUND',
@@ -337,6 +338,41 @@ async function run(): Promise<void> {
     if (approved) expenses += cost;
   }
 
+  // 7. Operating expenses — recurring overhead (rent, payroll, utilities, marketing…)
+  //    so the P&L shows a realistic margin instead of "revenue minus a few repairs".
+  //    Property-level costs attach to Village; company-wide costs leave property NULL.
+  const monthStart = (back: number) =>
+    new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - back, 1));
+  const dISO = (d: Date) => d.toISOString().slice(0, 10);
+  type OpexRow = [string, string | null, string, string, number, string];
+  const opexRows: OpexRow[] = [];
+
+  for (let back = 8; back >= 0; back--) {
+    const m = monthStart(back);
+    const y = m.getUTCFullYear(), mo = m.getUTCMonth();
+    const day = (n: number) => dISO(new Date(Date.UTC(y, mo, n)));
+    opexRows.push(['RENT',      village.id, 'Monthly rent — Village',        'DEMO Plot 54 Holdings',      3_800_000, day(1)]);
+    opexRows.push(['INSURANCE', null,       'Property & liability insurance', 'DEMO Botswana Insurance',     450_000, day(1)]);
+    opexRows.push(['MARKETING', null,       'Digital ads (Meta + Google)',    'DEMO Adwords',     (80 + randInt(0, 70)) * 1000, day(5)]);
+    opexRows.push(['UTILITIES', village.id, 'Electricity & water — Village',  'DEMO BPC / WUC',  (600 + randInt(0, 320)) * 1000, day(10)]);
+    opexRows.push(['SOFTWARE',  null,       'SaaS subscriptions',             'DEMO Stack',                  95_000, day(12)]);
+    opexRows.push(['PAYROLL',   null,       'Staff salaries',                 'DEMO Payroll', 5_500_000 + randInt(0, 1_000) * 1000, day(25)]);
+    for (let s = 0, n = randInt(2, 4); s < n; s++) {
+      opexRows.push(['SUPPLIES', village.id, 'Cleaning & guest supplies', 'DEMO Cash & Carry', (80 + randInt(0, 170)) * 1000, day(randInt(2, 27))]);
+    }
+  }
+
+  for (const [category, pid, description, vendor, amount, on] of opexRows) {
+    await client.query(
+      `INSERT INTO operating_expenses
+         (property_id, category, description, vendor, amount, incurred_on, notes, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,'DEMO',$7,$7)`,
+      [pid, category, description, vendor, amount, on, A]
+    );
+    nOpex++;
+    opexTotal += amount;
+  }
+
   await client.query('COMMIT');
 
   const P = (thebe: number) => `P${(thebe / 100).toLocaleString('en', { minimumFractionDigits: 2 })}`;
@@ -348,9 +384,12 @@ async function run(): Promise<void> {
   console.log(`  reservations:  ${nRes}`);
   console.log(`  invoices:      ${nInv}`);
   console.log(`  work orders:   ${nWO}`);
+  console.log(`  opex entries:  ${nOpex}`);
+  const netMargin = revenue - expenses - opexTotal;
   console.log(`  ── paid revenue (incl. refunds): ${P(revenue)}`);
-  console.log(`  ── approved expenses:            ${P(expenses)}`);
-  console.log(`  ── gross margin:                 ${P(revenue - expenses)}`);
+  console.log(`  ── maintenance cost:             ${P(expenses)}`);
+  console.log(`  ── operating expenses:           ${P(opexTotal)}`);
+  console.log(`  ── net margin:                   ${P(netMargin)}  (${revenue ? Math.round((netMargin / revenue) * 100) : 0}%)`);
   console.log('\n  Tear down anytime with:  npm run db:seed:demo:reset');
 
   await client.end();
