@@ -13,6 +13,9 @@ import { PropertiesPage } from '@/features/properties/PropertiesPage';
 import { PricingPage } from '@/features/pricing/PricingPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
+import { ReportsPage } from '@/features/reports/ReportsPage';
+import { InvoicesPage } from '@/features/invoices/InvoicesPage';
+import { OperatingExpensesPage } from '@/features/operating-expenses/OperatingExpensesPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
 import { StayPage } from '@/features/stay/StayPage';
 
@@ -42,6 +45,9 @@ export const router = createBrowserRouter([
           { path: '/pricing', element: <PricingPage /> },
           { path: '/users', element: <UsersPage /> },
           { path: '/expenses', element: <ExpensesPage /> },
+          { path: '/reports', element: <ReportsPage /> },
+          { path: '/invoices', element: <InvoicesPage /> },
+          { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/finance', element: <ComingSoonPage /> },
         ],
       },

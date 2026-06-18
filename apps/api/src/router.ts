@@ -21,6 +21,8 @@ import { createInvoicesRouter } from './modules/invoices/invoices.routes.js';
 import { createCronRouter } from './modules/cron/cron.routes.js';
 import { createUsersRouter } from './modules/users/users.routes.js';
 import { createExpensesRouter } from './modules/expenses/expenses.routes.js';
+import { createOperatingExpensesRouter } from './modules/operating-expenses/operating-expenses.routes.js';
+import { createReportsRouter } from './modules/reports/reports.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
 
 const router = Router();
@@ -68,6 +70,10 @@ router.use('/invoices', createInvoicesRouter());
 
 // ── Build 2a — Expenses (repair costs; managers approve, Accounts reconciles) ──
 router.use('/expenses', createExpensesRouter());
+
+// ── Build 2b — Accounts: operating-expenses ledger + reports/P&L dashboard ─────
+router.use('/operating-expenses', createOperatingExpensesRouter());
+router.use('/reports', createReportsRouter());
 
 // ── Build 2c — Activity feed (shared "what's changed", all staff) ─────────────
 router.use('/activity', createActivityRouter());

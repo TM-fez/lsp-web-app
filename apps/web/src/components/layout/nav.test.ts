@@ -36,8 +36,8 @@ describe('landingRoute', () => {
     expect(landingRoute('ADMIN', all)).toBe('/properties');
   });
 
-  it('lands on Finance’s first built screen (Expenses)', () => {
-    expect(landingRoute('FINANCE', all)).toBe('/expenses');
+  it('lands on Finance’s first built screen (Invoices)', () => {
+    expect(landingRoute('FINANCE', all)).toBe('/invoices');
     // the Finance placeholder still exists for the no-screens-built fallback path
     expect(WORKSPACE_PLACEHOLDER.FINANCE).toBe('/finance');
   });

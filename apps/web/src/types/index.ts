@@ -231,6 +231,89 @@ export interface Expense {
   opened_at: string;
 }
 
+// ── Finance → Reports (Accounts P&L dashboard) ──────────────────────────────
+export interface PnlSummary {
+  from: string;
+  to: string;
+  revenue: number;               // thebe
+  maintenance_cost: number;
+  operating_expenses: number;
+  total_cost: number;
+  net: number;
+  margin_pct: number;
+  reservations: number;
+  room_nights_booked: number;
+  room_nights_available: number;
+  occupancy_pct: number;
+}
+export interface MonthlyPoint {
+  month: string;                 // YYYY-MM
+  revenue: number;
+  maintenance_cost: number;
+  operating_expenses: number;
+  net: number;
+}
+export interface PropertyPnl {
+  property_id: string | null;
+  property_name: string;
+  revenue: number;
+  maintenance_cost: number;
+  operating_expenses: number;
+  net: number;
+  occupancy_pct: number | null;
+}
+export interface ReportsResponse {
+  summary: PnlSummary;
+  monthly: MonthlyPoint[];
+  by_property: PropertyPnl[];
+}
+
+// ── Finance → Operating expenses ledger ─────────────────────────────────────
+export type OperatingExpenseCategory =
+  | 'RENT' | 'PAYROLL' | 'UTILITIES' | 'MARKETING'
+  | 'INSURANCE' | 'SUPPLIES' | 'SOFTWARE' | 'OTHER';
+export interface OperatingExpense {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  category: OperatingExpenseCategory;
+  description: string;
+  vendor: string | null;
+  amount: number;                // thebe
+  currency: string;
+  incurred_on: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Finance → Invoices ──────────────────────────────────────────────────────
+export type InvoiceKind = 'DEPOSIT' | 'BALANCE' | 'REFUND';
+export type InvoiceStatus = 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID';
+export interface Invoice {
+  id: string;
+  number: string;
+  hold_id: string | null;
+  quote_id: string | null;
+  reservation_id: string | null;
+  kind: InvoiceKind;
+  currency: string;
+  subtotal_amount: number;
+  tax_rate_bps: number;
+  tax_amount: number;
+  total_amount: number;          // thebe
+  status: InvoiceStatus;
+  receipt_file_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface Paginated<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 /** Minimal staff entry for pickers (assign-to). */
 export interface StaffDirectoryEntry {
   id: string;

@@ -7,6 +7,8 @@ import {
   Wrench,
   Wallet,
   Receipt,
+  FileText,
+  Banknote,
   BarChart3,
   Building2,
   BedDouble,
@@ -60,9 +62,10 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Finance',
     icon: Wallet,
     items: [
+      { to: '/invoices', label: 'Invoices', icon: FileText, perm: 'invoices.read', built: true },
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },
-      { to: '/payments', label: 'Payments & Invoices', icon: Wallet, perm: 'payments.read', built: false },
-      { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.read', built: false },
+      { to: '/operating-expenses', label: 'Operating costs', icon: Banknote, perm: 'opex.read', built: true },
+      { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.read', built: true },
     ],
   },
   {
