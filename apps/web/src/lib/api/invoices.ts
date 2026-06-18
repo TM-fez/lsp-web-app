@@ -13,6 +13,11 @@ export async function listInvoices(params: InvoiceListParams): Promise<Paginated
   return data;
 }
 
+export async function issueInvoice(quote_id: string, kind: 'DEPOSIT' | 'BALANCE'): Promise<Invoice> {
+  const { data } = await api.post<Invoice>('/invoices', { quote_id, kind });
+  return data;
+}
+
 export async function settleInvoice(id: string, receipt_file_id?: string | null): Promise<Invoice> {
   const { data } = await api.post<Invoice>(`/invoices/${id}/settle`, { receipt_file_id: receipt_file_id ?? null });
   return data;

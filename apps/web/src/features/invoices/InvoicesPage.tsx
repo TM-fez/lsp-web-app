@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
 import { formatMoney, thebeToPula, pulaToThebe } from '@/lib/utils/money';
 import { cn } from '@/lib/utils/cn';
-import { useInvoices, useSettleInvoice, useRefundInvoice } from './hooks';
+import { useInvoices, useSettleInvoice, useRefundInvoice, useActiveQuotes, useIssueInvoice } from './hooks';
 import type { Invoice, InvoiceStatus } from '@/types';
 
 const FILTERS: { key: InvoiceStatus | 'ALL'; label: string }[] = [
@@ -34,6 +35,7 @@ export function InvoicesPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canSettle = hasPerm('invoices.update');
   const canRefund = hasPerm('invoices.refund');
+  const canIssue = hasPerm('invoices.create');
 
   const [filter, setFilter] = useState<InvoiceStatus | 'ALL'>('ALL');
   const { data, isLoading, isError, refetch } = useInvoices({
@@ -42,7 +44,19 @@ export function InvoicesPage() {
   });
   const settle = useSettleInvoice();
   const refund = useRefundInvoice();
-  const busy = settle.isPending || refund.isPending;
+  const issue = useIssueInvoice();
+  const busy = settle.isPending || refund.isPending || issue.isPending;
+
+  // Issue (raise) dialog state
+  const [issuing, setIssuing] = useState(false);
+  const [quoteId, setQuoteId] = useState('');
+  const [kind, setKind] = useState<'DEPOSIT' | 'BALANCE'>('DEPOSIT');
+  const quotes = useActiveQuotes(issuing);
+
+  const submitIssue = () => {
+    if (!quoteId) return;
+    issue.mutate({ quote_id: quoteId, kind }, { onSuccess: () => { setIssuing(false); setQuoteId(''); } });
+  };
 
   // Refund dialog state
   const [refunding, setRefunding] = useState<Invoice | null>(null);
@@ -77,10 +91,15 @@ export function InvoicesPage() {
           <h1 className="font-display text-4xl text-ink sm:text-5xl">Invoices</h1>
           <p className="mt-2 text-sm text-muted">Deposits, balances and refunds across bookings.</p>
         </div>
-        {data && <div className="text-right">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Showing</div>
-          <div className="font-display text-3xl tabnum text-ink">{data.total}</div>
-        </div>}
+        <div className="flex items-end gap-4">
+          {data && <div className="text-right">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Showing</div>
+            <div className="font-display text-3xl tabnum text-ink">{data.total}</div>
+          </div>}
+          {canIssue && (
+            <Button variant="primary" onClick={() => setIssuing(true)}><Plus className="mr-1.5 h-4 w-4" />New invoice</Button>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -183,6 +202,44 @@ export function InvoicesPage() {
               >
                 Record refund
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={issuing} onOpenChange={(o) => !o && setIssuing(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Raise an invoice</DialogTitle>
+            <DialogDescription>Pick an active quote and which part of it to bill.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="iss-quote">Quote</Label>
+              <Select id="iss-quote" value={quoteId} onChange={(e) => setQuoteId(e.target.value)}>
+                <option value="">Select a quote…</option>
+                {(quotes.data ?? []).map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.unit_type.charAt(0) + q.unit_type.slice(1).toLowerCase()} · {q.nights} nights · {formatMoney(q.total_amount, q.currency)} (deposit {formatMoney(q.deposit_amount, q.currency)})
+                  </option>
+                ))}
+              </Select>
+              {quotes.isLoading && <span className="text-xs text-muted">Loading quotes…</span>}
+              {quotes.isError && <span className="text-xs text-terra">Couldn’t load quotes (need quotes.read).</span>}
+              {!quotes.isLoading && !quotes.isError && (quotes.data?.length ?? 0) === 0 && (
+                <span className="text-xs text-muted">No active quotes to invoice.</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="iss-kind">Bill</Label>
+              <Select id="iss-kind" value={kind} onChange={(e) => setKind(e.target.value as 'DEPOSIT' | 'BALANCE')}>
+                <option value="DEPOSIT">Deposit</option>
+                <option value="BALANCE">Balance</option>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIssuing(false)}>Cancel</Button>
+              <Button variant="primary" disabled={busy || !quoteId} onClick={submitIssue}>Raise invoice</Button>
             </div>
           </div>
         </DialogContent>

@@ -22,6 +22,8 @@ vi.mock('./hooks', () => ({
   }),
   useSettleInvoice: () => ({ mutate: vi.fn(), isPending: false }),
   useRefundInvoice: () => ({ mutate: vi.fn(), isPending: false }),
+  useActiveQuotes: () => ({ data: [], isLoading: false, isError: false }),
+  useIssueInvoice: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { InvoicesPage } from './InvoicesPage';

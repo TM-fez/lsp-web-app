@@ -11,8 +11,11 @@ export class OperatingExpensesRepository {
       .leftJoin('properties as p', 'p.id', 'oe.property_id')
       .select([
         'oe.id', 'oe.property_id', 'oe.category', 'oe.description', 'oe.vendor',
-        'oe.amount', 'oe.currency', 'oe.incurred_on', 'oe.notes',
+        'oe.amount', 'oe.currency', 'oe.notes',
         'oe.created_at', 'oe.updated_at', 'p.name as property_name',
+        // incurred_on is a pure calendar DATE — return it as 'YYYY-MM-DD' text so
+        // the Africa/Gaborone session timezone can't shift it a day on read.
+        sql<string>`to_char(oe.incurred_on, 'YYYY-MM-DD')`.as('incurred_on'),
       ])
       .where('oe.deleted_at', 'is', null);
   }
