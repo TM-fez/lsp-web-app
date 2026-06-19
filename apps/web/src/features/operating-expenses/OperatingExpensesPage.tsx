@@ -15,6 +15,7 @@ import { formatMoney, pulaToThebe, thebeToPula } from '@/lib/utils/money';
 import { todayISO } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
 import { useOperatingExpenses, useCreateOperatingExpense, useUpdateOperatingExpense, useDeleteOperatingExpense } from './hooks';
+import { RecurringView } from './RecurringView';
 import type { OperatingExpense, OperatingExpenseCategory } from '@/types';
 
 const CATEGORIES: OperatingExpenseCategory[] = ['RENT', 'PAYROLL', 'UTILITIES', 'MARKETING', 'INSURANCE', 'SUPPLIES', 'SOFTWARE', 'OTHER'];
@@ -42,6 +43,7 @@ export function OperatingExpensesPage() {
   const canUpdate = hasPerm('opex.update');
   const canDelete = hasPerm('opex.delete');
 
+  const [view, setView] = useState<'costs' | 'recurring'>('costs');
   const [category, setCategory] = useState<OperatingExpenseCategory | 'ALL'>('ALL');
   const { data, isLoading, isError, refetch } = useOperatingExpenses(category === 'ALL' ? {} : { category });
   const properties = useQuery({ queryKey: ['properties'], queryFn: listProperties });
@@ -97,18 +99,30 @@ export function OperatingExpensesPage() {
           <p className="mt-2 text-sm text-muted">Rent, payroll, utilities and other overheads behind the P&amp;L.</p>
         </div>
         <div className="flex items-end gap-4">
-          {rows.length > 0 && (
+          {view === 'costs' && rows.length > 0 && (
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Shown</div>
               <div className="font-display text-3xl tabnum text-ink">{formatMoney(total)}</div>
             </div>
           )}
-          {canCreate && (
+          {view === 'costs' && canCreate && (
             <Button variant="primary" onClick={openNew}><Plus className="mr-1.5 h-4 w-4" />Add cost</Button>
           )}
         </div>
       </header>
 
+      <div className="flex gap-2">
+        {(['costs', 'recurring'] as const).map((v) => (
+          <button key={v} type="button" onClick={() => setView(v)}
+            className={cn('rounded-full border px-4 py-1.5 text-xs transition-[background-color,color,border-color] duration-300',
+              view === v ? 'border-forest bg-forest text-cream' : 'border-line bg-paper text-char hover:border-ink')}>
+            {v === 'costs' ? 'Costs' : 'Recurring'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'recurring' ? <RecurringView /> : (
+      <>
       <div className="flex flex-wrap gap-2">
         {(['ALL', ...CATEGORIES] as const).map((c) => (
           <button
@@ -220,6 +234,8 @@ export function OperatingExpensesPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 }

@@ -338,6 +338,19 @@ export interface Paginated<T> {
   limit: number;
 }
 
+export interface RecurringCost {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  category: OperatingExpenseCategory;
+  description: string;
+  vendor: string | null;
+  amount: number;            // thebe
+  day_of_month: number;
+  active: boolean;
+  notes: string | null;
+}
+
 /** Minimal staff entry for pickers (assign-to). */
 export interface StaffDirectoryEntry {
   id: string;

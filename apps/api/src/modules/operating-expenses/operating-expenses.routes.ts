@@ -9,6 +9,9 @@ import { validateBody } from '../../core/middleware/validate.middleware.js';
 import {
   CreateOperatingExpenseSchema,
   UpdateOperatingExpenseSchema,
+  CreateRecurringSchema,
+  UpdateRecurringSchema,
+  GenerateRecurringSchema,
 } from './operating-expenses.types.js';
 
 export function createOperatingExpensesRouter(dbInstance = db): Router {
@@ -19,6 +22,14 @@ export function createOperatingExpensesRouter(dbInstance = db): Router {
   router.use(authenticate);
 
   router.get('/', authorize('opex.read'), controller.list);
+
+  // Recurring templates — registered before '/:id' so '/recurring' isn't read as an id.
+  router.get('/recurring', authorize('opex.read'), controller.listRecurring);
+  router.post('/recurring', authorize('opex.create'), validateBody(CreateRecurringSchema), controller.createRecurring);
+  router.post('/recurring/generate', authorize('opex.create'), validateBody(GenerateRecurringSchema), controller.generate);
+  router.patch('/recurring/:id', authorize('opex.update'), validateBody(UpdateRecurringSchema), controller.updateRecurring);
+  router.delete('/recurring/:id', authorize('opex.delete'), controller.removeRecurring);
+
   router.get('/:id', authorize('opex.read'), controller.get);
   router.post('/', authorize('opex.create'), validateBody(CreateOperatingExpenseSchema), controller.create);
   router.patch('/:id', authorize('opex.update'), validateBody(UpdateOperatingExpenseSchema), controller.update);
