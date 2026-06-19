@@ -11,7 +11,7 @@ export class FilesController {
     const storage = {
       _handleFile: (req: any, file: any, cb: any) => {
         const meta = {
-          userId: req.user?.id,
+          userId: req.user?.sub,
           ip: req.ip,
           requestId: req.id,
         };
@@ -46,7 +46,9 @@ export class FilesController {
 
   private getRequestMeta(req: Request) {
     return {
-      userId: (req as any).user?.id,
+      // JWT payload puts the user id in `sub` (not `id`); using `.id` left
+      // created_by NULL and 500'd every upload.
+      userId: (req as any).user?.sub,
       ip: req.ip,
       requestId: (req as any).id,
     };

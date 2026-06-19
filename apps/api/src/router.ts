@@ -22,6 +22,7 @@ import { createCronRouter } from './modules/cron/cron.routes.js';
 import { createUsersRouter } from './modules/users/users.routes.js';
 import { createExpensesRouter } from './modules/expenses/expenses.routes.js';
 import { createOperatingExpensesRouter } from './modules/operating-expenses/operating-expenses.routes.js';
+import { createPayrollRouter } from './modules/payroll/payroll.routes.js';
 import { createReportsRouter } from './modules/reports/reports.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
 
@@ -73,6 +74,7 @@ router.use('/expenses', createExpensesRouter());
 
 // ── Build 2b — Accounts: operating-expenses ledger + reports/P&L dashboard ─────
 router.use('/operating-expenses', createOperatingExpensesRouter());
+router.use('/payroll', createPayrollRouter());
 router.use('/reports', createReportsRouter());
 
 // ── Build 2c — Activity feed (shared "what's changed", all staff) ─────────────

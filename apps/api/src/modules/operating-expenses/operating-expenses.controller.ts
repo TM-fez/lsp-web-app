@@ -4,6 +4,8 @@ import { OperatingExpenseCategoryEnum } from './operating-expenses.types.js';
 import type {
   CreateOperatingExpenseDTO,
   UpdateOperatingExpenseDTO,
+  CreateRecurringDTO,
+  UpdateRecurringDTO,
 } from './operating-expenses.types.js';
 
 export class OperatingExpensesController {
@@ -61,6 +63,48 @@ export class OperatingExpensesController {
     try {
       await this.service.remove(req.params.id as string, this.meta(req));
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // ── Recurring templates ───────────────────────────────────────────────────────
+  listRecurring = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json({ data: await this.service.listRecurring() });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createRecurring = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.status(201).json(await this.service.createRecurring(req.body as CreateRecurringDTO, this.meta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateRecurring = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.updateRecurring(req.params.id as string, req.body as UpdateRecurringDTO, this.meta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  removeRecurring = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await this.service.removeRecurring(req.params.id as string, this.meta(req));
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  generate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.status(201).json(await this.service.generate((req.body as { month?: string }).month, this.meta(req)));
     } catch (err) {
       next(err);
     }

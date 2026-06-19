@@ -268,6 +268,30 @@ export interface ReportsResponse {
   by_property: PropertyPnl[];
 }
 
+// ── Finance → HR / Payroll ──────────────────────────────────────────────────
+export type PayFrequency = 'MONTHLY' | 'WEEKLY';
+export interface EmployeePay {
+  user_id: string;
+  name: string;
+  role: string;
+  is_lead: boolean;
+  job_title: string | null;
+  gross_amount: number | null;        // thebe
+  frequency: PayFrequency | null;
+  monthly_equivalent: number | null;
+  payment_method: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  start_date: string | null;
+  active: boolean;
+  notes: string | null;
+}
+export interface PayrollSummary {
+  headcount: number;
+  monthly_total: number;              // thebe
+  by_role: { role: string; headcount: number; monthly: number }[];
+}
+
 // ── Finance → Operating expenses ledger ─────────────────────────────────────
 export type OperatingExpenseCategory =
   | 'RENT' | 'PAYROLL' | 'UTILITIES' | 'MARKETING'
@@ -283,6 +307,8 @@ export interface OperatingExpense {
   currency: string;
   incurred_on: string;
   notes: string | null;
+  receipt_file_id: string | null;
+  receipt_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -312,6 +338,19 @@ export interface Paginated<T> {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface RecurringCost {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  category: OperatingExpenseCategory;
+  description: string;
+  vendor: string | null;
+  amount: number;            // thebe
+  day_of_month: number;
+  active: boolean;
+  notes: string | null;
 }
 
 /** Minimal staff entry for pickers (assign-to). */
