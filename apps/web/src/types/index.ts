@@ -307,6 +307,8 @@ export interface OperatingExpense {
   currency: string;
   incurred_on: string;
   notes: string | null;
+  receipt_file_id: string | null;
+  receipt_name: string | null;
   created_at: string;
   updated_at: string;
 }

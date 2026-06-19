@@ -380,6 +380,7 @@ export interface OperatingExpensesTable {
   currency: Generated<string>;
   incurred_on: Date;
   notes: string | null;
+  receipt_file_id: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;

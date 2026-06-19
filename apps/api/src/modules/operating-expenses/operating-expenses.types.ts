@@ -14,6 +14,7 @@ export const CreateOperatingExpenseSchema = z.object({
   currency: z.string().length(3).optional(),
   incurred_on: z.coerce.date(),               // accepts 'YYYY-MM-DD', stored as DATE
   notes: z.string().max(2000).nullable().optional(),
+  receipt_file_id: z.string().uuid().nullable().optional(),
 });
 
 export const UpdateOperatingExpenseSchema = CreateOperatingExpenseSchema.partial();

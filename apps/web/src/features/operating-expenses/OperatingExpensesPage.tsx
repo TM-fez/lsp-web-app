@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Banknote, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Banknote, Plus, Pencil, Trash2, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -11,6 +11,9 @@ import { Select } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
 import { listProperties } from '@/lib/api/properties';
+import { uploadFile, openFile } from '@/lib/api/files';
+import { errMessage } from '@/lib/api/errors';
+import { toast } from '@/store/toast';
 import { formatMoney, pulaToThebe, thebeToPula } from '@/lib/utils/money';
 import { todayISO } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
@@ -32,9 +35,12 @@ interface FormState {
   amount: string;          // Pula
   incurred_on: string;     // YYYY-MM-DD
   property_id: string;     // '' = company-wide
+  receipt_file_id: string | null;
+  receipt_name: string | null;
 }
 const emptyForm = (): FormState => ({
   category: 'RENT', description: '', vendor: '', amount: '', incurred_on: todayISO(), property_id: '',
+  receipt_file_id: null, receipt_name: null,
 });
 
 export function OperatingExpensesPage() {
@@ -63,14 +69,32 @@ export function OperatingExpensesPage() {
       category: e.category, description: e.description, vendor: e.vendor ?? '',
       amount: thebeToPula(e.amount), incurred_on: e.incurred_on.slice(0, 10),
       property_id: e.property_id ?? '',
+      receipt_file_id: e.receipt_file_id, receipt_name: e.receipt_name,
     });
     setEditing(e);
+  };
+
+  const canUploadFiles = hasPerm('files.create');
+  const canViewFiles = hasPerm('files.read');
+  const [uploading, setUploading] = useState(false);
+
+  const onPickReceipt = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const up = await uploadFile(file);
+      setForm((f) => ({ ...f, receipt_file_id: up.id, receipt_name: up.original_name }));
+    } catch (err) {
+      toast.error(errMessage(err));
+    } finally {
+      setUploading(false);
+    }
   };
 
   const thebe = pulaToThebe(form.amount);
   const valid = form.description.trim().length > 0 && !Number.isNaN(thebe) && thebe > 0 && /^\d{4}-\d{2}-\d{2}$/.test(form.incurred_on);
 
-  const submit = () => {
+  const submit = (andAnother = false) => {
     if (!valid) return;
     const payload = {
       category: form.category,
@@ -79,10 +103,18 @@ export function OperatingExpensesPage() {
       amount: thebe,
       incurred_on: form.incurred_on,
       property_id: form.property_id || null,
+      receipt_file_id: form.receipt_file_id,
     };
-    const done = { onSuccess: () => setEditing(null) };
-    if (editing === 'new') create.mutate(payload, done);
-    else if (editing) update.mutate({ id: editing.id, input: payload }, done);
+    if (editing === 'new') {
+      create.mutate(payload, {
+        onSuccess: () => andAnother
+          // keep the dialog open for rapid entry; carry date + category forward
+          ? setForm((f) => ({ ...emptyForm(), category: f.category, incurred_on: f.incurred_on }))
+          : setEditing(null),
+      });
+    } else if (editing) {
+      update.mutate({ id: editing.id, input: payload }, { onSuccess: () => setEditing(null) });
+    }
   };
 
   const rows = data ?? [];
@@ -169,6 +201,12 @@ export function OperatingExpensesPage() {
                   <td className="px-4 py-3.5 text-ink">
                     {e.description}
                     {e.vendor && <span className="block text-xs text-muted">{e.vendor}</span>}
+                    {e.receipt_file_id && canViewFiles && (
+                      <button type="button" onClick={() => openFile(e.receipt_file_id!).catch(() => toast.error('Could not open receipt'))}
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-forest hover:underline">
+                        <Paperclip className="h-3 w-3" /> Receipt
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-muted">{e.property_name ?? 'Company-wide'}</td>
                   <td className="px-4 py-3.5 text-right tabnum text-ink">{formatMoney(e.amount, e.currency)}</td>
@@ -225,10 +263,31 @@ export function OperatingExpensesPage() {
               <Label htmlFor="oe-vendor">Vendor <span className="text-muted">(optional)</span></Label>
               <Input id="oe-vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="e.g. BPC" />
             </div>
+            {canUploadFiles && (
+              <div className="col-span-2 flex flex-col gap-1.5">
+                <Label>Receipt <span className="text-muted">(optional — image or PDF)</span></Label>
+                {form.receipt_file_id ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Paperclip className="h-4 w-4 text-muted" />
+                    <span className="text-ink">{form.receipt_name ?? 'Attached'}</span>
+                    <button type="button" className="text-xs text-terra hover:underline"
+                      onClick={() => setForm({ ...form, receipt_file_id: null, receipt_name: null })}>remove</button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*,application/pdf" disabled={uploading}
+                    onChange={(e) => onPickReceipt(e.target.files?.[0])}
+                    className="text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-char hover:file:border-ink" />
+                )}
+                {uploading && <span className="text-xs text-muted">Uploading…</span>}
+              </div>
+            )}
           </div>
           <div className="mt-2 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!valid || busy} onClick={submit}>
+            {editing === 'new' && (
+              <Button variant="outline" disabled={!valid || busy || uploading} onClick={() => submit(true)}>Save &amp; add another</Button>
+            )}
+            <Button variant="primary" disabled={!valid || busy || uploading} onClick={() => submit()}>
               {editing === 'new' ? 'Add cost' : 'Save changes'}
             </Button>
           </div>

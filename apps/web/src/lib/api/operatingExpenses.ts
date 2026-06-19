@@ -16,6 +16,7 @@ export interface OpexInput {
   amount: number;          // thebe
   incurred_on: string;     // YYYY-MM-DD
   notes?: string | null;
+  receipt_file_id?: string | null;
 }
 
 export async function listOperatingExpenses(params: OpexListParams): Promise<OperatingExpense[]> {

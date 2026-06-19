@@ -33,6 +33,7 @@ export class OperatingExpensesService {
         currency: dto.currency ?? 'BWP',
         incurred_on: dto.incurred_on,
         notes: dto.notes ?? null,
+        receipt_file_id: dto.receipt_file_id ?? null,
         created_by: meta.userId,
         updated_by: meta.userId,
       },
@@ -50,6 +51,7 @@ export class OperatingExpensesService {
       ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
       ...(dto.incurred_on !== undefined ? { incurred_on: dto.incurred_on } : {}),
       ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+      ...(dto.receipt_file_id !== undefined ? { receipt_file_id: dto.receipt_file_id } : {}),
     };
     const updated = await this.repository.update(id, patch, meta);
     if (!updated) throw AppError.notFound(`Operating expense ${id} not found`);
