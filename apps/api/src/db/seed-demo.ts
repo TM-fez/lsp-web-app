@@ -30,6 +30,16 @@ const CONNECTION =
   process.env['DATABASE_URL'] ?? 'postgresql://lsp:lsp@localhost:5432/lsp_dev';
 
 // ── Safety guard ────────────────────────────────────────────────────────────
+function hostIsLocal(conn: string): boolean {
+  let host = '';
+  try {
+    host = new URL(conn).hostname;
+  } catch {
+    return false;
+  }
+  return ['localhost', '127.0.0.1', '::1', ''].includes(host);
+}
+
 function assertLocal(conn: string): void {
   if (process.env['ALLOW_NONLOCAL_SEED'] === '1') return;
   let host = '';
@@ -64,7 +74,8 @@ const chance = (p: number) => rnd() < p;
 
 // ── Date helpers (plain YYYY-MM-DD; demo data, property-day precision is fine) ─
 const DAY = 86_400_000;
-const today = new Date('2026-06-18T00:00:00Z');
+// The real current UTC day, so "in-house today" reflects whenever the seed runs.
+const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -96,11 +107,21 @@ const RATES: Record<UnitType, { nightly: number; weekly: number; monthly: number
 const TAX_BPS = 1400; // 14% VAT (Botswana)
 const DEPOSIT_PCT = 50;
 
-const client = new Client({ connectionString: CONNECTION });
+const client = new Client({
+  connectionString: CONNECTION,
+  // Remote hosts (Render/Supabase) require SSL; local Postgres doesn't.
+  ssl: hostIsLocal(CONNECTION) ? false : { rejectUnauthorized: false },
+});
+
+// Aim the whole house (real units + demo units) at roughly this occupancy *today*.
+const TARGET_OCCUPANCY = 0.30;
 
 async function teardown(): Promise<void> {
   // FK-safe order: children first.
   const steps: Array<[string, string]> = [
+    // occupancy rows the live app may have created for demo bookings (FK → reservations/rooms);
+    // must go before reservations + rooms. Only deletes rows tied to demo data.
+    ['occupancy', `DELETE FROM occupancy WHERE reservation_id IN (SELECT id FROM reservations WHERE notes LIKE 'DEMO%') OR room_id IN (SELECT id FROM rooms WHERE code LIKE 'DEMO-%')`],
     ['operating_expenses', `DELETE FROM operating_expenses WHERE notes = 'DEMO'`],
     ['invoices', `DELETE FROM invoices WHERE number LIKE 'INV-DEMO-%'`],
     ['quotes', `DELETE FROM quotes WHERE breakdown->>'demo' = 'true'`],
@@ -170,11 +191,14 @@ async function run(): Promise<void> {
   const ratePlanByType: Record<UnitType, string> = {} as Record<UnitType, string>;
   for (const t of UNIT_TYPES) {
     const r = RATES[t];
+    // active=false: a UNIQUE index allows only one ACTIVE rate plan per unit_type,
+    // and live already has real active ones. Demo quotes reference these by id and
+    // carry their own amounts, so inactive is fine.
     const { rows: [row] } = await client.query(
       `INSERT INTO rate_plans
          (unit_type, name, nightly_rate, weekly_rate, monthly_rate, min_nights,
-          max_guests, deposit_pct, tax_rate_bps, currency, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,'BWP',$9,$9) RETURNING id`,
+          max_guests, deposit_pct, tax_rate_bps, currency, active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,'BWP',false,$9,$9) RETURNING id`,
       [t, `DEMO ${t[0]}${t.slice(1).toLowerCase()} Rate`, r.nightly, r.weekly,
         r.monthly, r.guests, DEPOSIT_PCT, TAX_BPS, A]
     );
@@ -237,77 +261,103 @@ async function run(): Promise<void> {
     if (status === 'PAID') revenue += kind === 'REFUND' ? -total : total;
   };
 
-  for (const room of rooms) {
+  // Insert one stay: reservation + quote + deposit/balance invoices, for a given status.
+  const placeStay = async (room: { id: string; type: UnitType }, checkIn: Date, checkOut: Date, status: string) => {
     const r = RATES[room.type];
-    // Walk forward from ~7 months ago to ~2 months out, placing non-overlapping stays.
+    const nights = Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / DAY));
+    const isPast = status === 'CHECKED_OUT';
+    const isCancelled = status === 'CANCELLED';
+    const guest = pick(guestIds);
+    const guests = randInt(1, r.guests);
+
+    // When the booking was made (deposit paid): a few weeks before check-in, never future.
+    let bookedAt = addDays(checkIn, -randInt(3, 30));
+    if (bookedAt > today) bookedAt = addDays(today, -randInt(0, 5));
+
+    const base = r.nightly * nights;
+    const tax = Math.round(base * TAX_BPS / 10000);
+    const total = base + tax;
+    const deposit = Math.round(total * DEPOSIT_PCT / 100);
+
+    const { rows: [resRow] } = await client.query(
+      `INSERT INTO reservations
+         (contact_id, room_id, check_in_date, check_out_date, status, notes,
+          created_by, updated_by, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
+      [guest, room.id, iso(checkIn), iso(checkOut), status, `DEMO ${room.type} ${nights}n`, A, bookedAt.toISOString()]
+    );
+    nRes++;
+
+    const { rows: [quoteRow] } = await client.query(
+      `INSERT INTO quotes
+         (rate_plan_id, unit_type, check_in_date, check_out_date, guests, nights,
+          currency, base_amount, adjustment_amount, tax_rate_bps, tax_amount,
+          deposit_amount, total_amount, breakdown, status, created_by, expires_at,
+          created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'BWP',$7,0,$8,$9,$10,$11,$12,'ACTIVE',$13,$14,$15,$15)
+       RETURNING id`,
+      [ratePlanByType[room.type], room.type, iso(checkIn), iso(checkOut), guests, nights,
+        base, TAX_BPS, tax, deposit, total,
+        JSON.stringify({ demo: true, nightly: r.nightly, nights }), A,
+        addDays(checkIn, -1).toISOString(), bookedAt.toISOString()]
+    );
+
+    const cancelledAt = addDays(checkIn, -randInt(0, 2));
+    if (isCancelled) {
+      if (chance(0.5)) {
+        await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'REFUNDED', bookedAt);
+        await newInvoice(quoteRow.id, resRow.id, 'REFUND', deposit, 'PAID', cancelledAt);
+      } else {
+        await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'PAID', bookedAt);
+      }
+    } else {
+      await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'PAID', bookedAt);
+      const balance = total - deposit;
+      await newInvoice(quoteRow.id, resRow.id, 'BALANCE', balance, isPast ? 'PAID' : 'ISSUED', isPast ? checkOut : bookedAt);
+    }
+  };
+
+  // How many demo units should be in-house TODAY to bring the whole house (real +
+  // demo units) to ~TARGET_OCCUPANCY. Real units already occupied today count, so
+  // we only top up the difference.
+  const { rows: [occ] } = await client.query(
+    `SELECT
+       (SELECT count(*) FROM rooms WHERE deleted_at IS NULL AND code NOT LIKE 'DEMO-%') AS existing_rooms,
+       (SELECT count(DISTINCT r.room_id) FROM reservations r
+          JOIN rooms rm ON rm.id = r.room_id
+          WHERE r.deleted_at IS NULL AND rm.code NOT LIKE 'DEMO-%'
+            AND r.status IN ('CONFIRMED','CHECKED_IN')
+            AND r.check_in_date <= CURRENT_DATE AND r.check_out_date > CURRENT_DATE) AS existing_inhouse`
+  );
+  const existingRooms = Number(occ.existing_rooms);
+  const existingInhouse = Number(occ.existing_inhouse);
+  const totalUnits = existingRooms + rooms.length;
+  const demoToOccupy = Math.max(0, Math.min(rooms.length, Math.round(TARGET_OCCUPANCY * totalUnits) - existingInhouse));
+  let nInhouse = 0;
+
+  for (let idx = 0; idx < rooms.length; idx++) {
+    const room = rooms[idx]!;
+    const occupyToday = idx < demoToOccupy;
+    // Occupied units get history only up to ~a week ago, then a current CHECKED_IN stay,
+    // so there's no overlap with the live booking.
+    const roomHorizon = occupyToday ? addDays(today, -8) : addDays(today, 60);
+
     let cursor = addDays(today, -randInt(200, 215));
-    const horizon = addDays(today, 60);
-    while (cursor < horizon) {
+    while (cursor < roomHorizon) {
       const nights = randInt(2, 21);
       const checkIn = cursor;
       const checkOut = addDays(checkIn, nights);
-      if (checkOut >= horizon) break;
-
+      if (checkOut >= roomHorizon) break;
       const isPast = checkOut < today;
       const isCancelled = chance(0.08);
       const status = isCancelled ? 'CANCELLED' : isPast ? 'CHECKED_OUT' : chance(0.8) ? 'CONFIRMED' : 'PENDING';
-      const guest = pick(guestIds);
-      const guests = randInt(1, r.guests);
-
-      // When the booking was made (and the deposit paid): a few weeks before
-      // check-in, but never in the future.
-      let bookedAt = addDays(checkIn, -randInt(3, 30));
-      if (bookedAt > today) bookedAt = addDays(today, -randInt(0, 5));
-
-      // Pricing
-      const base = r.nightly * nights;
-      const tax = Math.round(base * TAX_BPS / 10000);
-      const total = base + tax;
-      const deposit = Math.round(total * DEPOSIT_PCT / 100);
-
-      const { rows: [resRow] } = await client.query(
-        `INSERT INTO reservations
-           (contact_id, room_id, check_in_date, check_out_date, status, notes,
-            created_by, updated_by, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
-        [guest, room.id, iso(checkIn), iso(checkOut), status,
-          `DEMO ${room.type} ${nights}n`, A, bookedAt.toISOString()]
-      );
-      nRes++;
-
-      const { rows: [quoteRow] } = await client.query(
-        `INSERT INTO quotes
-           (rate_plan_id, unit_type, check_in_date, check_out_date, guests, nights,
-            currency, base_amount, adjustment_amount, tax_rate_bps, tax_amount,
-            deposit_amount, total_amount, breakdown, status, created_by, expires_at,
-            created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,'BWP',$7,0,$8,$9,$10,$11,$12,'ACTIVE',$13,$14,$15,$15)
-         RETURNING id`,
-        [ratePlanByType[room.type], room.type, iso(checkIn), iso(checkOut), guests, nights,
-          base, TAX_BPS, tax, deposit, total,
-          JSON.stringify({ demo: true, nightly: r.nightly, nights }), A,
-          addDays(checkIn, -1).toISOString(), bookedAt.toISOString()]
-      );
-
-      // Invoices: deposit paid at booking; balance paid at check-out (past stays).
-      const cancelledAt = addDays(checkIn, -randInt(0, 2));
-      if (isCancelled) {
-        // Deposit was taken; half the time refunded, half forfeited (kept as revenue).
-        if (chance(0.5)) {
-          await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'REFUNDED', bookedAt);
-          await newInvoice(quoteRow.id, resRow.id, 'REFUND', deposit, 'PAID', cancelledAt);
-        } else {
-          await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'PAID', bookedAt);
-        }
-      } else {
-        await newInvoice(quoteRow.id, resRow.id, 'DEPOSIT', deposit, 'PAID', bookedAt);
-        const balance = total - deposit;
-        await newInvoice(quoteRow.id, resRow.id, 'BALANCE', balance, isPast ? 'PAID' : 'ISSUED',
-          isPast ? checkOut : bookedAt);
-      }
-
-      // advance cursor past this stay + a gap
+      await placeStay(room, checkIn, checkOut, status);
       cursor = addDays(checkOut, randInt(1, 18));
+    }
+
+    if (occupyToday) {
+      await placeStay(room, addDays(today, -randInt(1, 6)), addDays(today, randInt(2, 9)), 'CHECKED_IN');
+      nInhouse++;
     }
   }
 
@@ -385,6 +435,8 @@ async function run(): Promise<void> {
   console.log(`  invoices:      ${nInv}`);
   console.log(`  work orders:   ${nWO}`);
   console.log(`  opex entries:  ${nOpex}`);
+  const inhouse = existingInhouse + nInhouse;
+  console.log(`  in-house today: ${inhouse}/${totalUnits} units (~${Math.round((inhouse / totalUnits) * 100)}% — ${nInhouse} demo + ${existingInhouse} real)`);
   const netMargin = revenue - expenses - opexTotal;
   console.log(`  ── paid revenue (incl. refunds): ${P(revenue)}`);
   console.log(`  ── maintenance cost:             ${P(expenses)}`);
