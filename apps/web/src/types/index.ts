@@ -268,6 +268,30 @@ export interface ReportsResponse {
   by_property: PropertyPnl[];
 }
 
+// ── Finance → HR / Payroll ──────────────────────────────────────────────────
+export type PayFrequency = 'MONTHLY' | 'WEEKLY';
+export interface EmployeePay {
+  user_id: string;
+  name: string;
+  role: string;
+  is_lead: boolean;
+  job_title: string | null;
+  gross_amount: number | null;        // thebe
+  frequency: PayFrequency | null;
+  monthly_equivalent: number | null;
+  payment_method: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  start_date: string | null;
+  active: boolean;
+  notes: string | null;
+}
+export interface PayrollSummary {
+  headcount: number;
+  monthly_total: number;              // thebe
+  by_role: { role: string; headcount: number; monthly: number }[];
+}
+
 // ── Finance → Operating expenses ledger ─────────────────────────────────────
 export type OperatingExpenseCategory =
   | 'RENT' | 'PAYROLL' | 'UTILITIES' | 'MARKETING'

@@ -65,6 +65,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/invoices', label: 'Invoices', icon: FileText, perm: 'invoices.read', built: true },
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },
       { to: '/operating-expenses', label: 'Operating costs', icon: Banknote, perm: 'opex.read', built: true },
+      { to: '/payroll', label: 'Payroll', icon: Users, perm: 'payroll.read', built: true },
       { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.read', built: true },
     ],
   },

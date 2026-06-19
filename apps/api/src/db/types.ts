@@ -388,6 +388,23 @@ export interface OperatingExpensesTable {
   updated_at: Generated<Date>;
 }
 
+export interface StaffCompensationTable {
+  user_id: string;
+  job_title: string | null;
+  gross_amount: number;
+  frequency: 'MONTHLY' | 'WEEKLY';
+  payment_method: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  start_date: Date | null;
+  active: Generated<boolean>;
+  notes: string | null;
+  created_by: string;
+  updated_by: string;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ── Database interface ────────────────────────────────────────────────────────
 
 export interface Database {
@@ -415,6 +432,7 @@ export interface Database {
   payment_attempts: PaymentAttemptsTable;
   invoices: InvoicesTable;
   operating_expenses: OperatingExpensesTable;
+  staff_compensation: StaffCompensationTable;
 }
 
 // ── Row type helpers ──────────────────────────────────────────────────────────
@@ -494,3 +512,7 @@ export type UpdateInvoice  = Updateable<InvoicesTable>;
 export type OperatingExpenseRow    = Selectable<OperatingExpensesTable>;
 export type NewOperatingExpense    = Insertable<OperatingExpensesTable>;
 export type UpdateOperatingExpense = Updateable<OperatingExpensesTable>;
+
+export type StaffCompensationRow    = Selectable<StaffCompensationTable>;
+export type NewStaffCompensation    = Insertable<StaffCompensationTable>;
+export type UpdateStaffCompensation = Updateable<StaffCompensationTable>;
