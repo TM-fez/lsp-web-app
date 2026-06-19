@@ -24,6 +24,7 @@ export function createInvoicesRouter(dbInstance = db): Router {
   router.use(authenticate);
 
   router.get('/', authorize('invoices.read'), controller.list);
+  router.get('/:id/document', authorize('invoices.read'), controller.document);
   router.get('/:id', authorize('invoices.read'), controller.get);
   router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), controller.issue);
   router.post('/:id/settle', authorize('invoices.update'), validateBody(SettleInvoiceSchema), controller.settle);

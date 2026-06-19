@@ -157,6 +157,9 @@ export function InvoicesPage() {
                   <td className="px-4 py-3.5 text-muted">{fmtDate(inv.created_at)}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => window.open(`/invoices/${inv.id}/print`, '_blank')}>
+                        <FileText className="mr-1 h-3.5 w-3.5" />View
+                      </Button>
                       {(inv.status === 'ISSUED' || inv.status === 'PARTIALLY_PAID') && canSettle && (
                         <Button size="sm" variant="primary" disabled={busy} onClick={() => settle.mutate(inv.id)}>
                           Mark paid

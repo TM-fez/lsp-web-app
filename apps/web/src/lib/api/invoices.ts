@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Invoice, InvoiceStatus, InvoiceKind, Paginated } from '@/types';
+import type { Invoice, InvoiceStatus, InvoiceKind, InvoiceDocument, Paginated } from '@/types';
 
 export interface InvoiceListParams {
   status?: InvoiceStatus;
@@ -10,6 +10,11 @@ export interface InvoiceListParams {
 
 export async function listInvoices(params: InvoiceListParams): Promise<Paginated<Invoice>> {
   const { data } = await api.get<Paginated<Invoice>>('/invoices', { params });
+  return data;
+}
+
+export async function getInvoiceDocument(id: string): Promise<InvoiceDocument> {
+  const { data } = await api.get<InvoiceDocument>(`/invoices/${id}/document`);
   return data;
 }
 

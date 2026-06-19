@@ -32,6 +32,14 @@ export class InvoicesController {
     }
   };
 
+  document = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.getInvoiceDocument(req.params.id as string));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   issue = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as IssueInvoiceDTO;

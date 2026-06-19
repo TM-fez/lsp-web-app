@@ -1,11 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listInvoices, issueInvoice, settleInvoice, refundInvoice, type InvoiceListParams } from '@/lib/api/invoices';
+import { listInvoices, issueInvoice, settleInvoice, refundInvoice, getInvoiceDocument, type InvoiceListParams } from '@/lib/api/invoices';
 import { listQuotes } from '@/lib/api/quotes';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
-import type { Invoice, Paginated, Quote } from '@/types';
+import type { Invoice, InvoiceDocument, Paginated, Quote } from '@/types';
 
 const KEY = ['invoices'] as const;
+
+export function useInvoiceDocument(id: string) {
+  return useQuery<InvoiceDocument>({
+    queryKey: [...KEY, 'document', id],
+    queryFn: () => getInvoiceDocument(id),
+  });
+}
 
 export function useInvoices(params: InvoiceListParams) {
   return useQuery<Paginated<Invoice>>({

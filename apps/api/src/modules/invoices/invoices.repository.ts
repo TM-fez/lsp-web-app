@@ -15,6 +15,27 @@ export class InvoicesRepository {
       .executeTakeFirst();
   }
 
+  // Everything a printable invoice/receipt needs: the invoice + the guest + the stay.
+  async findDocumentData(id: string) {
+    return this.db
+      .selectFrom('invoices as i')
+      .leftJoin('reservations as rsv', 'rsv.id', 'i.reservation_id')
+      .leftJoin('contacts as c', 'c.id', 'rsv.contact_id')
+      .leftJoin('rooms as rm', 'rm.id', 'rsv.room_id')
+      .leftJoin('quotes as q', 'q.id', 'i.quote_id')
+      .select([
+        'i.id', 'i.number', 'i.kind', 'i.status', 'i.currency',
+        'i.subtotal_amount', 'i.tax_rate_bps', 'i.tax_amount', 'i.total_amount', 'i.created_at',
+        'c.name as guest_name', 'c.email as guest_email', 'c.phone as guest_phone',
+        sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
+        sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
+        'rm.code as unit_code', 'rm.name as unit_name', 'q.nights', 'q.unit_type',
+      ])
+      .where('i.id', '=', id)
+      .where('i.deleted_at', 'is', null)
+      .executeTakeFirst();
+  }
+
   async findPaginated(
     filters: InvoiceFilters,
     pagination: PaginationOptions

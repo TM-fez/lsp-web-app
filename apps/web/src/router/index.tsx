@@ -15,6 +15,7 @@ import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { InvoicesPage } from '@/features/invoices/InvoicesPage';
+import { InvoiceDocumentPage } from '@/features/invoices/InvoiceDocumentPage';
 import { OperatingExpensesPage } from '@/features/operating-expenses/OperatingExpensesPage';
 import { PayrollPage } from '@/features/payroll/PayrollPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
@@ -32,6 +33,8 @@ export const router = createBrowserRouter([
   {
     element: <ProtectedRoute />,
     children: [
+      // Chrome-less, authed — opens clean for printing / save-as-PDF.
+      { path: '/invoices/:id/print', element: <InvoiceDocumentPage /> },
       {
         element: <AppShell />,
         children: [
