@@ -241,6 +241,7 @@ export interface PnlSummary {
   total_cost: number;
   net: number;
   margin_pct: number;
+  vat_output: number;
   reservations: number;
   room_nights_booked: number;
   room_nights_available: number;

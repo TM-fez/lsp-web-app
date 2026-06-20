@@ -58,6 +58,22 @@ export class ReportsRepository {
     return r.rows;
   }
 
+  // Output VAT collected (tax on PAID invoices, refunds negative) — for BURS returns.
+  async vatOutput(w: RepoWindow): Promise<string | number | null> {
+    const r = await sql<{ vat: string | number | null }>`
+      SELECT SUM(CASE WHEN i.kind = 'REFUND' THEN -i.tax_amount ELSE i.tax_amount END) AS vat
+      FROM invoices i
+      LEFT JOIN reservations rsv ON rsv.id = i.reservation_id
+      LEFT JOIN rooms rm ON rm.id = rsv.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
+        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        ${byProp(w.propertyId)}`.execute(this.db);
+    return r.rows[0]?.vat ?? 0;
+  }
+
   // ── Maintenance / contractor cost (approved spend, by opened date) ────────────
   async maintenanceByMonth(w: RepoWindow): Promise<MonthAmount[]> {
     const r = await sql<MonthAmount>`

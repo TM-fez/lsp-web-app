@@ -46,7 +46,7 @@ export class ReportsService {
     const [
       revMonth, maintMonth, opexMonth,
       revProp, maintProp, opexProp,
-      occProp, roomCounts,
+      occProp, roomCounts, vatTotal,
     ] = await Promise.all([
       this.repo.revenueByMonth(w),
       this.repo.maintenanceByMonth(w),
@@ -56,6 +56,7 @@ export class ReportsService {
       this.repo.opexByProperty(w),
       this.repo.occupancyByProperty(w),
       this.repo.roomCountByProperty(w.propertyId),
+      this.repo.vatOutput(w),
     ]);
 
     // ── Monthly series ──────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ export class ReportsService {
         total_cost,
         net,
         margin_pct: revenue > 0 ? round1((net / revenue) * 100) : 0,
+        vat_output: num(vatTotal),
         reservations,
         room_nights_booked,
         room_nights_available,

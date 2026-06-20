@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils/cn';
 import { todayISO } from '@/lib/utils/date';
 import { usePnl } from './hooks';
+import { downloadPnlCsv } from './csv';
 import type { MonthlyPoint, PropertyPnl } from '@/types';
 
 // ── palette (matches the editorial theme tokens) ──────────────────────────────
@@ -97,10 +100,17 @@ function Metric({ label, value, sub, tone }: { label: string; value: string; sub
 
 export function ReportsPage() {
   const [months, setMonths] = useState<number>(12);
-  const { from, to } = windowFor(months);
-  const { data, isLoading, isError, refetch } = usePnl({ from, to });
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const useCustom = !!(customFrom && customTo && customFrom <= customTo);
+  const preset = windowFor(months);
+  const from = useCustom ? customFrom : preset.from;
+  const to = useCustom ? customTo : preset.to;
 
+  const { data, isLoading, isError, refetch } = usePnl({ from, to });
   const s = data?.summary;
+
+  const openStatement = () => window.open(`/reports/print?from=${from}&to=${to}`, '_blank');
 
   return (
     <div className="flex flex-col gap-8">
@@ -117,10 +127,10 @@ export function ReportsPage() {
             <button
               key={p.months}
               type="button"
-              onClick={() => setMonths(p.months)}
+              onClick={() => { setMonths(p.months); setCustomFrom(''); setCustomTo(''); }}
               className={cn(
                 'rounded-full border px-3.5 py-1.5 text-xs transition-[background-color,color,border-color] duration-300',
-                months === p.months ? 'border-forest bg-forest text-cream' : 'border-line bg-paper text-char hover:border-ink',
+                months === p.months && !useCustom ? 'border-forest bg-forest text-cream' : 'border-line bg-paper text-char hover:border-ink',
               )}
             >
               {p.label}
@@ -128,6 +138,24 @@ export function ReportsPage() {
           ))}
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[11px] uppercase tracking-[0.18em] text-muted">Custom range</span>
+        <Input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-40" />
+        <span className="text-muted">→</span>
+        <Input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-40" />
+        {useCustom && (
+          <button type="button" onClick={() => { setCustomFrom(''); setCustomTo(''); }} className="text-xs text-terra hover:underline">Clear</button>
+        )}
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" disabled={!data} onClick={() => data && downloadPnlCsv(data, from, to)}>
+            <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={openStatement}>
+            <Printer className="mr-1.5 h-3.5 w-3.5" />Print statement
+          </Button>
+        </div>
+      </div>
 
       {isLoading ? (
         <div className="flex h-60 items-center justify-center"><Spinner className="h-6 w-6" /></div>
@@ -139,12 +167,13 @@ export function ReportsPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Metric label="Revenue" value={compactPula(s.revenue)} sub={fullPula(s.revenue)} />
             <Metric label="Total cost" value={compactPula(s.total_cost)}
               sub={`maint ${compactPula(s.maintenance_cost)} · opex ${compactPula(s.operating_expenses)}`} />
             <Metric label="Net margin" value={compactPula(s.net)} sub={`${s.margin_pct}% of revenue`}
               tone={s.net >= 0 ? 'pos' : 'neg'} />
+            <Metric label="VAT collected" value={compactPula(s.vat_output)} sub="output VAT for BURS" />
             <Metric label="Occupancy" value={`${s.occupancy_pct}%`}
               sub={`${s.room_nights_booked.toLocaleString('en')} of ${s.room_nights_available.toLocaleString('en')} nights`} />
           </div>
@@ -176,6 +205,7 @@ export function ReportsPage() {
                     <th className="px-4 py-3.5 text-right font-medium">Operating</th>
                     <th className="px-4 py-3.5 text-right font-medium">Net</th>
                     <th className="px-4 py-3.5 text-right font-medium">Occupancy</th>
+                    <th className="px-4 py-3.5 text-right font-medium" />
                   </tr>
                 </thead>
                 <tbody>
@@ -187,6 +217,12 @@ export function ReportsPage() {
                       <td className="px-4 py-3.5 text-right tabnum text-muted" title={fullPula(p.operating_expenses)}>{compactPula(p.operating_expenses)}</td>
                       <td className={cn('px-4 py-3.5 text-right tabnum', p.net >= 0 ? 'text-forest' : 'text-terra')} title={fullPula(p.net)}>{compactPula(p.net)}</td>
                       <td className="px-4 py-3.5 text-right tabnum text-muted">{p.occupancy_pct === null ? '—' : `${p.occupancy_pct}%`}</td>
+                      <td className="px-4 py-3.5 text-right">
+                        {p.property_id && (
+                          <button type="button" onClick={() => window.open(`/reports/print?from=${from}&to=${to}&property_id=${p.property_id}`, '_blank')}
+                            className="text-xs text-forest hover:underline">Statement</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
