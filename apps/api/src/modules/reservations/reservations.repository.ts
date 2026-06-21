@@ -179,4 +179,36 @@ export class ReservationsRepository {
       return updated;
     });
   }
+
+  /**
+   * Soft-delete a reservation: stamp deleted_at/deleted_by so it disappears from
+   * every list (all queries filter `deleted_at is null`) while the row — and its
+   * audit trail — are retained. Used to clear a cancelled booking off the board.
+   */
+  async softDelete(id: string, meta: ReservationRequestMeta): Promise<boolean> {
+    return this.db.transaction().execute(async (trx) => {
+      const deleted = await trx
+        .updateTable('reservations')
+        .set({ deleted_at: sql`now()`, deleted_by: meta.userId })
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (deleted) {
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'DELETE',
+          entity: 'reservations',
+          entity_id: id,
+          diff: { deleted_at: deleted.deleted_at, deleted_by: deleted.deleted_by },
+          ip_address: meta.ip ?? null,
+        }).execute();
+        return true;
+      }
+
+      return false;
+    });
+  }
 }

@@ -11,6 +11,7 @@ import {
   useCreateReservation,
   useUpdateReservation,
   useCancelReservation,
+  useRemoveReservation,
   useAvailability,
   useSetDiscount,
   useApproveDiscount,
@@ -46,6 +47,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const create = useCreateReservation();
   const update = useUpdateReservation();
   const cancel = useCancelReservation();
+  const remove = useRemoveReservation();
   const setDiscM = useSetDiscount();
   const approveDisc = useApproveDiscount();
   const removeDisc = useRemoveDiscount();
@@ -66,6 +68,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [checkOut, setCheckOut] = useState('');
   const [notes, setNotes] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [discValue, setDiscValue] = useState('');
   const [discReason, setDiscReason] = useState('');
@@ -137,6 +140,16 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     }
   }
 
+  async function doRemove() {
+    if (!reservation) return;
+    try {
+      await remove.mutateAsync(reservation.id);
+      onOpenChange(false);
+    } catch {
+      /* toast shown by hook */
+    }
+  }
+
   function applyDiscount() {
     if (!reservation || !discValue) return;
     const value = discType === 'PERCENT' ? Math.round(parseFloat(discValue)) : Math.round(parseFloat(discValue) * 100);
@@ -170,6 +183,30 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             </Row>
             {r.notes && <Row label="Notes">{r.notes}</Row>}
           </div>
+          {r.status === 'CANCELLED' && canCancel && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
+              <Label className="text-rose-600">Danger zone</Label>
+              {!confirmRemove ? (
+                <Button variant="outline" onClick={() => setConfirmRemove(true)} disabled={remove.isPending}>
+                  Remove from list
+                </Button>
+              ) : (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 p-3">
+                  <span className="text-sm text-rose-700">
+                    Remove this cancelled booking from the list? It stays on record but is hidden everywhere.
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="ghost" onClick={() => setConfirmRemove(false)} disabled={remove.isPending}>
+                      Keep
+                    </Button>
+                    <Button variant="danger" onClick={doRemove} disabled={remove.isPending}>
+                      {remove.isPending && <Spinner className="text-white" />} Remove
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex justify-end pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
