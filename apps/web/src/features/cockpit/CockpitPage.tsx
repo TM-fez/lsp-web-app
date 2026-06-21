@@ -8,6 +8,7 @@ import { UnitBoard } from './UnitBoard';
 import { HousekeepingQueue } from './HousekeepingQueue';
 import { AssignBookingDrawer } from './AssignBookingDrawer';
 import { ActivityFeed } from './ActivityFeed';
+import { WebsiteBookingsAlert } from './WebsiteBookingsAlert';
 import { isAssignable } from './status';
 import { summarize } from './board';
 import { todayISO } from '@/lib/utils/date';
@@ -95,6 +96,8 @@ export function CockpitPage() {
           Assign booking
         </Button>
       </header>
+
+      <WebsiteBookingsAlert />
 
       <section className="animate-rise d-2 grid grid-cols-2 border-y border-line lg:grid-cols-4">
         <Stat no="01" k="In-house tonight" value={data.in_house.length} foot="currently staying" />
