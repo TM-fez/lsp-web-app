@@ -249,8 +249,8 @@ export class ReservationsService {
     }
 
     const updated = await this.repository.update(
-      id, 
-      { status: 'CANCELLED', updated_by: meta.userId }, 
+      id,
+      { status: 'CANCELLED', updated_by: meta.userId },
       meta
     );
 
@@ -258,5 +258,26 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to cancel reservation with id ${id}`);
     }
     return updated;
+  }
+
+  /**
+   * Permanently remove a cancelled booking from the lists (soft-delete: the row is
+   * retained for audit, but hidden everywhere). Restricted to CANCELLED so a live
+   * booking — one still holding a unit or already checked in — can never be erased;
+   * cancel it first (which frees the unit), then remove it.
+   */
+  async removeReservation(id: string, meta: ReservationRequestMeta): Promise<void> {
+    const existing = await this.getReservationById(id);
+
+    if (existing.status !== 'CANCELLED') {
+      throw AppError.conflict(
+        'Only a cancelled reservation can be removed. Cancel it first to free the unit, then remove it from the list.',
+      );
+    }
+
+    const ok = await this.repository.softDelete(id, meta);
+    if (!ok) {
+      throw AppError.notFound(`Failed to remove reservation with id ${id}`);
+    }
   }
 }

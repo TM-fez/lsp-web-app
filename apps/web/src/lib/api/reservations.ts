@@ -47,6 +47,12 @@ export async function cancelReservation(id: string): Promise<Reservation> {
   return data;
 }
 
+// Permanently remove a CANCELLED booking from the lists (server soft-deletes it:
+// the row is kept for audit but hidden everywhere). Rejected for any other status.
+export async function removeReservation(id: string): Promise<void> {
+  await api.delete(`/reservations/${id}/remove`);
+}
+
 export interface SetDiscountInput {
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: number; // percent points, or thebe for FIXED

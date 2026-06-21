@@ -131,4 +131,14 @@ export class ReservationsController {
       next(err);
     }
   };
+
+  removeReservation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      await this.service.removeReservation(req.params.id as string, meta);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  };
 }

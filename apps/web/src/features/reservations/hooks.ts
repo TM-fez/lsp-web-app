@@ -4,6 +4,7 @@ import {
   createReservation,
   updateReservation,
   cancelReservation,
+  removeReservation,
   checkAvailability,
   setDiscount,
   approveDiscount,
@@ -65,6 +66,18 @@ export function useCancelReservation() {
     mutationFn: (id: string) => cancelReservation(id),
     onSuccess: () => {
       toast.success('Reservation cancelled');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useRemoveReservation() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => removeReservation(id),
+    onSuccess: () => {
+      toast.success('Reservation removed');
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),

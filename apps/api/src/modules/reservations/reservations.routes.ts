@@ -33,6 +33,8 @@ export function createReservationsRouter(dbInstance = db): Router {
   
   // Specific endpoint for cancellation could be POST /:id/cancel or DELETE /:id
   router.delete('/:id', authorize('reservations.delete'), controller.cancelReservation);
+  // Permanently remove a cancelled booking from the lists (soft-delete; CANCELLED only).
+  router.delete('/:id/remove', authorize('reservations.delete'), controller.removeReservation);
 
   // Build 2b — per-booking discount: request (operations) → approve (Tameem/admin).
   router.post('/:id/discount', authorize('reservations.discount.request'), controller.setDiscount);

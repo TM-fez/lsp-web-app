@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';

@@ -193,7 +193,9 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
                 </Button>
               ) : (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 p-3">
-                  <span className="text-sm text-rose-700">Remove {guest?.name}? They’ll be hidden from the directory.</span>
+                  <span className="text-sm text-rose-700">
+                    Remove {guest?.name}? They’re archived — taken off the guest directory, but kept on record so their past bookings stay intact.
+                  </span>
                   <div className="flex gap-2">
                     <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={busy}>
                       Keep
