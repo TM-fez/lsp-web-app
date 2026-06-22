@@ -9,7 +9,7 @@ vi.mock('./hooks', () => ({
       summary: {
         from: '2025-07-01', to: '2026-06-30',
         revenue: 345_941_550, maintenance_cost: 12_810_000, operating_expenses: 106_488_000,
-        total_cost: 119_298_000, net: 226_643_550, margin_pct: 65.5,
+        total_cost: 119_298_000, net: 226_643_550, margin_pct: 65.5, vat_output: 42_500_000,
         reservations: 246, room_nights_booked: 2777, room_nights_available: 8760, occupancy_pct: 31.7,
       },
       monthly: [

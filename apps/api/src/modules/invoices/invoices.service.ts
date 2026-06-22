@@ -30,6 +30,13 @@ export class InvoicesService {
     return invoice;
   }
 
+  /** Enriched data for a printable invoice/receipt (invoice + guest + stay). */
+  async getInvoiceDocument(id: string) {
+    const doc = await this.repository.findDocumentData(id);
+    if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
+    return doc;
+  }
+
   async listInvoices(filters: InvoiceFilters, pagination: PaginationOptions): Promise<PaginatedResult<InvoiceRow>> {
     return this.repository.findPaginated(filters, pagination);
   }

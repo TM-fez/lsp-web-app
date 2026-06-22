@@ -241,6 +241,7 @@ export interface PnlSummary {
   total_cost: number;
   net: number;
   margin_pct: number;
+  vat_output: number;
   reservations: number;
   room_nights_booked: number;
   room_nights_available: number;
@@ -370,6 +371,28 @@ export interface Quote {
   deposit_amount: number;
   tax_amount: number;
   status: 'ACTIVE' | 'EXPIRED' | 'CONSUMED';
+}
+
+export interface InvoiceDocument {
+  id: string;
+  number: string;
+  kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
+  status: InvoiceStatus;
+  currency: string;
+  subtotal_amount: number;
+  tax_rate_bps: number;
+  tax_amount: number;
+  total_amount: number;
+  created_at: string;
+  guest_name: string | null;
+  guest_email: string | null;
+  guest_phone: string | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  nights: number | null;
+  unit_type: string | null;
 }
 
 export interface Hold {
