@@ -40,6 +40,14 @@ export class InvoicesController {
     }
   };
 
+  send = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.sendInvoiceToGuest(req.params.id as string, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   issue = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as IssueInvoiceDTO;

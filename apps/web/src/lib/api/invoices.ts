@@ -18,6 +18,11 @@ export async function getInvoiceDocument(id: string): Promise<InvoiceDocument> {
   return data;
 }
 
+export async function sendInvoice(id: string): Promise<{ sent: true; to: string }> {
+  const { data } = await api.post<{ sent: true; to: string }>(`/invoices/${id}/send`, {});
+  return data;
+}
+
 export async function issueInvoice(quote_id: string, kind: 'DEPOSIT' | 'BALANCE'): Promise<Invoice> {
   const { data } = await api.post<Invoice>('/invoices', { quote_id, kind });
   return data;

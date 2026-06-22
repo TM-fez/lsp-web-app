@@ -14,6 +14,7 @@ vi.mock('./hooks', () => ({
     },
     isLoading: false, isError: false,
   }),
+  useSendInvoice: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { InvoiceDocumentPage } from './InvoiceDocumentPage';
