@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listInvoices, issueInvoice, settleInvoice, refundInvoice, getInvoiceDocument, type InvoiceListParams } from '@/lib/api/invoices';
+import { listInvoices, issueInvoice, settleInvoice, refundInvoice, getInvoiceDocument, sendInvoice, type InvoiceListParams } from '@/lib/api/invoices';
 import { listQuotes } from '@/lib/api/quotes';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
@@ -11,6 +11,14 @@ export function useInvoiceDocument(id: string) {
   return useQuery<InvoiceDocument>({
     queryKey: [...KEY, 'document', id],
     queryFn: () => getInvoiceDocument(id),
+  });
+}
+
+export function useSendInvoice() {
+  return useMutation({
+    mutationFn: (id: string) => sendInvoice(id),
+    onSuccess: (r) => toast.success(`Sent to ${r.to} ✓`),
+    onError: (e) => toast.error(errMessage(e)),
   });
 }
 

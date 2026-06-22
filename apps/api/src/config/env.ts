@@ -50,6 +50,12 @@ const schema = z.object({
 
   BCRYPT_ROUNDS: z.coerce.number().default(12),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+
+  // Email via Brevo transactional API. Optional — when BREVO_API_KEY or EMAIL_FROM
+  // are unset, sending is disabled and the send endpoint returns a clear error.
+  BREVO_API_KEY: z.string().optional(),      // Brevo API v3 key (xkeysib-…)
+  EMAIL_FROM: z.string().optional(),         // a sender address verified in Brevo
+  EMAIL_FROM_NAME: z.string().default('Lifestyle Apartments'),
 });
 
 const result = schema.safeParse(process.env);

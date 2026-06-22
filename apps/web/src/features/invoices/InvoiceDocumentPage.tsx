@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useAuthStore } from '@/store/auth';
 import { formatMoney } from '@/lib/utils/money';
-import { useInvoiceDocument } from './hooks';
+import { useInvoiceDocument, useSendInvoice } from './hooks';
 import type { InvoiceDocument } from '@/types';
 
 // Company header on the document. Edit here (or wire to settings later).
@@ -32,6 +33,8 @@ export function InvoiceDocumentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: d, isLoading, isError } = useInvoiceDocument(id ?? '');
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const send = useSendInvoice();
 
   if (isLoading) return <div className="flex h-screen items-center justify-center"><Spinner className="h-6 w-6" /></div>;
   if (isError || !d) {
@@ -51,7 +54,14 @@ export function InvoiceDocumentPage() {
 
       <div className="no-print mx-auto mb-4 flex max-w-[760px] items-center justify-between px-4">
         <Button variant="outline" onClick={() => navigate('/invoices')}><ArrowLeft className="mr-1.5 h-4 w-4" />Back</Button>
-        <Button variant="primary" onClick={() => window.print()}><Printer className="mr-1.5 h-4 w-4" />Print / Save as PDF</Button>
+        <div className="flex gap-2">
+          {hasPerm('invoices.update') && d.guest_email && (
+            <Button variant="outline" disabled={send.isPending} onClick={() => send.mutate(d.id)}>
+              <Mail className="mr-1.5 h-4 w-4" />{send.isPending ? 'Sending…' : 'Email to guest'}
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => window.print()}><Printer className="mr-1.5 h-4 w-4" />Print / Save as PDF</Button>
+        </div>
       </div>
 
       <article className="mx-auto max-w-[760px] bg-white p-10 text-slate-900 shadow-sm print:max-w-none print:p-0 print:shadow-none">

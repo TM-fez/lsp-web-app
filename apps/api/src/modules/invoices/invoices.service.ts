@@ -4,6 +4,8 @@ import { QuotesService } from '../quotes/quotes.service.js';
 import { FilesRepository } from '../files/files.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { splitInclusive } from '../quotes/quotes.util.js';
+import { renderInvoiceEmail } from './invoices.email.js';
+import { sendEmail } from '../../core/email/email.service.js';
 import type { InvoiceRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type {
@@ -35,6 +37,17 @@ export class InvoicesService {
     const doc = await this.repository.findDocumentData(id);
     if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
     return doc;
+  }
+
+  /** Email the invoice/receipt to the guest on the linked reservation. */
+  async sendInvoiceToGuest(id: string, meta: InvoiceRequestMeta): Promise<{ sent: true; to: string }> {
+    const doc = await this.repository.findDocumentData(id);
+    if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
+    if (!doc.guest_email) throw AppError.badRequest('This invoice has no guest email on file.');
+    const { subject, html } = renderInvoiceEmail(doc);
+    await sendEmail({ to: doc.guest_email, subject, html });
+    await this.repository.recordEmailSent(id, doc.guest_email, meta);
+    return { sent: true, to: doc.guest_email };
   }
 
   async listInvoices(filters: InvoiceFilters, pagination: PaginationOptions): Promise<PaginatedResult<InvoiceRow>> {

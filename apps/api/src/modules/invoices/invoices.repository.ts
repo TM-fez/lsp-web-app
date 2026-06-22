@@ -36,6 +36,19 @@ export class InvoicesRepository {
       .executeTakeFirst();
   }
 
+  // Audit trail for an invoice emailed to the guest.
+  async recordEmailSent(id: string, email: string, meta: InvoiceRequestMeta): Promise<void> {
+    await this.db.insertInto('audit_logs').values({
+      request_id: meta.requestId ?? null,
+      user_id: meta.userId,
+      action: 'UPDATE',
+      entity: 'invoices',
+      entity_id: id,
+      diff: { emailed_to: email },
+      ip_address: meta.ip ?? null,
+    }).execute();
+  }
+
   async findPaginated(
     filters: InvoiceFilters,
     pagination: PaginationOptions
