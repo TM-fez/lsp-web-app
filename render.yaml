@@ -28,6 +28,14 @@ services:
         value: lsp_refresh
       - key: CORS_ORIGIN
         sync: false
+      # Email (Brevo). API key is a secret → set its value in the Render dashboard.
+      # The other two are not secret, so they apply automatically on deploy.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: info@fezeducation.co.bw
+      - key: EMAIL_FROM_NAME
+        value: Lifestyle Apartments
 
 databases:
   - name: lsp-db
