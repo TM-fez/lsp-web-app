@@ -8,6 +8,7 @@ import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { HousekeepingDashboardPage } from '@/features/housekeeping/HousekeepingDashboardPage';
 import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
+import { MaintenanceDashboardPage } from '@/features/maintenance/MaintenanceDashboardPage';
 import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
 import { PropertiesPage } from '@/features/properties/PropertiesPage';
@@ -47,7 +48,8 @@ export const router = createBrowserRouter([
           { path: '/guests', element: <GuestsPage /> },
           { path: '/housekeeping', element: <HousekeepingDashboardPage /> },
           { path: '/housekeeping/all', element: <HousekeepingPage /> },
-          { path: '/maintenance', element: <MaintenancePage /> },
+          { path: '/maintenance', element: <MaintenanceDashboardPage /> },
+          { path: '/maintenance/all', element: <MaintenancePage /> },
           { path: '/properties', element: <PropertiesPage /> },
           { path: '/rooms', element: <RoomsPage /> },
           { path: '/pricing', element: <PricingPage /> },
