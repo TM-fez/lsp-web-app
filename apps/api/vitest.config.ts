@@ -16,6 +16,10 @@ export default defineConfig({
       'tests/integration/auth.test.ts',
       'tests/integration/dashboard.test.ts',
       'tests/e2e/**',
+      // Real Postgres required: it inserts BLOCKED/BOOKING_COM rows the API forbids, so it
+      // proves the SQL export filter against actual data. Runs in the live-DB suite, not the
+      // no-DB default run — see vitest.live.config.ts.
+      'tests/integration/modules/channel-export.test.ts',
     ],
     coverage: {
       provider: 'v8',

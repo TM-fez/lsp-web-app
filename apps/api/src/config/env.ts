@@ -56,6 +56,18 @@ const schema = z.object({
   BREVO_API_KEY: z.string().optional(),      // Brevo API v3 key (xkeysib-…)
   EMAIL_FROM: z.string().optional(),         // a sender address verified in Brevo
   EMAIL_FROM_NAME: z.string().default('Lifestyle Apartments'),
+
+  // Channel-sync double-booking alerts.
+  CHANNEL_ALERT_EMAIL: z.string().optional(), // manager inbox for collision emails (Brevo)
+  // WhatsApp seam — built but DARK until a provider template is approved. Even with creds
+  // set, sends stay off unless WHATSAPP_LIVE=1, so APPROVAL (not deploy) flips it on.
+  WHATSAPP_TOKEN: z.string().optional(),
+  WHATSAPP_FROM: z.string().optional(),
+  WHATSAPP_TO: z.string().optional(),
+  WHATSAPP_LIVE: z
+    .string()
+    .optional()
+    .transform((v) => v === '1' || v?.toLowerCase() === 'true'),
 });
 
 const result = schema.safeParse(process.env);

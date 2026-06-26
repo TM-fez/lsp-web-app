@@ -16,7 +16,8 @@ import type {
  * Blocking model:
  *  - room.status MAINTENANCE / OUT_OF_SERVICE  -> structurally blocked
  *  - room.status OCCUPIED or active CHECKED_IN occupancy -> occupied
- *  - overlapping CONFIRMED reservation in the range      -> reserved
+ *  - overlapping CONFIRMED or BLOCKED reservation in the range -> reserved
+ *    (BLOCKED = a Booking.com night imported by channel sync; migration 046)
  */
 export class AvailabilityRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -41,7 +42,7 @@ export class AvailabilityRepository {
       LEFT JOIN (
         SELECT room_id, count(*) AS cnt
         FROM reservations
-        WHERE deleted_at IS NULL AND status = 'CONFIRMED'
+        WHERE deleted_at IS NULL AND status IN ('CONFIRMED', 'BLOCKED')
           AND check_in_date < ${range.checkOut}::date
           AND check_out_date > ${range.checkIn}::date
         GROUP BY room_id
@@ -79,7 +80,7 @@ export class AvailabilityRepository {
       LEFT JOIN (
         SELECT room_id, count(*) AS cnt
         FROM reservations
-        WHERE deleted_at IS NULL AND status = 'CONFIRMED'
+        WHERE deleted_at IS NULL AND status IN ('CONFIRMED', 'BLOCKED')
           AND check_in_date < ${range.checkOut}::date
           AND check_out_date > ${range.checkIn}::date
         GROUP BY room_id
@@ -115,7 +116,7 @@ export class AvailabilityRepository {
       CROSS JOIN rooms r
       LEFT JOIN LATERAL (
         SELECT 1 AS id FROM reservations res
-        WHERE res.room_id = r.id AND res.deleted_at IS NULL AND res.status = 'CONFIRMED'
+        WHERE res.room_id = r.id AND res.deleted_at IS NULL AND res.status IN ('CONFIRMED', 'BLOCKED')
           AND res.check_in_date <= d.day AND res.check_out_date > d.day
         LIMIT 1
       ) res ON true

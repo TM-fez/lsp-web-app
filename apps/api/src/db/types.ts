@@ -106,8 +106,12 @@ export interface ReservationsTable {
   room_id: string;
   check_in_date: Date;
   check_out_date: Date;
-  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED';
   notes: string | null;
+  // Channel sync (migration 046): where the reservation came from, and the external
+  // calendar's stable id (Booking.com VEVENT UID) for OTA-imported BLOCKED rows.
+  source: Generated<'DIRECT' | 'WEBSITE' | 'BOOKING_COM'>;
+  external_uid: string | null;
   // Build 2b — per-booking discount + manager sign-off.
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;
@@ -133,6 +137,10 @@ export interface RoomsTable {
   housekeeping_status: Generated<'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED'>;
   capacity: number;
   notes: string | null;
+  // Channel sync (migration 046): per-unit iCal export secret (the unguessable URL we
+  // give Booking.com) and the Booking.com calendar URL we import this unit's OTA bookings from.
+  ical_token: Generated<string>;
+  booking_ical_url: string | null;
   // Multi-property (migration 040): a unit belongs to a building; floor is an optional label.
   building_id: string | null;
   floor: number | null;
