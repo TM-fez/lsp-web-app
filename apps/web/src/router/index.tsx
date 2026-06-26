@@ -6,6 +6,7 @@ import { CockpitPage } from '@/features/cockpit/CockpitPage';
 import { ReservationsPage } from '@/features/reservations/ReservationsPage';
 import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
+import { HousekeepingDashboardPage } from '@/features/housekeeping/HousekeepingDashboardPage';
 import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
 import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
@@ -44,7 +45,8 @@ export const router = createBrowserRouter([
           { path: '/reservations', element: <ReservationsPage /> },
           { path: '/leads', element: <LeadsPage /> },
           { path: '/guests', element: <GuestsPage /> },
-          { path: '/housekeeping', element: <HousekeepingPage /> },
+          { path: '/housekeeping', element: <HousekeepingDashboardPage /> },
+          { path: '/housekeeping/all', element: <HousekeepingPage /> },
           { path: '/maintenance', element: <MaintenancePage /> },
           { path: '/properties', element: <PropertiesPage /> },
           { path: '/rooms', element: <RoomsPage /> },
