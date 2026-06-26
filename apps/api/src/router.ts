@@ -7,6 +7,7 @@ import { createReservationsRouter } from './modules/reservations/reservations.ro
 import { createRoomsRouter } from './modules/rooms/rooms.routes.js';
 import { createPropertiesRouter } from './modules/properties/properties.routes.js';
 import { createPublicRouter } from './modules/public/public.routes.js';
+import { createChannelRouter } from './modules/channel/channel.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
@@ -49,6 +50,9 @@ router.use('/properties', createPropertiesRouter());
 
 // ── PUBLIC booking — no auth (guest-facing front door, rate-limited) ───────────
 router.use('/public', createPublicRouter());
+
+// ── Channel sync — public, token-guarded iCal export feeds (one .ics per unit) ─
+router.use('/ical', createChannelRouter());
 
 // ── Sprint 4 — Check-In / Check-Out ───────────────────────────────────────────
 router.use('/checkins', createCheckinsRouter());

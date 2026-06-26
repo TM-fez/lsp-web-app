@@ -18,7 +18,8 @@ It is a **Turborepo monorepo** with two apps:
 
 It covers: auth/RBAC, CRM (guests + leads), reservations, the operations **Cockpit**, housekeeping,
 maintenance, pricing, the commercial money-loop (quote → hold → payment → confirm), expenses, an
-activity feed, multi-property (Property → Building → Unit), and a **public guest booking page** (`/stay`).
+activity feed, multi-property (Property → Building → Unit), a **public guest booking page** (`/stay`),
+and **direct Booking.com channel sync** over iCal (replacing Little Hotelier — see §5).
 
 ---
 
@@ -90,6 +91,43 @@ pay-on-arrival)**, and a dead-code cleanup.
 
 ## 5. What's next (the roadmap)
 
+### Channel sync — Booking.com, direct iCal (replaces Little Hotelier) — IN PROGRESS
+**Decision (supersedes the old plan):** Little Hotelier is dropped. **LSP is the channel manager** and talks
+to Booking.com directly over iCal. The one master calendar is LSP's database. (The earlier "keep Little
+Hotelier, never connect Booking.com directly" plan is void.)
+
+**Built (code complete; NOT yet run on live):**
+- **Hard floor:** migration `035` already makes Postgres physically refuse a double-booking; `046` extends
+  it so imported OTA nights participate too.
+- **Schema:** `045` adds the `BLOCKED` reservation status (set only by the importer, never by a user); `046`
+  adds `rooms.ical_token`, `rooms.booking_ical_url`, `reservations.source` (DIRECT/WEBSITE/BOOKING_COM) +
+  `external_uid`, and rebuilds `reservations_no_overlap` to include `BLOCKED`; `047` seeds the system actors
+  imported blocks hang off of (reservations' contact/created_by are NOT NULL).
+- **Export (LSP → Booking.com):** public, token-guarded feed `GET /api/v1/ical/units/{ical_token}.ics` — live
+  per-unit availability, DIRECT/WEBSITE confirmed+checked-in nights only. Never re-exports an imported OTA
+  block (no feedback loop) and never leaks guest PII. Paste each unit's URL into the Booking.com extranet.
+- **Import (Booking.com → LSP):** `ChannelImportService.runImport()` pulls each unit's `booking_ical_url`,
+  upserts OTA bookings as `BLOCKED` (idempotent by `external_uid`), ends blocks that vanish from the feed,
+  and on a `23P01` overlap with a direct sale fires a **multi-channel alert** instead of failing silently.
+- **Alerts:** dashboard (activity-feed entry, live) + email (Brevo, live once `CHANNEL_ALERT_EMAIL` is set) +
+  WhatsApp (seam built, **dark** until a template is approved and `WHATSAPP_LIVE=1`). Repeat pages for the
+  same OTA event are throttled to once per 6 hours.
+- **Tests:** the export filter (a BOOKING_COM block must never appear in the feed) is proven in the live-DB CI
+  suite; the parser, the collision→alert path, the throttle, and the alert fan-out are unit-tested.
+
+**Go-live checklist (owner-run, in order):**
+1. **Back up** Render Postgres (snapshot / `pg_dump`).
+2. Run migrations **off-peak**: `045 → 046 → 047` (the `046` constraint rebuild takes a brief
+   ACCESS EXCLUSIVE lock on `reservations`).
+3. Paste each unit's export URL into the Booking.com extranet; paste each unit's Booking.com `.ics` into its
+   `rooms.booking_ical_url`.
+4. Set `CHANNEL_ALERT_EMAIL` (and later the `WHATSAPP_*` vars when the template clears).
+5. **Only then** wire the cron: mount `GET /cron/channel-sync` (handler ready in `channel.cron.ts`,
+   secret-guarded by `CRON_SECRET`) and add a 15-min trigger (Render Cron Job / GitHub Action). It stays
+   **inert/unmounted** until the steps above are done — wiring it earlier just errors every 15 minutes.
+
+**New env vars:** `CHANNEL_ALERT_EMAIL`, `WHATSAPP_TOKEN`, `WHATSAPP_FROM`, `WHATSAPP_TO`, `WHATSAPP_LIVE`.
+
 ### Blocked on the client
 - **DPO merchant signup** (in progress) → they hand over **sandbox API keys** → unblocks Phase B payments.
 
@@ -113,7 +151,8 @@ Key code facts:
 - Optionally deactivate the now-empty "Main" building under Village.
 
 ### Smaller feature gaps (from the client's process map)
-- `reservations.source = WEBSITE` column (+ surface origin in cockpit/reservations).
+- Surface reservation **origin** in cockpit/reservations. The `source` column now exists (migration 046:
+  DIRECT / WEBSITE / BOOKING_COM), but `/stay` bookings still write DIRECT and the UI doesn't show it yet.
 - Reports / Performance dashboard (occupancy, conversion, revenue, direct vs OTA).
 - WhatsApp → Leads auto-capture; lead → reservation conversion; retention/reviews; lease-renewal workflow.
 
@@ -123,9 +162,8 @@ Key code facts:
 - Clean up abandoned Vercel "-api" projects.
 
 ### Later / strategic
-- Channel sync: keep **Little Hotelier** as the channel manager; sync the app ↔ Little Hotelier (Booking.com
-  comes through it — do **not** connect Booking.com directly). Phased: mirror (read-only) → two-way iCal →
-  real-time API. One master calendar at all times.
+- Channel sync is no longer "later" — it moved up and is the **direct Booking.com iCal** build above
+  (Little Hotelier dropped). Future hardening: a real-time API instead of polling, and more OTAs.
 - **Fez Education** skills/e-learning platform — a **separate** project (own accounts, own repo), not started.
 
 ---
@@ -138,7 +176,7 @@ Key code facts:
 - Money is stored in **thebe** (integer minor units; 100 = 1 Pula). Enter in Pula in the UI, store thebe.
 - New web feature = `features/<x>/` with TanStack Query hooks + a Radix dialog drawer; gate UI with `useAuthStore.hasPerm`.
 - "Today" is **Africa/Gaborone** — use `core/time.ts` (API) and `lib/utils/date.ts` (web), never raw `new Date()` for the property day.
-- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 040).
+- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 047).
 - Commercial invariant: only `settlePaid()` confirms a reservation; create/edit can never set CONFIRMED.
 
 ---

@@ -8,6 +8,10 @@ export const ReservationStatusEnum = z.enum([
   'CHECKED_IN',
   'CHECKED_OUT',
   'CANCELLED',
+  // OTA-imported calendar block (Booking.com). Set ONLY by channel sync, never by a
+  // user — intentionally absent from UserInputReservationStatusEnum below, and rejected
+  // by UpdateReservationSchema.
+  'BLOCKED',
 ]);
 
 // A reservation can only be CREATED as PENDING. CONFIRMED is reached solely
@@ -35,6 +39,9 @@ export const UpdateReservationSchema = z.object({
   check_out_date: z.coerce.date().optional(),
   notes: z.string().nullable().optional(),
   status: ReservationStatusEnum.optional(), // Allow status updates explicitly
+}).refine((data) => data.status !== 'BLOCKED', {
+  message: 'BLOCKED is managed by channel sync and cannot be set manually',
+  path: ['status'],
 });
 
 export const DiscountTypeEnum = z.enum(['PERCENT', 'FIXED']);

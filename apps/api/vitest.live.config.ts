@@ -19,6 +19,9 @@ export default defineConfig({
     include: [
       'tests/integration/auth.test.ts',
       'tests/integration/dashboard.test.ts',
+      // Proves the per-unit iCal export filter: a Booking.com-sourced BLOCKED row must
+      // never appear in the feed (no OTA feedback loop).
+      'tests/integration/modules/channel-export.test.ts',
     ],
     // The auth suite issues ~18 logins; the production auth rate limit
     // (RATE_LIMIT_AUTH_MAX=10/min) throttles the later ones (429), which made
