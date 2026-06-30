@@ -81,12 +81,23 @@ export class HousekeepingRepository {
     return query.orderBy('t.opened_at', 'asc').execute();
   }
 
-  async findPaginated(query: HousekeepingQueryDTO) {
+  async findPaginated(query: HousekeepingQueryDTO, propertyId?: string) {
     let q = this.db.selectFrom('housekeeping_tasks').selectAll().where('deleted_at', 'is', null);
     let countQ = this.db
       .selectFrom('housekeeping_tasks')
       .select(this.db.fn.count<number>('id').as('total'))
       .where('deleted_at', 'is', null);
+
+    // Scope to the active property: only tasks for rooms in that property.
+    if (propertyId) {
+      const roomsInProperty = this.db
+        .selectFrom('rooms as r2')
+        .innerJoin('buildings as b2', 'b2.id', 'r2.building_id')
+        .select('r2.id')
+        .where('b2.property_id', '=', propertyId);
+      q = q.where('room_id', 'in', roomsInProperty);
+      countQ = countQ.where('room_id', 'in', roomsInProperty);
+    }
 
     if (query.room_id) {
       q = q.where('room_id', '=', query.room_id);

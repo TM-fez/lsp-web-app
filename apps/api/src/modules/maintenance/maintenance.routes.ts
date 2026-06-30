@@ -6,6 +6,7 @@ import { FilesRepository } from '../files/files.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 
 export function createMaintenanceRouter(): Router {
   const router = Router();
@@ -17,7 +18,8 @@ export function createMaintenanceRouter(): Router {
 
   router.use(authenticate);
 
-  router.get('/', authorize('maintenance.read'), controller.list);
+  // The work-order list is scoped to the active property (the maintenance page).
+  router.get('/', authorize('maintenance.read'), requireActiveProperty, controller.list);
   router.get('/:id', authorize('maintenance.read'), controller.get);
   router.post('/', authorize('maintenance.create'), controller.create);
   router.patch('/:id', authorize('maintenance.update'), controller.update);

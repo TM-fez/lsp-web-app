@@ -14,9 +14,12 @@ import { app } from '../../src/app.js';
 import { pool } from '../../src/config/db.js';
 
 const stamp = Date.now();
+// Offset from the PROPERTY day (Africa/Gaborone), matching the server's "today"
+// check — so iso(0) is never seen as "in the past" when UTC trails Gaborone.
 const iso = (offsetDays: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
+  const todayInGaborone = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Gaborone' }).format(new Date());
+  const d = new Date(`${todayInGaborone}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
 };
 
@@ -180,7 +183,7 @@ describe('Operations Cockpit — end to end', () => {
     expect(room.body.status).toBe('AVAILABLE');
     expect(room.body.housekeeping_status).toBe('DIRTY');
 
-    const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer());
+    const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(queue.body.data.some((t: { room_id: string }) => t.room_id === roomId)).toBe(true);
   });
 
@@ -245,7 +248,7 @@ describe('Operations Cockpit — end to end', () => {
     const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer());
     expect(room.body.housekeeping_status).toBe('READY');
 
-    const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer());
+    const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(queue.body.data.some((t: { room_id: string }) => t.room_id === roomId)).toBe(false);
 
     // Readiness gate now opens: the previously-blocked guest can check in.

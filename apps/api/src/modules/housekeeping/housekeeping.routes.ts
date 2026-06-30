@@ -5,6 +5,7 @@ import { HousekeepingRepository } from './housekeeping.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 
 export function createHousekeepingRouter(): Router {
   const router = Router();
@@ -15,8 +16,9 @@ export function createHousekeepingRouter(): Router {
 
   router.use(authenticate);
 
-  router.get('/queue', authorize('housekeeping.read'), controller.queue);
-  router.get('/', authorize('housekeeping.read'), controller.list);
+  // Queue + list are scoped to the active property (the housekeeping page + cockpit feed).
+  router.get('/queue', authorize('housekeeping.read'), requireActiveProperty, controller.queue);
+  router.get('/', authorize('housekeeping.read'), requireActiveProperty, controller.list);
   router.get('/:id', authorize('housekeeping.read'), controller.get);
 
   // Unit-keyed turn workflow: DIRTY -> CLEANING -> INSPECTED -> READY.

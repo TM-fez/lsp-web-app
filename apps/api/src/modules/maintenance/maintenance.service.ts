@@ -16,8 +16,8 @@ export class MaintenanceService {
     private readonly filesRepo: FilesRepository
   ) {}
 
-  async list(query: MaintenanceQueryDTO) {
-    return this.repo.findPaginated(query);
+  async list(query: MaintenanceQueryDTO, propertyId?: string) {
+    return this.repo.findPaginated(query, propertyId);
   }
 
   async get(id: string) {
@@ -26,7 +26,14 @@ export class MaintenanceService {
     return order;
   }
 
-  async openWorkOrder(data: CreateWorkOrderDTO, meta: { userId: string, requestId?: string }) {
+  async openWorkOrder(data: CreateWorkOrderDTO, meta: { userId: string, requestId?: string }, activePropertyId?: string) {
+    // Scope: a work order can only be opened against a unit in the active property.
+    if (activePropertyId) {
+      const roomProperty = await this.repo.roomPropertyId(data.room_id);
+      if (roomProperty !== activePropertyId) {
+        throw AppError.badRequest('That unit is not in your active property');
+      }
+    }
     return this.repo.transaction(async (trx) => {
       // Create work order
       const order = await this.repo.create({
