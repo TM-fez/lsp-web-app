@@ -34,9 +34,10 @@ export class RoomsService {
   }
 
   async createRoom(dto: CreateRoomDTO, meta: RoomRequestMeta): Promise<RoomRow> {
-    const existing = await this.repository.findByCode(dto.code);
+    // Code must be unique within its building (block), not globally — see migration 051.
+    const existing = await this.repository.findByCodeInBuilding(dto.code, dto.building_id ?? null);
     if (existing) {
-      throw AppError.conflict(`Room code "${dto.code}" is already in use`);
+      throw AppError.conflict(`Room code "${dto.code}" is already in use in this building`);
     }
 
     const newRoom: NewRoom = {
@@ -48,12 +49,15 @@ export class RoomsService {
   }
 
   async updateRoom(id: string, dto: UpdateRoomDTO, meta: RoomRequestMeta): Promise<RoomRow> {
-    await this.getRoomById(id);
+    const current = await this.getRoomById(id);
 
-    if (dto.code) {
-      const existing = await this.repository.findByCode(dto.code);
+    // Re-check uniqueness if the code or the building (which scopes it) changes.
+    if (dto.code !== undefined || dto.building_id !== undefined) {
+      const code = dto.code ?? current.code;
+      const buildingId = dto.building_id !== undefined ? dto.building_id : current.building_id;
+      const existing = await this.repository.findByCodeInBuilding(code, buildingId ?? null);
       if (existing && existing.id !== id) {
-        throw AppError.conflict(`Room code "${dto.code}" is already in use`);
+        throw AppError.conflict(`Room code "${code}" is already in use in this building`);
       }
     }
 

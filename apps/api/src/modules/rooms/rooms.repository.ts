@@ -15,13 +15,20 @@ export class RoomsRepository {
   }
 
   // Case-insensitive lookup of an active room by code (used to enforce uniqueness).
-  async findByCode(code: string): Promise<RoomRow | undefined> {
-    return this.db
+  // Code uniqueness is scoped to the building (block) — see migration 051. Two
+  // blocks (or properties) may each reuse a code; only a clash within the same
+  // building is rejected. building_id null is its own group.
+  async findByCodeInBuilding(code: string, buildingId: string | null): Promise<RoomRow | undefined> {
+    let query = this.db
       .selectFrom('rooms')
       .selectAll()
       .where(sql`lower(code)`, '=', code.toLowerCase())
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst();
+      .where('deleted_at', 'is', null);
+    query =
+      buildingId === null
+        ? query.where('building_id', 'is', null)
+        : query.where('building_id', '=', buildingId);
+    return query.executeTakeFirst();
   }
 
   // Active units bookable right now: operationally AVAILABLE and housekeeping READY.
