@@ -10,7 +10,7 @@ describe('RoomsService', () => {
   beforeEach(() => {
     repository = {
       findById: vi.fn(),
-      findByCode: vi.fn(),
+      findByCodeInBuilding: vi.fn(),
       findPaginated: vi.fn(),
       listAvailable: vi.fn(),
       create: vi.fn(),
@@ -36,7 +36,7 @@ describe('RoomsService', () => {
 
   describe('createRoom', () => {
     it('throws 409 when the code is already in use', async () => {
-      repository.findByCode.mockResolvedValue({ id: 'x', code: 'A1' } as any);
+      repository.findByCodeInBuilding.mockResolvedValue({ id: 'x', code: 'A1' } as any);
       await expect(
         service.createRoom({ name: 'Room A1', code: 'A1', type: 'STANDARD', status: 'AVAILABLE', capacity: 2 } as any, meta)
       ).rejects.toThrow('already in use');
@@ -44,7 +44,7 @@ describe('RoomsService', () => {
     });
 
     it('creates the room (stamping created_by/updated_by) when the code is free', async () => {
-      repository.findByCode.mockResolvedValue(undefined);
+      repository.findByCodeInBuilding.mockResolvedValue(undefined);
       repository.create.mockResolvedValue({ id: 'r1' } as any);
 
       const dto = { name: 'Room A1', code: 'A1', type: 'STANDARD', status: 'AVAILABLE', capacity: 2 } as any;
@@ -55,6 +55,17 @@ describe('RoomsService', () => {
         { ...dto, created_by: 'u1', updated_by: 'u1' },
         meta
       );
+    });
+
+    it('scopes the code-uniqueness check to the building (per-property naming)', async () => {
+      repository.findByCodeInBuilding.mockResolvedValue(undefined);
+      repository.create.mockResolvedValue({ id: 'r2' } as any);
+
+      const dto = { name: '101', code: '101', type: 'STANDARD', status: 'AVAILABLE', capacity: 2, building_id: 'bldg-J' } as any;
+      await service.createRoom(dto, meta);
+
+      // The same code in a different block must be allowed — so the lookup is per-building.
+      expect(repository.findByCodeInBuilding).toHaveBeenCalledWith('101', 'bldg-J');
     });
   });
 
