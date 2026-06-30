@@ -18,6 +18,19 @@ export class RoomsRepository {
   // Code uniqueness is scoped to the building (block) — see migration 051. Two
   // blocks (or properties) may each reuse a code; only a clash within the same
   // building is rejected. building_id null is its own group.
+  /** The property a room belongs to (room → building → property), or null. Used by
+   *  the by-id scope guard. */
+  async roomPropertyId(roomId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('rooms')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select('buildings.property_id as property_id')
+      .where('rooms.id', '=', roomId)
+      .where('rooms.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
   async findByCodeInBuilding(code: string, buildingId: string | null): Promise<RoomRow | undefined> {
     let query = this.db
       .selectFrom('rooms')

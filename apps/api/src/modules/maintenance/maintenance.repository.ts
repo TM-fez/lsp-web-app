@@ -86,6 +86,20 @@ export class MaintenanceRepository {
       .where('b2.property_id', '=', propertyId);
   }
 
+  /** The property a work order's room belongs to (WO → room → building → property),
+   *  or null if the WO doesn't exist / has no property. Used by the by-id scope guard. */
+  async workOrderPropertyId(workOrderId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('maintenance_work_orders as wo')
+      .leftJoin('rooms as r', 'r.id', 'wo.room_id')
+      .leftJoin('buildings as b', 'b.id', 'r.building_id')
+      .select('b.property_id as property_id')
+      .where('wo.id', '=', workOrderId)
+      .where('wo.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
   /** The property a room belongs to (room → building → property), or null. */
   async roomPropertyId(roomId: string): Promise<string | null> {
     const row = await this.db
