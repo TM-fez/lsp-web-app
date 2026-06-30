@@ -11,6 +11,7 @@
  *   Run migrations: DATABASE_URL=postgresql://lsp:lsp@localhost:5433/lsp_test npm run db:migrate
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { sql } from 'kysely';
 import request from 'supertest';
 import { app } from '../../../src/app.js';
 import { db, pool } from '../../../src/config/db.js';
@@ -28,13 +29,21 @@ let blockedResId = '';
 const BLOCKED_UID = `evt-booking-${Date.now()}`;
 
 // Future-dated so they survive the feed's "check_out_date >= today" filter whenever the
-// suite runs. Format the calendar day the serializer will emit, for assertions.
+// suite runs. Dates are handled as bare calendar days end-to-end (no time-of-day), so
+// the test can't drift across a timezone boundary: we store them as `::date` literals
+// and assert with local components — exactly how the iCal serializer formats them.
+const pad = (n: number) => String(n).padStart(2, '0');
 function plusDays(n: number): Date {
   return new Date(Date.now() + n * 24 * 60 * 60 * 1000);
 }
-function ymd(d: Date): string {
-  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+// 'YYYY-MM-DD' for the SQL literal, 'YYYYMMDD' for the iCal assertion — both local.
+function ymdDash(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+function ymd(d: Date): string {
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+const asDate = (d: Date) => sql<Date>`${ymdDash(d)}::date`;
 
 const directIn = plusDays(10);
 const directOut = plusDays(14);
@@ -88,8 +97,8 @@ beforeAll(async () => {
     .values({
       contact_id: contactId,
       room_id: roomId,
-      check_in_date: directIn,
-      check_out_date: directOut,
+      check_in_date: asDate(directIn),
+      check_out_date: asDate(directOut),
       status: 'CONFIRMED',
       source: 'DIRECT',
       created_by: userId,
@@ -104,8 +113,8 @@ beforeAll(async () => {
     .values({
       contact_id: contactId,
       room_id: roomId,
-      check_in_date: blockedIn,
-      check_out_date: blockedOut,
+      check_in_date: asDate(blockedIn),
+      check_out_date: asDate(blockedOut),
       status: 'BLOCKED',
       source: 'BOOKING_COM',
       external_uid: BLOCKED_UID,

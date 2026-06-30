@@ -20,12 +20,13 @@ const CRLF = '\r\n';
 const MAX_OCTETS = 75;
 
 // VALUE=DATE is YYYYMMDD. check_in/out are date-only columns; node-postgres parses a
-// `date` to a Date at UTC midnight, so reading the UTC components gives the calendar day
-// back without timezone drift.
+// `date` to a JS Date at LOCAL midnight, so reading the LOCAL components gives the
+// calendar day back on any server timezone. (Using UTC components drifts a day earlier
+// whenever the process timezone is ahead of UTC — e.g. a non-UTC dev box.)
 function toICalDate(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}${m}${day}`;
 }
 
