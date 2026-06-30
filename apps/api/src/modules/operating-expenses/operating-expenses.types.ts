@@ -27,6 +27,9 @@ export interface OperatingExpenseFilters {
   category?: OperatingExpenseCategory;
   from?: string; // YYYY-MM-DD (incurred_on >=)
   to?: string;   // YYYY-MM-DD (incurred_on <=)
+  // Access scope: null/undefined = no restriction (admin); array = the caller's
+  // properties ([] = none).
+  accessiblePropertyIds?: string[] | null;
 }
 
 export interface OperatingExpensesRequestMeta {

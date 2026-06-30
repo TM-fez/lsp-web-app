@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { OperatingExpensesService } from './operating-expenses.service.js';
+import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import { OperatingExpenseCategoryEnum } from './operating-expenses.types.js';
 import type {
   CreateOperatingExpenseDTO,
@@ -20,12 +21,14 @@ export class OperatingExpensesController {
       const category = req.query.category
         ? OperatingExpenseCategoryEnum.parse(req.query.category)
         : undefined;
+      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
       res.json({
         data: await this.service.list({
           property_id: (req.query.property_id as string) || undefined,
           category,
           from: (req.query.from as string) || undefined,
           to: (req.query.to as string) || undefined,
+          accessiblePropertyIds,
         }),
       });
     } catch (err) {
@@ -69,9 +72,10 @@ export class OperatingExpensesController {
   };
 
   // ── Recurring templates ───────────────────────────────────────────────────────
-  listRecurring = async (_req: Request, res: Response, next: NextFunction) => {
+  listRecurring = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json({ data: await this.service.listRecurring() });
+      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      res.json({ data: await this.service.listRecurring(accessiblePropertyIds) });
     } catch (err) {
       next(err);
     }
