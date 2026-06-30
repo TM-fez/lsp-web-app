@@ -44,6 +44,19 @@ export class UsersService {
     return found.map((p) => p.id);
   }
 
+  /** Validate property ids exist, rejecting unknown ones outright. */
+  private async validatePropertyIds(ids: string[]): Promise<string[]> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return [];
+    const found = await this.repository.findPropertiesByIds(unique);
+    if (found.length !== unique.length) {
+      const known = new Set(found.map((p) => p.id));
+      const unknown = unique.filter((i) => !known.has(i));
+      throw AppError.badRequest(`Unknown properties: ${unknown.join(', ')}`);
+    }
+    return unique;
+  }
+
   async createUser(dto: CreateUserDTO, meta: UsersRequestMeta): Promise<StaffUser> {
     if (await this.repository.emailExists(dto.email)) {
       throw AppError.conflict(`A user with email ${dto.email} already exists`);
@@ -53,11 +66,13 @@ export class UsersService {
     if (!role) throw AppError.badRequest(`Unknown role: ${dto.role}`);
 
     const extraIds = await this.resolveExtraPermissions(dto.extra_permissions);
+    const propertyIds = await this.validatePropertyIds(dto.property_ids ?? []);
     const password_hash = await bcrypt.hash(dto.password, env.BCRYPT_ROUNDS);
 
     const id = await this.repository.create(
       { name: dto.name, email: dto.email, password_hash, role_id: role.id, is_lead: dto.is_lead },
       extraIds,
+      propertyIds,
       meta
     );
 
@@ -96,10 +111,14 @@ export class UsersService {
         ? await this.resolveExtraPermissions(dto.extra_permissions)
         : undefined;
 
+    const propertyIds =
+      dto.property_ids !== undefined ? await this.validatePropertyIds(dto.property_ids) : undefined;
+
     await this.repository.update(
       id,
       { name: dto.name, role_id, active: dto.active, is_lead: dto.is_lead },
       extraIds,
+      propertyIds,
       meta
     );
 

@@ -12,6 +12,7 @@ const adminUser = {
   active: true,
   is_lead: false,
   extra_permissions: [],
+  property_ids: [],
   created_at: new Date(),
   updated_at: new Date(),
 };
@@ -28,6 +29,7 @@ describe('UsersService', () => {
       findRoleByName: vi.fn(),
       listRoles: vi.fn(),
       findPermissionsByNames: vi.fn(),
+      findPropertiesByIds: vi.fn(),
       countOtherActiveAdmins: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -90,6 +92,38 @@ describe('UsersService', () => {
       expect(input.is_lead).toBe(true);
       expect(extraIds).toEqual([41, 55]);
     });
+
+    it('validates and forwards property_ids to the repository', async () => {
+      repository.emailExists.mockResolvedValue(false);
+      repository.findRoleByName.mockResolvedValue({ id: 3, name: 'reception' });
+      repository.findPermissionsByNames.mockResolvedValue([]);
+      repository.findPropertiesByIds.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
+      repository.create.mockResolvedValue('uid');
+      repository.findById.mockResolvedValue(adminUser);
+
+      await service.createUser(
+        { name: 'X', email: 'x@lsp.local', password: 'Pass@123!', role: 'reception', is_lead: false, extra_permissions: [], property_ids: ['p1', 'p2'] } as any,
+        meta
+      );
+
+      // create(input, extraIds, propertyIds, meta) — propertyIds is the 3rd arg.
+      expect(repository.create.mock.calls[0]![2]).toEqual(['p1', 'p2']);
+    });
+
+    it('rejects unknown property_ids', async () => {
+      repository.emailExists.mockResolvedValue(false);
+      repository.findRoleByName.mockResolvedValue({ id: 3, name: 'reception' });
+      repository.findPermissionsByNames.mockResolvedValue([]);
+      repository.findPropertiesByIds.mockResolvedValue([{ id: 'p1' }]); // p2 doesn't exist
+
+      await expect(
+        service.createUser(
+          { name: 'X', email: 'x@lsp.local', password: 'Pass@123!', role: 'reception', is_lead: false, extra_permissions: [], property_ids: ['p1', 'p2'] } as any,
+          meta
+        )
+      ).rejects.toThrow('Unknown properties');
+      expect(repository.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateUser — safety invariants', () => {
@@ -139,6 +173,7 @@ describe('UsersService', () => {
       expect(repository.update).toHaveBeenCalledWith(
         'u-admin',
         expect.objectContaining({ role_id: 2 }),
+        undefined,
         undefined,
         expect.anything()
       );

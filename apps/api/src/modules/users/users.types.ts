@@ -32,6 +32,9 @@ export const CreateUserSchema = z.object({
   is_lead: z.boolean().optional().default(false),
   // Permission names granted ON TOP of the role (second-hat staff).
   extra_permissions: z.array(z.string().min(1).max(100)).max(100).optional().default([]),
+  // Properties this user may enter (multi-property scope). Empty = no property
+  // access yet (admin is a wildcard regardless of this list).
+  property_ids: z.array(z.string().uuid()).max(100).optional().default([]),
 });
 
 export const UpdateUserSchema = z
@@ -41,6 +44,7 @@ export const UpdateUserSchema = z
     active: z.boolean().optional(),
     is_lead: z.boolean().optional(),
     extra_permissions: z.array(z.string().min(1).max(100)).max(100).optional(),
+    property_ids: z.array(z.string().uuid()).max(100).optional(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: 'No fields to update',
@@ -61,6 +65,7 @@ export interface StaffUser {
   active: boolean;
   is_lead: boolean;
   extra_permissions: string[];
+  property_ids: string[];
   created_at: Date;
   updated_at: Date;
 }
