@@ -33,13 +33,13 @@ export class MaintenanceController {
         parsedStatus = MaintenanceStatusEnum.parse(status);
       }
 
-      const result = await this.service.list({ 
-        page, 
-        limit: Math.min(limit, 100), 
-        room_id, 
-        status: parsedStatus, 
-        assigned_to 
-      });
+      const result = await this.service.list({
+        page,
+        limit: Math.min(limit, 100),
+        room_id,
+        status: parsedStatus,
+        assigned_to
+      }, req.activePropertyId);
       res.json(result);
     } catch (err) {
       next(err);
@@ -59,7 +59,7 @@ export class MaintenanceController {
     try {
       const data = CreateWorkOrderSchema.parse(req.body);
       const meta = this.getRequestMeta(req);
-      const result = await this.service.openWorkOrder(data, meta);
+      const result = await this.service.openWorkOrder(data, meta, req.activePropertyId);
       res.status(201).json(result);
     } catch (err) {
       next(err);

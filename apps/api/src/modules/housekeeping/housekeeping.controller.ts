@@ -14,9 +14,9 @@ export class HousekeepingController {
     return { userId: req.user!.sub, requestId: req.id };
   }
 
-  queue = async (_req: Request, res: Response, next: NextFunction) => {
+  queue = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json({ data: await this.service.queue() });
+      res.json({ data: await this.service.queue(req.activePropertyId) });
     } catch (err) {
       next(err);
     }
@@ -30,7 +30,7 @@ export class HousekeepingController {
       const assigned_to = req.query.assigned_to as string | undefined;
       const status = req.query.status ? HousekeepingTaskStatusEnum.parse(req.query.status) : undefined;
 
-      res.json(await this.service.list({ page, limit, room_id, assigned_to, status }));
+      res.json(await this.service.list({ page, limit, room_id, assigned_to, status }, req.activePropertyId));
     } catch (err) {
       next(err);
     }

@@ -76,9 +76,36 @@ export class MaintenanceRepository {
     return !!row;
   }
 
-  async findPaginated(query: MaintenanceQueryDTO) {
+  // Room ids belonging to a property (room → building → property) — scopes the
+  // work-order list to the active property.
+  private roomIdsInProperty(propertyId: string) {
+    return this.db
+      .selectFrom('rooms as r2')
+      .innerJoin('buildings as b2', 'b2.id', 'r2.building_id')
+      .select('r2.id')
+      .where('b2.property_id', '=', propertyId);
+  }
+
+  /** The property a room belongs to (room → building → property), or null. */
+  async roomPropertyId(roomId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('rooms')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select('buildings.property_id as property_id')
+      .where('rooms.id', '=', roomId)
+      .where('rooms.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
+  async findPaginated(query: MaintenanceQueryDTO, propertyId?: string) {
     let q = this.withPeople().where('wo.deleted_at', 'is', null);
     let countQ = this.db.selectFrom('maintenance_work_orders').select(this.db.fn.count<number>('id').as('total')).where('deleted_at', 'is', null);
+
+    if (propertyId) {
+      q = q.where('wo.room_id', 'in', this.roomIdsInProperty(propertyId));
+      countQ = countQ.where('room_id', 'in', this.roomIdsInProperty(propertyId));
+    }
 
     if (query.room_id) {
       q = q.where('wo.room_id', '=', query.room_id);

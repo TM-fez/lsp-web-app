@@ -12,12 +12,12 @@ import type {
 export class HousekeepingService {
   constructor(private readonly repo: HousekeepingRepository) {}
 
-  async queue() {
-    return this.repo.listQueue();
+  async queue(propertyId?: string) {
+    return this.repo.listQueue(propertyId);
   }
 
-  async list(query: HousekeepingQueryDTO) {
-    return this.repo.findPaginated(query);
+  async list(query: HousekeepingQueryDTO, propertyId?: string) {
+    return this.repo.findPaginated(query, propertyId);
   }
 
   async get(id: string): Promise<HousekeepingTaskRow> {
