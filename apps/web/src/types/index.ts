@@ -455,6 +455,8 @@ export interface StaffUser {
   is_lead: boolean;
   /** Permission names granted on top of the role (second-hat staff). */
   extra_permissions: string[];
+  /** Properties this user may enter (multi-property scope). */
+  property_ids: string[];
   created_at: string;
   updated_at: string;
 }

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuthStore } from '@/store/auth';
+import { useProperties } from '@/features/properties/hooks';
 import { useCreateUser, useUpdateUser, useResetPassword } from './hooks';
 import {
   ROLE_OPTIONS,
@@ -41,8 +42,11 @@ export function UserFormDrawer({ open, onOpenChange, user, receptionPerms }: Pro
   const [role, setRole] = useState<RoleName>('reception');
   const [isLead, setIsLead] = useState(false);
   const [coversReception, setCoversReception] = useState(false);
+  const [propertyIds, setPropertyIds] = useState<string[]>([]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+
+  const { data: properties } = useProperties();
 
   useEffect(() => {
     if (!open) return;
@@ -52,6 +56,7 @@ export function UserFormDrawer({ open, onOpenChange, user, receptionPerms }: Pro
     setRole(user?.role ?? 'reception');
     setIsLead(user?.is_lead ?? false);
     setCoversReception(user ? hasReceptionHat(user.extra_permissions, receptionPerms) : false);
+    setPropertyIds(user?.property_ids ?? []);
     setNewPassword('');
     setConfirmDeactivate(false);
   }, [open, user, receptionPerms]);
@@ -75,7 +80,7 @@ export function UserFormDrawer({ open, onOpenChange, user, receptionPerms }: Pro
       if (user) {
         await update.mutateAsync({
           id: user.id,
-          input: { name: name.trim(), role, is_lead: isLead, extra_permissions },
+          input: { name: name.trim(), role, is_lead: isLead, extra_permissions, property_ids: propertyIds },
         });
       } else {
         await create.mutateAsync({
@@ -85,6 +90,7 @@ export function UserFormDrawer({ open, onOpenChange, user, receptionPerms }: Pro
           role,
           is_lead: isLead,
           extra_permissions,
+          property_ids: propertyIds,
         });
       }
       onOpenChange(false);
@@ -211,6 +217,34 @@ export function UserFormDrawer({ open, onOpenChange, user, receptionPerms }: Pro
                   </span>
                 </span>
               </label>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+            <Label>Property access</Label>
+            {role === 'admin' ? (
+              <span className="text-xs text-slate-500">Admins can access every property regardless of this list.</span>
+            ) : (
+              <span className="text-xs text-slate-500">
+                Which properties they enter after login. One = auto-scoped; more than one = they pick.
+              </span>
+            )}
+            {(properties ?? []).map((p) => (
+              <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={propertyIds.includes(p.id)}
+                  onChange={(e) =>
+                    setPropertyIds((prev) =>
+                      e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id),
+                    )
+                  }
+                />
+                {p.name}
+              </label>
+            ))}
+            {(properties?.length ?? 0) === 0 && (
+              <span className="text-xs text-slate-500">No properties yet — add one on the Properties screen.</span>
             )}
           </div>
 

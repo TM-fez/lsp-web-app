@@ -8,6 +8,7 @@ export interface CreateUserInput {
   role: RoleName;
   is_lead?: boolean;
   extra_permissions?: string[];
+  property_ids?: string[];
 }
 
 export interface UpdateUserInput {
@@ -16,6 +17,7 @@ export interface UpdateUserInput {
   active?: boolean;
   is_lead?: boolean;
   extra_permissions?: string[];
+  property_ids?: string[];
 }
 
 export async function listUsers(): Promise<StaffUser[]> {

@@ -6,7 +6,7 @@ type UserWithRole = Omit<UserRow, 'password_hash' | 'avatar_file_id' | 'role_id'
   role: string;
 };
 
-function toStaffUser(row: UserWithRole, extras: string[]): StaffUser {
+function toStaffUser(row: UserWithRole, extras: string[], propertyIds: string[]): StaffUser {
   return {
     id: row.id,
     name: row.name,
@@ -15,6 +15,7 @@ function toStaffUser(row: UserWithRole, extras: string[]): StaffUser {
     active: row.active,
     is_lead: row.is_lead,
     extra_permissions: extras,
+    property_ids: propertyIds,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -57,10 +58,34 @@ export class UsersRepository {
     return map;
   }
 
+  /** Property ids each user is a member of, grouped by user id. */
+  private async propertiesFor(userIds: string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (userIds.length === 0) return map;
+    const rows = await this.db
+      .selectFrom('user_properties')
+      .select(['user_id', 'property_id'])
+      .where('user_id', 'in', userIds)
+      .execute();
+    for (const r of rows) {
+      const list = map.get(r.user_id) ?? [];
+      list.push(r.property_id);
+      map.set(r.user_id, list);
+    }
+    return map;
+  }
+
+  /** Resolve property ids → existing rows so the service can spot unknowns. */
+  async findPropertiesByIds(ids: string[]): Promise<{ id: string }[]> {
+    if (ids.length === 0) return [];
+    return this.db.selectFrom('properties').select('id').where('id', 'in', ids).execute();
+  }
+
   async listAll(): Promise<StaffUser[]> {
     const rows = await this.selectUserWithRole().orderBy('users.created_at', 'asc').execute();
-    const extras = await this.extrasFor(rows.map((r) => r.id));
-    return rows.map((r) => toStaffUser(r, extras.get(r.id) ?? []));
+    const ids = rows.map((r) => r.id);
+    const [extras, props] = await Promise.all([this.extrasFor(ids), this.propertiesFor(ids)]);
+    return rows.map((r) => toStaffUser(r, extras.get(r.id) ?? [], props.get(r.id) ?? []));
   }
 
   /** Minimal active-staff directory for pickers (assign-to etc.) — names + roles only. */
@@ -77,8 +102,8 @@ export class UsersRepository {
   async findById(id: string): Promise<StaffUser | null> {
     const row = await this.selectUserWithRole().where('users.id', '=', id).executeTakeFirst();
     if (!row) return null;
-    const extras = await this.extrasFor([row.id]);
-    return toStaffUser(row, extras.get(row.id) ?? []);
+    const [extras, props] = await Promise.all([this.extrasFor([row.id]), this.propertiesFor([row.id])]);
+    return toStaffUser(row, extras.get(row.id) ?? [], props.get(row.id) ?? []);
   }
 
   async emailExists(email: string): Promise<boolean> {
@@ -145,6 +170,7 @@ export class UsersRepository {
       is_lead: boolean;
     },
     extraPermissionIds: number[],
+    propertyIds: string[],
     meta: UsersRequestMeta
   ): Promise<string> {
     return this.db.transaction().execute(async (trx) => {
@@ -165,6 +191,13 @@ export class UsersRepository {
         await trx
           .insertInto('user_permissions')
           .values(extraPermissionIds.map((permission_id) => ({ user_id: user.id, permission_id })))
+          .execute();
+      }
+
+      if (propertyIds.length > 0) {
+        await trx
+          .insertInto('user_properties')
+          .values(propertyIds.map((property_id) => ({ user_id: user.id, property_id, created_by: meta.userId })))
           .execute();
       }
 
@@ -189,6 +222,7 @@ export class UsersRepository {
     id: string,
     fields: { name?: string; role_id?: number; active?: boolean; is_lead?: boolean },
     extraPermissionIds: number[] | undefined,
+    propertyIds: string[] | undefined,
     meta: UsersRequestMeta
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
@@ -211,6 +245,17 @@ export class UsersRepository {
         }
       }
 
+      // Replace-all semantics for property access too.
+      if (propertyIds !== undefined) {
+        await trx.deleteFrom('user_properties').where('user_id', '=', id).execute();
+        if (propertyIds.length > 0) {
+          await trx
+            .insertInto('user_properties')
+            .values(propertyIds.map((property_id) => ({ user_id: id, property_id, created_by: meta.userId })))
+            .execute();
+        }
+      }
+
       await trx
         .insertInto('audit_logs')
         .values({
@@ -219,7 +264,7 @@ export class UsersRepository {
           action: 'UPDATE',
           entity: 'user',
           entity_id: id,
-          diff: JSON.stringify({ ...fields, extra_permission_ids: extraPermissionIds }),
+          diff: JSON.stringify({ ...fields, extra_permission_ids: extraPermissionIds, property_ids: propertyIds }),
           ip_address: meta.ip ?? null,
         })
         .execute();
