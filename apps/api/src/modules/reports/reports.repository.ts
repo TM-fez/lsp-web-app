@@ -5,13 +5,25 @@ export interface RepoWindow {
   from: string;     // YYYY-MM-DD inclusive
   toExcl: string;   // YYYY-MM-DD exclusive upper bound
   propertyId?: string;
+  // Properties the caller may see (access scope). null = no restriction (admin);
+  // [] = none (sees nothing); [...] = restrict to these.
+  accessiblePropertyIds?: string[] | null;
 }
 
 interface MonthAmount { month: string; amount: string | number | null }
 interface PropAmount { property_id: string | null; property_name: string | null; amount: string | number | null }
 
-// Optional "AND p.id = …" fragment, safely parameterised.
-const byProp = (id?: string) => (id ? sql`AND p.id = ${id}` : sql``);
+// Property filters, safely parameterised: an optional "AND p.id = …" (a picked
+// property) plus the access scope ("AND p.id IN (…)", or "AND FALSE" when the
+// caller has no properties). admin passes null/undefined → no scope restriction.
+const byProp = (id?: string, accessibleIds?: string[] | null) => {
+  const idFrag = id ? sql`AND p.id = ${id}` : sql``;
+  let accFrag = sql``;
+  if (accessibleIds) {
+    accFrag = accessibleIds.length > 0 ? sql`AND p.id IN (${sql.join(accessibleIds)})` : sql`AND FALSE`;
+  }
+  return sql`${idFrag} ${accFrag}`;
+};
 
 // Month labels + window filters are pinned to UTC (the seed/business dates are UTC
 // midnights). The DB session timezone is Africa/Gaborone, so reading a timestamptz
@@ -34,7 +46,7 @@ export class ReportsRepository {
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
         AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
         AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
     return r.rows;
@@ -52,7 +64,7 @@ export class ReportsRepository {
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
         AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
         AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
@@ -70,7 +82,7 @@ export class ReportsRepository {
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
         AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
         AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
-        ${byProp(w.propertyId)}`.execute(this.db);
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}`.execute(this.db);
     return r.rows[0]?.vat ?? 0;
   }
 
@@ -85,7 +97,7 @@ export class ReportsRepository {
       WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
         AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
         AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
     return r.rows;
@@ -101,7 +113,7 @@ export class ReportsRepository {
       WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
         AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
         AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
@@ -115,7 +127,7 @@ export class ReportsRepository {
       LEFT JOIN properties p ON p.id = oe.property_id
       WHERE oe.deleted_at IS NULL
         AND oe.incurred_on >= ${w.from}::date AND oe.incurred_on < ${w.toExcl}::date
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
     return r.rows;
@@ -128,7 +140,7 @@ export class ReportsRepository {
       LEFT JOIN properties p ON p.id = oe.property_id
       WHERE oe.deleted_at IS NULL
         AND oe.incurred_on >= ${w.from}::date AND oe.incurred_on < ${w.toExcl}::date
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
@@ -148,21 +160,21 @@ export class ReportsRepository {
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE rsv.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT') AND rsv.deleted_at IS NULL
         AND rsv.check_in_date < ${w.toExcl}::date AND rsv.check_out_date > ${w.from}::date
-        ${byProp(w.propertyId)}
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
   }
 
   // Active room counts per property — the denominator for occupancy.
-  async roomCountByProperty(propertyId?: string): Promise<Array<{ property_id: string | null; rooms: string | number }>> {
+  async roomCountByProperty(propertyId?: string, accessibleIds?: string[] | null): Promise<Array<{ property_id: string | null; rooms: string | number }>> {
     const r = await sql<{ property_id: string | null; rooms: string | number }>`
       SELECT p.id AS property_id, COUNT(rm.id) AS rooms
       FROM rooms rm
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE rm.deleted_at IS NULL
-        ${byProp(propertyId)}
+        ${byProp(propertyId, accessibleIds)}
       GROUP BY 1
     `.execute(this.db);
     return r.rows;

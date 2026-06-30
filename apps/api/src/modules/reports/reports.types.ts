@@ -6,6 +6,8 @@ export interface ReportWindow {
   from?: string;    // YYYY-MM-DD inclusive (defaults to 11 months before `to`)
   to?: string;      // YYYY-MM-DD inclusive (defaults to today)
   propertyId?: string;
+  // Access scope: null = no restriction (admin); array = the caller's properties.
+  accessiblePropertyIds?: string[] | null;
 }
 
 export interface PnlSummary {

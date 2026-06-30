@@ -64,8 +64,8 @@ export class OperatingExpensesService {
   }
 
   // ── Recurring templates ───────────────────────────────────────────────────────
-  listRecurring() {
-    return this.repository.listRecurring();
+  listRecurring(accessibleIds?: string[] | null) {
+    return this.repository.listRecurring(accessibleIds);
   }
 
   createRecurring(dto: CreateRecurringDTO, meta: OperatingExpensesRequestMeta) {

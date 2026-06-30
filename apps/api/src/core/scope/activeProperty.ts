@@ -47,6 +47,25 @@ export async function accessiblePropertiesForUser(
     .execute();
 }
 
+/**
+ * The property ids a user may see, for management views (reports, expenses) that
+ * span properties rather than working in one active property. Returns `null` for
+ * admin (a wildcard — no restriction), otherwise the user's membership ids (an
+ * empty array means "no properties", i.e. see nothing).
+ */
+export async function accessiblePropertyIdsForUser(
+  userId: string,
+  role: string | undefined,
+): Promise<string[] | null> {
+  if (isAdmin(role)) return null;
+  const rows = await db
+    .selectFrom('user_properties')
+    .select('property_id')
+    .where('user_id', '=', userId)
+    .execute();
+  return rows.map((r) => r.property_id);
+}
+
 /** Whether a user may act within a given property (admin always may). */
 export async function userCanAccessProperty(
   userId: string,

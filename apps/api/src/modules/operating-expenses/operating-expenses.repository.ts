@@ -2,6 +2,9 @@ import { Kysely, sql } from 'kysely';
 import type { Database, NewOperatingExpense, UpdateOperatingExpense, NewRecurringCost, UpdateRecurringCost } from '../../db/types.js';
 import type { OperatingExpenseFilters, OperatingExpensesRequestMeta } from './operating-expenses.types.js';
 
+// Sentinel id used to make an "in" match nothing when the caller has no properties.
+const NO_PROPERTY = '00000000-0000-0000-0000-000000000000';
+
 export class OperatingExpensesRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -24,6 +27,12 @@ export class OperatingExpensesRepository {
 
   async list(filters: OperatingExpenseFilters) {
     let q = this.base();
+    // Access scope: non-admins see only their properties (admin passes null → all).
+    // An empty set uses a sentinel id so the IN matches nothing.
+    if (filters.accessiblePropertyIds) {
+      const ids = filters.accessiblePropertyIds.length > 0 ? filters.accessiblePropertyIds : [NO_PROPERTY];
+      q = q.where('oe.property_id', 'in', ids);
+    }
     if (filters.property_id) q = q.where('oe.property_id', '=', filters.property_id);
     if (filters.category) q = q.where('oe.category', '=', filters.category);
     if (filters.from) q = q.where('oe.incurred_on', '>=', new Date(filters.from));
@@ -103,8 +112,13 @@ export class OperatingExpensesRepository {
       .where('rc.deleted_at', 'is', null);
   }
 
-  listRecurring() {
-    return this.recurringBase().orderBy('rc.category').orderBy('rc.description').execute();
+  listRecurring(accessibleIds?: string[] | null) {
+    let q = this.recurringBase();
+    if (accessibleIds) {
+      const ids = accessibleIds.length > 0 ? accessibleIds : [NO_PROPERTY];
+      q = q.where('rc.property_id', 'in', ids);
+    }
+    return q.orderBy('rc.category').orderBy('rc.description').execute();
   }
 
   findRecurring(id: string) {

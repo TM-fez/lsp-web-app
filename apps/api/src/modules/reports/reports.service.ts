@@ -22,7 +22,7 @@ function normalize(req: ReportWindow): RepoWindow & { from: string; to: string }
   // exclusive upper bound = day after `to`
   const toExcl = new Date(parseISO(to).getTime() + DAY).toISOString().slice(0, 10);
 
-  return { from, to, toExcl, propertyId: req.propertyId };
+  return { from, to, toExcl, propertyId: req.propertyId, accessiblePropertyIds: req.accessiblePropertyIds };
 }
 
 function monthsBetween(from: string, toExcl: string): string[] {
@@ -55,7 +55,7 @@ export class ReportsService {
       this.repo.maintenanceByProperty(w),
       this.repo.opexByProperty(w),
       this.repo.occupancyByProperty(w),
-      this.repo.roomCountByProperty(w.propertyId),
+      this.repo.roomCountByProperty(w.propertyId, w.accessiblePropertyIds),
       this.repo.vatOutput(w),
     ]);
 
