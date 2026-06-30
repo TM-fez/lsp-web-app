@@ -82,6 +82,11 @@ export class ReservationsRepository {
       countQuery = countQuery.where('reservations.status', '=', filters.status);
     }
 
+    if (filters.source) {
+      query = query.where('reservations.source', '=', filters.source);
+      countQuery = countQuery.where('reservations.source', '=', filters.source);
+    }
+
     if (filters.room_id) {
       query = query.where('reservations.room_id', '=', filters.room_id);
       countQuery = countQuery.where('reservations.room_id', '=', filters.room_id);

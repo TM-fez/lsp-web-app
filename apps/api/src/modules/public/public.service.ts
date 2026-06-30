@@ -61,6 +61,7 @@ export class PublicService {
     const reservation = await this.reservations.createReservation(
       {
         status: 'PENDING',
+        source: 'WEBSITE',
         contact_id: contact.id,
         room_id: chosen.id,
         check_in_date: dto.check_in,

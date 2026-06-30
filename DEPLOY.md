@@ -1,71 +1,120 @@
-# Deploying LSP to Vercel (web + API) + Neon (database)
+# Deploying LSP — Web on Vercel + API & Postgres on Render
 
-This guide takes the app from "runs on a laptop" to a live, secure web address your
-team can log into. It targets **one Vercel project** serving both the screens and the
-API on the **same domain** (so the login/refresh cookie stays first-party — no CORS),
-with a **free Neon Postgres** for the data and a **daily cron** for housekeeping.
+This is the live setup. The app runs as **two deployed pieces**:
 
-> Hosting cost: **$0 to deploy and pilot.** Vercel's free (Hobby) plan is for
-> personal/non-commercial use, so for day-to-day business use you'll move to **Vercel
-> Pro (~$20/mo)**. Neon has a free tier that sleeps when idle (first request after idle
-> is a little slow) — fine to start.
+- **Web (the screens)** → **Vercel**. Builds the React app and serves it. It also
+  **proxies `/api/*` and `/health` to the API on Render**, so the browser only ever
+  talks to its own domain. That keeps the login/refresh cookie **first-party** (no CORS
+  headaches in the browser).
+- **API (the engine) + database** → **Render**. An **always-on** Express service plus a
+  **Render Postgres** database. Migrations and the first-admin seed run automatically
+  every time it starts (both are idempotent — they skip what's already done).
+
+```
+Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  Render Postgres
+            same-origin proxy          always-on Express      (free tier)
+```
+
+**Live URLs**
+- Web: https://lsp-web-app-web.vercel.app
+- API: https://lsp-api-p3zx.onrender.com  (health: `/health`)
+
+> **Why two hosts?** Vercel is great for the static front-end; Render gives us a real
+> always-on Node server (no cold-start logic, runs the background sweep in-process). The
+> Vercel→Render proxy is what makes them feel like one site to the browser.
+
+---
 
 ## What's already wired in this repo
 
-- `vercel.json` — builds the web app, routes `/api/v1/*` and `/health` to the API
-  function, serves the SPA for everything else, and schedules the daily sweep cron.
-- `api/index.ts` — the serverless entry; exports the Express app (no `listen()`).
-- `apps/api/src/app.ts` / `server.ts` — the app is import-only; `server.ts` is the
-  always-on local entry. Keys load from **env vars** in production (`JWT_PRIVATE_KEY` /
-  `JWT_PUBLIC_KEY`) or files locally.
-- `GET /api/v1/cron/sweep` — secret-guarded auto-expiry sweep the cron calls.
+- **`apps/web/vercel.json`** — builds the web app (`vite build` → `dist`), rewrites
+  `/api/:path*` and `/health` to the Render API, and serves the SPA for everything else.
+- **`render.yaml`** — a Render **Blueprint** that defines the `lsp-api` web service and the
+  `lsp-db` Postgres database. The API runs with `tsx` (same as dev — no fragile build
+  step); its start command runs migrations + the admin seed, then boots the server.
+- **`apps/api/src/server.ts`** — the always-on entry. On boot it starts the HTTP listener
+  **and** `startScheduler()`, the in-process auto-expiry sweep. Because Render keeps the
+  service running, **no external cron is needed**.
+- **`apps/api/src/app.ts`** — import-only (no `listen()`), so the same app could run
+  serverless. API routes mount under **`/api/v1`**; `/health` is unprefixed.
+- **`GET /api/v1/cron/sweep`** — a secret-guarded sweep endpoint (`CRON_SECRET`, Bearer
+  token). This is only a **fallback for a serverless host**; on Render the in-process
+  scheduler already does this, so you can leave `CRON_SECRET` unset.
+
+> **Legacy:** `apps/api/vercel.json` is left over from an earlier attempt to run the API on
+> Vercel. The API lives on Render now — that file (and any abandoned Vercel "-api" project)
+> can be deleted.
+
+---
 
 ## One-time setup
 
-### 1. Database — add Neon (free)
-In the Vercel dashboard → **Storage → Create Database → Neon (Postgres)**. Vercel adds a
-`DATABASE_URL` env var to the project. **Use the pooled connection string** (Neon labels
-it "Pooled connection") — serverless opens many short connections.
+### 1. API + database — Render (Blueprint)
+In the Render dashboard → **New → Blueprint**, point it at this GitHub repo. Render reads
+`render.yaml` and provisions:
+- **`lsp-api`** — the web service (free plan), and
+- **`lsp-db`** — a free Postgres database.
+
+`DATABASE_URL` is injected into the API automatically from `lsp-db`. Migrations + the admin
+seed run on first boot.
 
 ### 2. Generate production JWT keys (do NOT reuse the dev keys)
 ```bash
 openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:2048
 openssl rsa -pubout -in private.pem -out public.pem
 ```
-Paste the file contents into the `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` env vars below.
 
-### 3. Environment variables (Vercel → Settings → Environment Variables)
+### 3. Set the API environment variables (Render → `lsp-api` → Environment)
+`render.yaml` marks the secret ones `sync: false`, meaning **you set them by hand**:
+
 | Variable | Value |
 | --- | --- |
-| `NODE_ENV` | `production` |
-| `DATABASE_URL` | (set by Neon — use the **pooled** string) |
+| `NODE_ENV` | `production` *(already in `render.yaml`)* |
+| `DATABASE_URL` | *(auto, from `lsp-db`)* |
 | `JWT_PRIVATE_KEY` | contents of `private.pem` |
 | `JWT_PUBLIC_KEY` | contents of `public.pem` |
-| `JWT_REFRESH_COOKIE_NAME` | `lsp_refresh` |
-| `CORS_ORIGIN` | your Vercel URL, e.g. `https://lsp.vercel.app` |
-| `CRON_SECRET` | a long random string (Vercel sends this to the cron automatically) |
-| `BCRYPT_ROUNDS` | `12` |
+| `JWT_REFRESH_COOKIE_NAME` | `lsp_refresh` *(already in `render.yaml`)* |
+| `CORS_ORIGIN` | the Vercel web URL, e.g. `https://lsp-web-app-web.vercel.app` |
+| `CRON_SECRET` | *(optional — only for a serverless host; not needed on Render)* |
 
-The web app needs no API URL — it calls `/api/v1` on the same domain by default.
+> `CORS_ORIGIN` must be the **web** URL, not the API URL. It's the browser origin the API
+> trusts.
 
-### 4. Run migrations + seed the first admin (one-time, from your laptop)
-```bash
-DATABASE_URL="<your Neon pooled URL>" npm --prefix apps/api run db:migrate
-DATABASE_URL="<your Neon pooled URL>" npm --prefix apps/api run db:seed
-```
-This creates the tables and the default admin (`admin@lsp.local` / `Admin@123!`).
-**Log in and change that password immediately.**
+### 4. Web — Vercel
+Create a Vercel project from the same repo with **Root Directory = `apps/web`**. It picks up
+`apps/web/vercel.json`, builds the SPA, and proxies API calls to Render. The web app needs
+**no API URL env var** — it calls `/api/v1` on its own domain and the proxy forwards it.
 
-### 5. Deploy
-Connect the GitHub repo as a Vercel project (Root Directory = repo root) and deploy.
-Open the URL, log in, change the admin password, and add your team's users.
+After the first web deploy, copy the Vercel URL into the API's `CORS_ORIGIN` (step 3) if it
+changed.
 
-## Honest first-deploy notes
-- **The web deploys cleanly.** The **API function** (a TypeScript monorepo Express app)
-  is the part that can need a small path/build tweak on the very first deploy — that's
-  normal; we adjust `vercel.json` / `api/index.ts` once and redeploy.
-- **Cron frequency:** the Hobby plan runs crons **once a day**. That's fine here —
-  expired holds/quotes are already refused the moment anyone tries to use them, so the
-  sweep is only tidying statuses. On Pro you can run it more often.
-- **Payments are simulated** — this is a live internal tool for staff, alongside Little
-  Hotelier. Taking real guest money online is a later, separate piece.
+### 5. First login
+The admin seed creates `admin@lsp.local` / `Admin@123!` on first boot.
+**Log in and change that password immediately**, then add your team's users.
+
+---
+
+## Day-to-day: how deploys happen
+`main` is the release branch — every feature merges via PR. On merge to `main`:
+- **Render** auto-deploys the API (re-runs migrations on start — safe, idempotent).
+- **Vercel** auto-deploys the web app.
+
+A new database change is a new forward-only migration in
+`apps/api/src/db/migrations/NNN_*.sql`; it applies automatically on the next API deploy.
+
+---
+
+## Honest operating notes
+- **Free Render Postgres expires ~September 2026.** Move to a paid Postgres plan **before
+  real daily use** so data isn't lost. This is the most important deadline here.
+- **Free Render web service sleeps when idle.** The first request after a quiet spell is
+  slow (cold start) while it wakes. A paid plan keeps it always warm.
+- **Payments are simulated.** This is a live internal tool for staff; taking real guest
+  money online (DPO Pay) is a later, separate build — see `ROADMAP.md`.
+- **Manual sweep, if ever needed:** with `CRON_SECRET` set, you can trigger the housekeeping
+  sweep directly:
+  ```bash
+  curl -H "Authorization: Bearer $CRON_SECRET" https://lsp-api-p3zx.onrender.com/api/v1/cron/sweep
+  ```
+  You normally won't — the always-on server runs it automatically, and expiry is enforced
+  at point-of-use regardless.

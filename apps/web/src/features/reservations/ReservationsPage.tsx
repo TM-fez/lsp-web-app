@@ -11,8 +11,8 @@ import { useRooms } from '@/features/rooms/hooks';
 import { useProperties } from '@/features/properties/hooks';
 import { useReservations } from './hooks';
 import { ReservationFormDrawer } from './ReservationFormDrawer';
-import { nights, statusTone, statusLabel, fmtDate } from './util';
-import type { Reservation, ReservationStatus } from '@/types';
+import { nights, statusTone, statusLabel, fmtDate, sourceLabel, SOURCES } from './util';
+import type { Reservation, ReservationStatus, ReservationSource } from '@/types';
 
 const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'];
 
@@ -25,6 +25,7 @@ export function ReservationsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ReservationStatus>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<'ALL' | ReservationSource>('ALL');
   const [propertyFilter, setPropertyFilter] = useState<'ALL' | string>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
@@ -38,9 +39,10 @@ export function ReservationsPage() {
     () => ({
       search: search.trim() || undefined,
       status: statusFilter === 'ALL' ? undefined : statusFilter,
+      source: sourceFilter === 'ALL' ? undefined : sourceFilter,
       property_id: propertyFilter === 'ALL' ? undefined : propertyFilter,
     }),
-    [search, statusFilter, propertyFilter],
+    [search, statusFilter, sourceFilter, propertyFilter],
   );
 
   const { data, isLoading, isError, isFetching, refetch } = useReservations(params);
@@ -49,7 +51,8 @@ export function ReservationsPage() {
   const reservations = data?.data ?? [];
   const total = data?.total ?? 0;
   const truncated = total > reservations.length;
-  const hasQuery = search.trim() !== '' || statusFilter !== 'ALL' || propertyFilter !== 'ALL';
+  const hasQuery =
+    search.trim() !== '' || statusFilter !== 'ALL' || sourceFilter !== 'ALL' || propertyFilter !== 'ALL';
 
   const countLabel = !data
     ? 'Manage your bookings'
@@ -97,6 +100,18 @@ export function ReservationsPage() {
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value as 'ALL' | ReservationSource)}
+            className="max-w-[12rem]"
+          >
+            <option value="ALL">All sources</option>
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {sourceLabel(s)}
               </option>
             ))}
           </Select>
@@ -172,7 +187,8 @@ export function ReservationsPage() {
                     </div>
                     <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
                       {r.room_code ? `${r.room_code}${r.room_name ? ` · ${r.room_name}` : ''}` : 'No unit'} ·{' '}
-                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'}
+                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'} ·{' '}
+                      {sourceLabel(r.source)}
                     </div>
                   </div>
                   <Badge tone={statusTone[r.status]} className="relative shrink-0">

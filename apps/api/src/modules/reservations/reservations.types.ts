@@ -16,12 +16,24 @@ export const UserInputReservationStatusEnum = z.enum([
   'PENDING',
 ]);
 
+// Where a booking originated. Mirrors the reservation_source DB enum.
+export const ReservationSourceEnum = z.enum([
+  'WEBSITE',
+  'WALK_IN',
+  'PHONE',
+  'EMAIL',
+  'OTA',
+  'CORPORATE',
+  'OTHER',
+]);
+
 export const CreateReservationSchema = z.object({
   contact_id: z.string().uuid(),
   room_id: z.string().uuid(),
   check_in_date: z.coerce.date(),
   check_out_date: z.coerce.date(),
   notes: z.string().nullable().optional(),
+  source: ReservationSourceEnum.default('OTHER'),
   status: UserInputReservationStatusEnum.default('PENDING'),
 }).refine(data => data.check_in_date < data.check_out_date, {
   message: "Check-out date must be after check-in date",
@@ -34,6 +46,7 @@ export const UpdateReservationSchema = z.object({
   check_in_date: z.coerce.date().optional(),
   check_out_date: z.coerce.date().optional(),
   notes: z.string().nullable().optional(),
+  source: ReservationSourceEnum.optional(),
   status: ReservationStatusEnum.optional(), // Allow status updates explicitly
 });
 
@@ -67,6 +80,7 @@ export interface ReservationListRow extends ReservationRow {
 export interface ReservationFilters {
   search?: string;
   status?: z.infer<typeof ReservationStatusEnum>;
+  source?: z.infer<typeof ReservationSourceEnum>;
   room_id?: string;
   contact_id?: string;
   property_id?: string;

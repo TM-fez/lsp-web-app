@@ -1,4 +1,4 @@
-import type { ReservationStatus } from '@/types';
+import type { ReservationStatus, ReservationSource } from '@/types';
 
 type Tone = 'slate' | 'green' | 'amber' | 'blue' | 'rose' | 'violet';
 
@@ -19,6 +19,29 @@ export const statusTone: Record<ReservationStatus, Tone> = {
 };
 
 export const statusLabel = (s: ReservationStatus) => s.replace(/_/g, ' ').toLowerCase();
+
+// Booking origin, ordered for the filter dropdown (most common first).
+export const SOURCES: ReservationSource[] = [
+  'WALK_IN',
+  'PHONE',
+  'EMAIL',
+  'WEBSITE',
+  'OTA',
+  'CORPORATE',
+  'OTHER',
+];
+
+const SOURCE_LABELS: Record<ReservationSource, string> = {
+  WALK_IN: 'Walk-in',
+  PHONE: 'Phone',
+  EMAIL: 'Email',
+  WEBSITE: 'Website',
+  OTA: 'OTA',
+  CORPORATE: 'Corporate',
+  OTHER: 'Other',
+};
+
+export const sourceLabel = (s: ReservationSource) => SOURCE_LABELS[s] ?? s;
 
 /** A reservation can be edited / cancelled only while it is still open. */
 export const isOpen = (s: ReservationStatus) => s === 'PENDING' || s === 'CONFIRMED';

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
-import { ReservationStatusEnum, SetDiscountSchema } from './reservations.types.js';
+import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO } from './reservations.types.js';
 
 export class ReservationsController {
@@ -24,12 +24,14 @@ export class ReservationsController {
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;
       const status = statusRaw ? ReservationStatusEnum.parse(statusRaw) : undefined;
+      const sourceRaw = req.query.source;
+      const source = sourceRaw ? ReservationSourceEnum.parse(sourceRaw) : undefined;
       const room_id = req.query.room_id as string | undefined;
       const contact_id = req.query.contact_id as string | undefined;
       const property_id = (req.query.property_id as string) || undefined;
 
       const result = await this.service.getReservations(
-        { search, status, room_id, contact_id, property_id },
+        { search, status, source, room_id, contact_id, property_id },
         { page, limit }
       );
       res.json(result);

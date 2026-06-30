@@ -17,6 +17,7 @@ export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERV
 export type HousekeepingStatus = 'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED';
 export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+export type ReservationSource = 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'OTA' | 'CORPORATE' | 'OTHER';
 export type UnitType = 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
 export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
@@ -158,6 +159,7 @@ export interface Reservation {
   check_in_date: string;
   check_out_date: string;
   status: ReservationStatus;
+  source: ReservationSource;
   notes: string | null;
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;
