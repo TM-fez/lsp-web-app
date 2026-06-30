@@ -14,6 +14,18 @@ export class ReservationsRepository {
       .executeTakeFirst();
   }
 
+  /** The property a room belongs to (room → building → property), or null. */
+  async roomPropertyId(roomId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('rooms')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select('buildings.property_id as property_id')
+      .where('rooms.id', '=', roomId)
+      .where('rooms.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
   async checkAvailability(roomId: string, checkIn: Date, checkOut: Date, excludeReservationId?: string): Promise<boolean> {
     // Rooms are the source of truth: a room must exist, be active, and not be
     // blocked by status (MAINTENANCE / OUT_OF_SERVICE) to accept reservations.
@@ -80,6 +92,11 @@ export class ReservationsRepository {
     if (filters.status) {
       query = query.where('reservations.status', '=', filters.status);
       countQuery = countQuery.where('reservations.status', '=', filters.status);
+    }
+
+    if (filters.source) {
+      query = query.where('reservations.source', '=', filters.source);
+      countQuery = countQuery.where('reservations.source', '=', filters.source);
     }
 
     if (filters.room_id) {

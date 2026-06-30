@@ -1,9 +1,10 @@
 import { api } from './client';
-import type { Paginated, Reservation, ReservationStatus } from '@/types';
+import type { Paginated, Reservation, ReservationStatus, ReservationSource } from '@/types';
 
 export interface ReservationListParams {
   search?: string;
   status?: ReservationStatus;
+  source?: ReservationSource;
   room_id?: string;
   contact_id?: string;
   property_id?: string;
@@ -15,6 +16,7 @@ export interface CreateReservationInput {
   check_in_date: string; // YYYY-MM-DD
   check_out_date: string; // YYYY-MM-DD
   notes?: string | null;
+  source?: ReservationSource;
 }
 
 export type UpdateReservationInput = Partial<CreateReservationInput>;

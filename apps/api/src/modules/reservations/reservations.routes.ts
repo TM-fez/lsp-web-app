@@ -8,6 +8,7 @@ import { PricingRepository } from '../pricing/pricing.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { CreateReservationSchema, UpdateReservationSchema } from './reservations.types.js';
 
@@ -20,6 +21,8 @@ export function createReservationsRouter(dbInstance = db): Router {
   const controller = new ReservationsController(service);
 
   router.use(authenticate);
+  // Every reservation route is scoped to the caller's active property.
+  router.use(requireActiveProperty);
 
   router.get('/availability', authorize('reservations.read'), controller.checkAvailability);
   router.get('/', authorize('reservations.read'), controller.getReservations);

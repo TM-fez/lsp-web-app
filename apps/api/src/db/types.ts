@@ -92,6 +92,7 @@ export interface LeadsTable {
   status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
   contact_id: string | null;
   source: string | null;
+  phone: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
@@ -108,9 +109,11 @@ export interface ReservationsTable {
   check_out_date: Date;
   status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED';
   notes: string | null;
-  // Channel sync (migration 046): where the reservation came from, and the external
-  // calendar's stable id (Booking.com VEVENT UID) for OTA-imported BLOCKED rows.
-  source: Generated<'DIRECT' | 'WEBSITE' | 'BOOKING_COM'>;
+  // Unified booking origin (migration 046 channel sync + 050 widening): one column
+  // serving both the iCal import (DIRECT/WEBSITE/BOOKING_COM) and CRM "direct vs OTA"
+  // reporting (walk-in/phone/email/corporate). DB defaults to DIRECT (hence Generated).
+  // external_uid is the Booking.com VEVENT UID kept for OTA-imported BLOCKED rows.
+  source: Generated<'DIRECT' | 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'BOOKING_COM' | 'CORPORATE' | 'OTHER'>;
   external_uid: string | null;
   // Build 2b — per-booking discount + manager sign-off.
   discount_type: 'PERCENT' | 'FIXED' | null;
@@ -165,6 +168,14 @@ export interface PropertiesTable {
   updated_at: Generated<Date>;
 }
 
+// User → property membership (Phase 1 multi-property scope).
+export interface UserPropertiesTable {
+  user_id: string;
+  property_id: string;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface BuildingsTable {
   id: Generated<string>;
   property_id: string;
@@ -209,6 +220,7 @@ export interface MaintenanceWorkOrdersTable {
   approved_at: Date | null;
   // Build 2a — contractor cost + spend-approval / reconciliation flow.
   contractor_name: string | null;
+  contractor_phone: string | null;
   cost_amount: number | null;
   cost_approved_by: string | null;
   cost_approved_at: Date | null;
@@ -447,6 +459,7 @@ export interface Database {
   reservations: ReservationsTable;
   rooms: RoomsTable;
   properties: PropertiesTable;
+  user_properties: UserPropertiesTable;
   buildings: BuildingsTable;
   occupancy: OccupancyTable;
   maintenance_work_orders: MaintenanceWorkOrdersTable;
@@ -488,6 +501,9 @@ export type UpdateRoom    = Updateable<RoomsTable>;
 export type PropertyRow    = Selectable<PropertiesTable>;
 export type NewProperty    = Insertable<PropertiesTable>;
 export type UpdateProperty = Updateable<PropertiesTable>;
+
+export type UserPropertyRow = Selectable<UserPropertiesTable>;
+export type NewUserProperty = Insertable<UserPropertiesTable>;
 
 export type BuildingRow    = Selectable<BuildingsTable>;
 export type NewBuilding    = Insertable<BuildingsTable>;

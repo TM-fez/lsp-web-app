@@ -29,8 +29,8 @@ export class RoomsService {
     return this.repository.findPaginated(filters, pagination);
   }
 
-  async listAvailable(): Promise<RoomRow[]> {
-    return this.repository.listAvailable();
+  async listAvailable(propertyId?: string): Promise<RoomRow[]> {
+    return this.repository.listAvailable(propertyId);
   }
 
   async createRoom(dto: CreateRoomDTO, meta: RoomRequestMeta): Promise<RoomRow> {

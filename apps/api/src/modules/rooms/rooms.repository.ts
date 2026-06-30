@@ -25,15 +25,22 @@ export class RoomsRepository {
   }
 
   // Active units bookable right now: operationally AVAILABLE and housekeeping READY.
-  async listAvailable(): Promise<RoomRow[]> {
-    return this.db
+  async listAvailable(propertyId?: string): Promise<RoomRow[]> {
+    let query = this.db
       .selectFrom('rooms')
       .selectAll()
       .where('deleted_at', 'is', null)
       .where('status', '=', 'AVAILABLE')
-      .where('housekeeping_status', '=', 'READY')
-      .orderBy('code', 'asc')
-      .execute();
+      .where('housekeeping_status', '=', 'READY');
+    // Scope to the active property: only units whose building belongs to it.
+    if (propertyId) {
+      query = query.where(
+        'building_id',
+        'in',
+        this.db.selectFrom('buildings').select('id').where('property_id', '=', propertyId),
+      );
+    }
+    return query.orderBy('code', 'asc').execute();
   }
 
   async findPaginated(

@@ -20,12 +20,27 @@ export const UserInputReservationStatusEnum = z.enum([
   'PENDING',
 ]);
 
+// Where a booking originated — unified channel + CRM origin. Mirrors the
+// reservations.source CHECK (DIRECT/WEBSITE from channel sync, BOOKING_COM for OTA
+// imports, plus the manual CRM channels).
+export const ReservationSourceEnum = z.enum([
+  'DIRECT',
+  'WEBSITE',
+  'WALK_IN',
+  'PHONE',
+  'EMAIL',
+  'BOOKING_COM',
+  'CORPORATE',
+  'OTHER',
+]);
+
 export const CreateReservationSchema = z.object({
   contact_id: z.string().uuid(),
   room_id: z.string().uuid(),
   check_in_date: z.coerce.date(),
   check_out_date: z.coerce.date(),
   notes: z.string().nullable().optional(),
+  source: ReservationSourceEnum.default('WALK_IN'),
   status: UserInputReservationStatusEnum.default('PENDING'),
 }).refine(data => data.check_in_date < data.check_out_date, {
   message: "Check-out date must be after check-in date",
@@ -38,6 +53,7 @@ export const UpdateReservationSchema = z.object({
   check_in_date: z.coerce.date().optional(),
   check_out_date: z.coerce.date().optional(),
   notes: z.string().nullable().optional(),
+  source: ReservationSourceEnum.optional(),
   status: ReservationStatusEnum.optional(), // Allow status updates explicitly
 }).refine((data) => data.status !== 'BLOCKED', {
   message: 'BLOCKED is managed by channel sync and cannot be set manually',
@@ -74,6 +90,7 @@ export interface ReservationListRow extends ReservationRow {
 export interface ReservationFilters {
   search?: string;
   status?: z.infer<typeof ReservationStatusEnum>;
+  source?: z.infer<typeof ReservationSourceEnum>;
   room_id?: string;
   contact_id?: string;
   property_id?: string;

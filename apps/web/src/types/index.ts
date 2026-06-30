@@ -13,10 +13,26 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+// A property the signed-in user may enter (from /auth/me) — drives the picker.
+export interface MyProperty {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
+export interface MeResponse {
+  id: string;
+  email: string;
+  role: string;
+  permissions: string[];
+  properties: MyProperty[];
+}
+
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
 export type HousekeepingStatus = 'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED';
 export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+export type ReservationSource = 'DIRECT' | 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'BOOKING_COM' | 'CORPORATE' | 'OTHER';
 export type UnitType = 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
 export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
@@ -158,6 +174,7 @@ export interface Reservation {
   check_in_date: string;
   check_out_date: string;
   status: ReservationStatus;
+  source: ReservationSource;
   notes: string | null;
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;
@@ -179,6 +196,7 @@ export interface Lead {
   status: LeadStatus;
   source: LeadSource | null;
   contact_id: string | null;
+  phone: string | null;
   created_at: string;
 }
 
@@ -198,6 +216,7 @@ export interface WorkOrder {
   approved_by: string | null;
   approved_at: string | null;
   contractor_name: string | null;
+  contractor_phone: string | null;
   cost_amount: number | null;
   cost_approved_at: string | null;
   cost_reconciled_at: string | null;

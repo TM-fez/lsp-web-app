@@ -51,8 +51,8 @@ export class HousekeepingRepository {
   }
 
   // Cleaning queue: every live task with its unit, oldest first.
-  async listQueue(): Promise<HousekeepingQueueItem[]> {
-    return this.db
+  async listQueue(propertyId?: string): Promise<HousekeepingQueueItem[]> {
+    let query = this.db
       .selectFrom('housekeeping_tasks as t')
       .innerJoin('rooms as r', 'r.id', 't.room_id')
       .select([
@@ -69,9 +69,16 @@ export class HousekeepingRepository {
         't.inspected_at as inspected_at',
       ])
       .where('t.status', '<>', 'DONE')
-      .where('t.deleted_at', 'is', null)
-      .orderBy('t.opened_at', 'asc')
-      .execute();
+      .where('t.deleted_at', 'is', null);
+    // Scope to the active property (used by the cockpit board) when supplied.
+    if (propertyId) {
+      query = query.where(
+        'r.building_id',
+        'in',
+        this.db.selectFrom('buildings').select('id').where('property_id', '=', propertyId),
+      );
+    }
+    return query.orderBy('t.opened_at', 'asc').execute();
   }
 
   async findPaginated(query: HousekeepingQueryDTO) {

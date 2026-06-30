@@ -33,6 +33,7 @@ export const CreateLeadSchema = z.object({
   status: UserInputLeadStatusEnum.default('NEW'),
   contact_id: z.string().uuid().nullable().optional(), // CRM contacts link optional
   source: LeadSourceEnum.nullable().optional(),
+  phone: z.string().max(50).nullable().optional(), // enquirer's number (WhatsApp follow-up)
 });
 
 export const UpdateLeadSchema = CreateLeadSchema.partial();

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
-import { ReservationStatusEnum, SetDiscountSchema } from './reservations.types.js';
+import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO } from './reservations.types.js';
 
 export class ReservationsController {
@@ -24,12 +24,16 @@ export class ReservationsController {
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;
       const status = statusRaw ? ReservationStatusEnum.parse(statusRaw) : undefined;
+      const sourceRaw = req.query.source;
+      const source = sourceRaw ? ReservationSourceEnum.parse(sourceRaw) : undefined;
       const room_id = req.query.room_id as string | undefined;
       const contact_id = req.query.contact_id as string | undefined;
-      const property_id = (req.query.property_id as string) || undefined;
+      // Property scope is server-enforced: always the validated active property,
+      // never a client-supplied query param.
+      const property_id = req.activePropertyId;
 
       const result = await this.service.getReservations(
-        { search, status, room_id, contact_id, property_id },
+        { search, status, source, room_id, contact_id, property_id },
         { page, limit }
       );
       res.json(result);
@@ -40,7 +44,7 @@ export class ReservationsController {
 
   getReservationById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const reservation = await this.service.getReservationById(req.params.id as string);
+      const reservation = await this.service.getReservationById(req.params.id as string, req.activePropertyId);
       res.json(reservation);
     } catch (err) {
       next(err);
@@ -69,7 +73,7 @@ export class ReservationsController {
     try {
       const dto = req.body as CreateReservationDTO;
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.createReservation(dto, meta);
+      const reservation = await this.service.createReservation(dto, meta, req.activePropertyId);
       res.status(201).json(reservation);
     } catch (err) {
       next(err);
@@ -80,7 +84,7 @@ export class ReservationsController {
     try {
       const dto = req.body as UpdateReservationDTO;
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.modifyReservation(req.params.id as string, dto, meta);
+      const reservation = await this.service.modifyReservation(req.params.id as string, dto, meta, req.activePropertyId);
       res.json(reservation);
     } catch (err) {
       next(err);
@@ -89,7 +93,7 @@ export class ReservationsController {
 
   getPricing = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.priceReservation(req.params.id as string));
+      res.json(await this.service.priceReservation(req.params.id as string, req.activePropertyId));
     } catch (err) {
       next(err);
     }
@@ -100,7 +104,7 @@ export class ReservationsController {
       const dto = SetDiscountSchema.parse(req.body);
       const meta = this.getRequestMeta(req);
       const canApprove = (((req as any).user?.permissions ?? []) as string[]).includes('reservations.discount.approve');
-      res.json(await this.service.setDiscount(req.params.id as string, dto, meta, canApprove));
+      res.json(await this.service.setDiscount(req.params.id as string, dto, meta, canApprove, req.activePropertyId));
     } catch (err) {
       next(err);
     }
@@ -108,7 +112,7 @@ export class ReservationsController {
 
   approveDiscount = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.approveDiscount(req.params.id as string, this.getRequestMeta(req)));
+      res.json(await this.service.approveDiscount(req.params.id as string, this.getRequestMeta(req), req.activePropertyId));
     } catch (err) {
       next(err);
     }
@@ -116,7 +120,7 @@ export class ReservationsController {
 
   removeDiscount = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.removeDiscount(req.params.id as string, this.getRequestMeta(req)));
+      res.json(await this.service.removeDiscount(req.params.id as string, this.getRequestMeta(req), req.activePropertyId));
     } catch (err) {
       next(err);
     }
@@ -125,7 +129,7 @@ export class ReservationsController {
   cancelReservation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.cancelReservation(req.params.id as string, meta);
+      const reservation = await this.service.cancelReservation(req.params.id as string, meta, req.activePropertyId);
       res.json(reservation);
     } catch (err) {
       next(err);
@@ -135,7 +139,7 @@ export class ReservationsController {
   removeReservation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      await this.service.removeReservation(req.params.id as string, meta);
+      await this.service.removeReservation(req.params.id as string, meta, req.activePropertyId);
       res.status(204).send();
     } catch (err) {
       next(err);

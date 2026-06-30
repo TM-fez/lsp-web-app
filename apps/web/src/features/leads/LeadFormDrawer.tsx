@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { useCreateLead, useUpdateLead, useDeleteLead } from './hooks';
 import { USER_LEAD_STATUSES, LEAD_SOURCES, statusLabel, sourceLabel } from './util';
 import type { SettableLeadStatus } from '@/lib/api/leads';
@@ -27,6 +28,7 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
   const [title, setTitle] = useState('');
   const [source, setSource] = useState<LeadSource | ''>('');
   const [status, setStatus] = useState<SettableLeadStatus>('NEW');
+  const [phone, setPhone] = useState('');
   const [description, setDescription] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -40,6 +42,7 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
         ? (lead.status as SettableLeadStatus)
         : 'NEW',
     );
+    setPhone(lead?.phone ?? '');
     setDescription(lead?.description ?? '');
     setConfirmDelete(false);
   }, [open, lead]);
@@ -53,6 +56,7 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
       description: description.trim() || null,
       status,
       source: source || null,
+      phone: phone.trim() || null,
     };
     try {
       if (lead) {
@@ -132,6 +136,24 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
                 ))}
               </Select>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="lead-phone">Phone (optional)</Label>
+            <Input
+              id="lead-phone"
+              placeholder="e.g. +267 71 000 000"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={busy}
+            />
+            {isEdit && (
+              <WhatsAppButton
+                phone={phone}
+                message="Hi, following up on your enquiry with Lifestyle —"
+                className="mt-1 self-start"
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
