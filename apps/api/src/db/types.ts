@@ -92,6 +92,7 @@ export interface LeadsTable {
   status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
   contact_id: string | null;
   source: string | null;
+  phone: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
@@ -211,6 +212,7 @@ export interface MaintenanceWorkOrdersTable {
   approved_at: Date | null;
   // Build 2a — contractor cost + spend-approval / reconciliation flow.
   contractor_name: string | null;
+  contractor_phone: string | null;
   cost_amount: number | null;
   cost_approved_by: string | null;
   cost_approved_at: Date | null;

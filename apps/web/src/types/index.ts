@@ -196,6 +196,7 @@ export interface Lead {
   status: LeadStatus;
   source: LeadSource | null;
   contact_id: string | null;
+  phone: string | null;
   created_at: string;
 }
 
@@ -215,6 +216,7 @@ export interface WorkOrder {
   approved_by: string | null;
   approved_at: string | null;
   contractor_name: string | null;
+  contractor_phone: string | null;
   cost_amount: number | null;
   cost_approved_at: string | null;
   cost_reconciled_at: string | null;

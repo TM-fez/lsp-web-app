@@ -38,6 +38,7 @@ export class MaintenanceService {
         reported_by: meta.userId,
         assigned_to: data.assigned_to ?? null,
         contractor_name: data.contractor_name ?? null,
+        contractor_phone: data.contractor_phone ?? null,
         cost_amount: data.cost_amount ?? null,
       } as any, meta, trx);
 
@@ -164,13 +165,14 @@ export class MaintenanceService {
    * (the invoice often arrives AFTER the repair is completed). Changing the cost
    * voids any prior spend-approval/reconciliation — no spend without approval.
    */
-  async setCost(id: string, data: { contractor_name?: string | null; cost_amount?: number | null }, meta: { userId: string, requestId?: string }) {
+  async setCost(id: string, data: { contractor_name?: string | null; contractor_phone?: string | null; cost_amount?: number | null }, meta: { userId: string, requestId?: string }) {
     const order = await this.get(id);
     if (order.status === 'CANCELLED') {
       throw AppError.conflict('Cannot set a cost on a cancelled work order');
     }
     return this.repo.update(id, {
       contractor_name: data.contractor_name ?? null,
+      contractor_phone: data.contractor_phone ?? null,
       cost_amount: data.cost_amount ?? null,
       cost_approved_by: null,
       cost_approved_at: null,

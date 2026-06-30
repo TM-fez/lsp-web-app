@@ -15,6 +15,7 @@ export interface CreateLeadInput {
   description?: string | null;
   status?: SettableLeadStatus;
   source?: LeadSource | null;
+  phone?: string | null;
 }
 
 export type UpdateLeadInput = Partial<CreateLeadInput>;
