@@ -23,6 +23,11 @@ const iso = (offsetDays: number) => {
 let token = '';
 const bearer = () => `Bearer ${token}`;
 
+// Multi-property scope: the active property the portal is working in, plus a
+// building inside it to place the test unit. Sent as X-Property-Id on scoped routes.
+let propertyId = '';
+let buildingId = '';
+
 let roomId = '';
 let contactId = '';
 let reservationId = '';
@@ -47,6 +52,19 @@ describe('Operations Cockpit — end to end', () => {
     expect(token).toBeTruthy();
   });
 
+  it('resolves an active property and a building to place the unit in', async () => {
+    const me = await request(app).get('/api/v1/auth/me').set('Authorization', bearer());
+    expect(me.status).toBe(200);
+    propertyId = me.body.properties[0].id;
+    expect(propertyId).toBeTruthy();
+
+    const props = await request(app).get('/api/v1/properties').set('Authorization', bearer());
+    expect(props.status).toBe(200);
+    const prop = props.body.find((p: { id: string }) => p.id === propertyId);
+    buildingId = prop.buildings[0].id;
+    expect(buildingId).toBeTruthy();
+  });
+
   it('creates a STANDARD rate plan', async () => {
     const res = await request(app)
       .post('/api/v1/pricing')
@@ -65,7 +83,7 @@ describe('Operations Cockpit — end to end', () => {
     const res = await request(app)
       .post('/api/v1/rooms')
       .set('Authorization', bearer())
-      .send({ name: `E2E Unit ${stamp}`, code: `E2E-${stamp}`, type: 'STANDARD', capacity: 2 });
+      .send({ name: `E2E Unit ${stamp}`, code: `E2E-${stamp}`, type: 'STANDARD', capacity: 2, building_id: buildingId });
     expect(res.status).toBe(201);
     roomId = res.body.id;
     expect(res.body.status).toBe('AVAILABLE');
@@ -85,6 +103,7 @@ describe('Operations Cockpit — end to end', () => {
     const resv = await request(app)
       .post('/api/v1/reservations')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({
         contact_id: contactId,
         room_id: roomId,
@@ -131,7 +150,10 @@ describe('Operations Cockpit — end to end', () => {
     const hold = await request(app).get(`/api/v1/holds/${holdId}`).set('Authorization', bearer());
     expect(hold.body.status).toBe('CONFIRMED');
 
-    const resv = await request(app).get(`/api/v1/reservations/${reservationId}`).set('Authorization', bearer());
+    const resv = await request(app)
+      .get(`/api/v1/reservations/${reservationId}`)
+      .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId);
     expect(resv.body.status).toBe('CONFIRMED'); // ← the gap Sprint 8 left, now closed
   });
 
@@ -168,6 +190,7 @@ describe('Operations Cockpit — end to end', () => {
     const resv = await request(app)
       .post('/api/v1/reservations')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({
         contact_id: contactId,
         room_id: roomId,
@@ -198,7 +221,8 @@ describe('Operations Cockpit — end to end', () => {
 
     const confirmed2 = await request(app)
       .get(`/api/v1/reservations/${reservation2Id}`)
-      .set('Authorization', bearer());
+      .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId);
     expect(confirmed2.body.status).toBe('CONFIRMED');
 
     const blocked = await request(app)
@@ -233,7 +257,10 @@ describe('Operations Cockpit — end to end', () => {
   });
 
   it('serves a unified cockpit board', async () => {
-    const res = await request(app).get('/api/v1/cockpit/board').set('Authorization', bearer());
+    const res = await request(app)
+      .get('/api/v1/cockpit/board')
+      .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('units');
     expect(res.body).toHaveProperty('arrivals');

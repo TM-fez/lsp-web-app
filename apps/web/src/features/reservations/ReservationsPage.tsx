@@ -8,11 +8,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
-import { useProperties } from '@/features/properties/hooks';
 import { useReservations } from './hooks';
 import { ReservationFormDrawer } from './ReservationFormDrawer';
-import { nights, statusTone, statusLabel, fmtDate } from './util';
-import type { Reservation, ReservationStatus } from '@/types';
+import { nights, statusTone, statusLabel, fmtDate, sourceLabel, SOURCES } from './util';
+import type { Reservation, ReservationStatus, ReservationSource } from '@/types';
 
 const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'];
 
@@ -25,7 +24,7 @@ export function ReservationsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ReservationStatus>('ALL');
-  const [propertyFilter, setPropertyFilter] = useState<'ALL' | string>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<'ALL' | ReservationSource>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
 
@@ -38,18 +37,17 @@ export function ReservationsPage() {
     () => ({
       search: search.trim() || undefined,
       status: statusFilter === 'ALL' ? undefined : statusFilter,
-      property_id: propertyFilter === 'ALL' ? undefined : propertyFilter,
+      source: sourceFilter === 'ALL' ? undefined : sourceFilter,
     }),
-    [search, statusFilter, propertyFilter],
+    [search, statusFilter, sourceFilter],
   );
 
   const { data, isLoading, isError, isFetching, refetch } = useReservations(params);
   const { data: rooms } = useRooms();
-  const { data: properties } = useProperties();
   const reservations = data?.data ?? [];
   const total = data?.total ?? 0;
   const truncated = total > reservations.length;
-  const hasQuery = search.trim() !== '' || statusFilter !== 'ALL' || propertyFilter !== 'ALL';
+  const hasQuery = search.trim() !== '' || statusFilter !== 'ALL' || sourceFilter !== 'ALL';
 
   const countLabel = !data
     ? 'Manage your bookings'
@@ -100,20 +98,18 @@ export function ReservationsPage() {
               </option>
             ))}
           </Select>
-          {(properties?.length ?? 0) > 1 && (
-            <Select
-              value={propertyFilter}
-              onChange={(e) => setPropertyFilter(e.target.value)}
-              className="max-w-[12rem]"
-            >
-              <option value="ALL">All properties</option>
-              {(properties ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value as 'ALL' | ReservationSource)}
+            className="max-w-[12rem]"
+          >
+            <option value="ALL">All sources</option>
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {sourceLabel(s)}
+              </option>
+            ))}
+          </Select>
           {isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
         </div>
       )}
@@ -172,7 +168,8 @@ export function ReservationsPage() {
                     </div>
                     <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
                       {r.room_code ? `${r.room_code}${r.room_name ? ` · ${r.room_name}` : ''}` : 'No unit'} ·{' '}
-                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'}
+                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'} ·{' '}
+                      {sourceLabel(r.source)}
                     </div>
                   </div>
                   <Badge tone={statusTone[r.status]} className="relative shrink-0">

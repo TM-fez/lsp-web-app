@@ -18,11 +18,11 @@ import {
   useRemoveDiscount,
   useReservationPricing,
 } from './hooks';
-import { nights, statusLabel, statusTone, isOpen, fmtDate } from './util';
+import { nights, statusLabel, statusTone, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
 import { formatMoney } from '@/lib/utils/money';
 import { useAuthStore } from '@/store/auth';
-import type { Reservation, Room } from '@/types';
+import type { Reservation, ReservationSource, Room } from '@/types';
 
 const toDateInput = (s?: string | null) => (s ? s.slice(0, 10) : '');
 
@@ -67,6 +67,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [notes, setNotes] = useState('');
+  const [source, setSource] = useState<ReservationSource>('WALK_IN');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
@@ -80,6 +81,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setCheckIn(toDateInput(reservation?.check_in_date));
     setCheckOut(toDateInput(reservation?.check_out_date));
     setNotes(reservation?.notes ?? '');
+    setSource(reservation?.source ?? 'WALK_IN');
     setConfirmCancel(false);
     setDiscType('PERCENT');
     setDiscValue('');
@@ -117,6 +119,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
       check_in_date: checkIn,
       check_out_date: checkOut,
       notes: notes.trim() || null,
+      source,
     };
     try {
       if (reservation) {
@@ -177,6 +180,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             </Row>
             <Row label="Guest">{r.guest_name ?? '—'}</Row>
             <Row label="Unit">{r.room_code ? `${r.room_code} · ${r.room_name ?? ''}` : '—'}</Row>
+            <Row label="Source">{sourceLabel(r.source)}</Row>
             <Row label="Stay">
               {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} ({nights(r.check_in_date, r.check_out_date)}{' '}
               night{nights(r.check_in_date, r.check_out_date) === 1 ? '' : 's'})
@@ -286,6 +290,22 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               {unavailable && <span className="text-rose-600">✕ Not available for these dates</span>}
             </div>
           )}
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="res-source">Booking source</Label>
+            <Select
+              id="res-source"
+              value={source}
+              onChange={(e) => setSource(e.target.value as ReservationSource)}
+              disabled={busy}
+            >
+              {SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {sourceLabel(s)}
+                </option>
+              ))}
+            </Select>
+          </div>
 
           <div className="flex flex-col gap-1">
             <Label htmlFor="res-notes">Notes (optional)</Label>

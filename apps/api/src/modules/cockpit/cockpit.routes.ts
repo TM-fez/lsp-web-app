@@ -6,6 +6,7 @@ import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 
 export function createCockpitRouter(): Router {
   const router = Router();
@@ -14,7 +15,7 @@ export function createCockpitRouter(): Router {
   const controller = new CockpitController(service);
 
   router.use(authenticate);
-  router.get('/board', authorize('cockpit.read'), controller.board);
+  router.get('/board', authorize('cockpit.read'), requireActiveProperty, controller.board);
 
   return router;
 }

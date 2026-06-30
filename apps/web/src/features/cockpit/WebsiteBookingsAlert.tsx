@@ -22,25 +22,23 @@ function fmtRange(checkIn: string, checkOut: string): string {
   return `${a} → ${b}`;
 }
 
-// A booking made on the public website lands as a PENDING reservation whose notes
-// start with "Website booking" (see api public.service.createBooking). Surfacing
-// them here means an online booking never arrives silently on the cockpit — staff
-// see a standing queue of online bookings that still need a deposit to confirm
-// (or a cancel to release the unit).
-const WEBSITE_NOTE_PREFIX = 'Website booking';
-
+// A booking made on the public website lands as a PENDING reservation tagged
+// source = 'WEBSITE' (see api public.service.createBooking). Surfacing them here
+// means an online booking never arrives silently on the cockpit — staff see a
+// standing queue of online bookings that still need a deposit to confirm (or a
+// cancel to release the unit). The server filters by source; we just sort.
 export function WebsiteBookingsAlert() {
   const canRead = useAuthStore((s) => s.hasPerm('reservations.read'));
 
   const { data } = useQuery({
     queryKey: ['cockpit-website-bookings'],
-    queryFn: () => listReservations({ status: 'PENDING' }),
+    queryFn: () => listReservations({ status: 'PENDING', source: 'WEBSITE' }),
     refetchInterval: 20_000,
     enabled: canRead,
   });
 
   const bookings: Reservation[] = (data?.data ?? [])
-    .filter((r) => (r.notes ?? '').startsWith(WEBSITE_NOTE_PREFIX))
+    .slice()
     .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 
   if (!canRead || bookings.length === 0) return null;

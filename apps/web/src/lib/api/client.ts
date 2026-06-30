@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/auth';
+import { useActivePropertyStore } from '@/store/activeProperty';
 
 // Same-origin by default so the dev proxy (vite.config.ts) keeps the refresh
 // cookie first-party. Override with VITE_API_URL only for a true cross-origin API.
@@ -10,6 +11,10 @@ export const api = axios.create({ baseURL, withCredentials: true });
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Declare the active property; the server enforces scope against it. Harmless
+  // on non-scoped routes, which ignore it.
+  const propertyId = useActivePropertyStore.getState().activePropertyId;
+  if (propertyId) config.headers['X-Property-Id'] = propertyId;
   return config;
 });
 

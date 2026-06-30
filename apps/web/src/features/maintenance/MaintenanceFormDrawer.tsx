@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { useAuthStore } from '@/store/auth';
 import {
   useCreateWorkOrder,
@@ -68,6 +69,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [restoreUnit, setRestoreUnit] = useState(true);
   const [contractor, setContractor] = useState('');
+  const [contractorPhone, setContractorPhone] = useState('');
   const [cost, setCost] = useState('');
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     setConfirmCancel(false);
     setRestoreUnit(true);
     setContractor(order?.contractor_name ?? '');
+    setContractorPhone(order?.contractor_phone ?? '');
     setCost(order?.cost_amount != null ? String(order.cost_amount / 100) : '');
   }, [open, order]);
 
@@ -104,6 +107,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
           description: description.trim() || null,
           priority,
           contractor_name: contractor.trim() || null,
+          contractor_phone: contractorPhone.trim() || null,
           cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
         });
       }
@@ -130,6 +134,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
         id: order.id,
         input: {
           contractor_name: contractor.trim() || null,
+          contractor_phone: contractorPhone.trim() || null,
           cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
         },
       });
@@ -303,6 +308,15 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
                   className="pl-7"
                 />
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Contractor phone (e.g. +267 71 000 000)"
+                value={contractorPhone}
+                onChange={(e) => setContractorPhone(e.target.value)}
+                disabled={busy}
+              />
+              <WhatsAppButton phone={contractorPhone} className="shrink-0" />
             </div>
             {isEdit && order ? (
               <div className="flex items-center justify-between pt-1">

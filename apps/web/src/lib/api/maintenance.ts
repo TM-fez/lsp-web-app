@@ -13,6 +13,7 @@ export interface CreateWorkOrderInput {
   priority?: MaintenancePriority;
   assigned_to?: string | null;
   contractor_name?: string | null;
+  contractor_phone?: string | null;
   cost_amount?: number | null; // thebe
 }
 
@@ -51,7 +52,7 @@ export async function assignWorkOrder(id: string, assignedTo: string | null): Pr
 
 export async function setWorkOrderCost(
   id: string,
-  input: { contractor_name?: string | null; cost_amount?: number | null },
+  input: { contractor_name?: string | null; contractor_phone?: string | null; cost_amount?: number | null },
 ): Promise<WorkOrder> {
   const { data } = await api.patch<WorkOrder>(`/maintenance/${id}/cost`, input);
   return data;

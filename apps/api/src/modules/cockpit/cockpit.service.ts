@@ -10,13 +10,13 @@ export class CockpitService {
 
   // One unified read of the operating day: units (the spine), the Today rail,
   // and the cleaning queue. All mutations still go to the canonical modules.
-  async board(): Promise<CockpitBoard> {
+  async board(propertyId?: string): Promise<CockpitBoard> {
     const [units, arrivals, in_house, departures, housekeeping_queue] = await Promise.all([
-      this.repo.units(),
-      this.repo.arrivals(),
-      this.repo.inHouse(),
-      this.repo.departures(),
-      this.housekeeping.listQueue(),
+      this.repo.units(propertyId),
+      this.repo.arrivals(propertyId),
+      this.repo.inHouse(propertyId),
+      this.repo.departures(propertyId),
+      this.housekeeping.listQueue(propertyId),
     ]);
 
     return {

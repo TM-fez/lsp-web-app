@@ -139,7 +139,7 @@ export function useApproveWorkOrder() {
 export function useSetWorkOrderCost() {
   const refresh = useRefresh(false);
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { contractor_name?: string | null; cost_amount?: number | null } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { contractor_name?: string | null; contractor_phone?: string | null; cost_amount?: number | null } }) =>
       setWorkOrderCost(id, input),
     onSuccess: () => {
       toast.success('Cost saved');

@@ -22,6 +22,7 @@ export const CreateWorkOrderSchema = z.object({
   priority: MaintenancePriorityEnum.default('MEDIUM'),
   assigned_to: z.string().uuid().optional().nullable(),
   contractor_name: z.string().max(255).optional().nullable(),
+  contractor_phone: z.string().max(50).optional().nullable(),
   cost_amount: z.number().int().min(0).optional().nullable(), // thebe
 });
 
@@ -30,6 +31,7 @@ export const UpdateWorkOrderSchema = z.object({
   description: z.string().optional().nullable(),
   priority: MaintenancePriorityEnum.optional(),
   contractor_name: z.string().max(255).optional().nullable(),
+  contractor_phone: z.string().max(50).optional().nullable(),
   cost_amount: z.number().int().min(0).optional().nullable(),
 });
 
@@ -48,6 +50,7 @@ export const AssignWorkOrderSchema = z.object({
 
 export const SetCostSchema = z.object({
   contractor_name: z.string().max(255).optional().nullable(),
+  contractor_phone: z.string().max(50).optional().nullable(),
   cost_amount: z.number().int().min(0).optional().nullable(), // thebe
 });
 
