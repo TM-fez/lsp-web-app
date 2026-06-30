@@ -168,7 +168,7 @@ describe('Operations Cockpit — end to end', () => {
     expect(res.status).toBe(201);
     occupancyId = res.body.id;
 
-    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer());
+    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(room.body.status).toBe('OCCUPIED');
   });
 
@@ -179,7 +179,7 @@ describe('Operations Cockpit — end to end', () => {
       .send({});
     expect(res.status).toBe(200);
 
-    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer());
+    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(room.body.status).toBe('AVAILABLE');
     expect(room.body.housekeeping_status).toBe('DIRTY');
 
@@ -241,11 +241,12 @@ describe('Operations Cockpit — end to end', () => {
       const res = await request(app)
         .post(`/api/v1/housekeeping/rooms/${roomId}/${action}`)
         .set('Authorization', bearer())
+        .set('X-Property-Id', propertyId)
         .send({});
       expect(res.status).toBe(200);
     }
 
-    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer());
+    const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(room.body.housekeeping_status).toBe('READY');
 
     const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer()).set('X-Property-Id', propertyId);

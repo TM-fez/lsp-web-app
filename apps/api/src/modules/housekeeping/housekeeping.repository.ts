@@ -81,6 +81,30 @@ export class HousekeepingRepository {
     return query.orderBy('t.opened_at', 'asc').execute();
   }
 
+  // ── By-id scope lookups (room → building → property) ────────────────────────
+  async roomPropertyId(roomId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('rooms')
+      .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select('buildings.property_id as property_id')
+      .where('rooms.id', '=', roomId)
+      .where('rooms.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
+  async taskPropertyId(taskId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('housekeeping_tasks as t')
+      .leftJoin('rooms as r', 'r.id', 't.room_id')
+      .leftJoin('buildings as b', 'b.id', 'r.building_id')
+      .select('b.property_id as property_id')
+      .where('t.id', '=', taskId)
+      .where('t.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
+  }
+
   async findPaginated(query: HousekeepingQueryDTO, propertyId?: string) {
     let q = this.db.selectFrom('housekeeping_tasks').selectAll().where('deleted_at', 'is', null);
     let countQ = this.db
