@@ -4,9 +4,9 @@ import { CockpitService } from './cockpit.service.js';
 export class CockpitController {
   constructor(private readonly service: CockpitService) {}
 
-  board = async (_req: Request, res: Response, next: NextFunction) => {
+  board = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.board());
+      res.json(await this.service.board(req.activePropertyId));
     } catch (err) {
       next(err);
     }

@@ -45,8 +45,8 @@ export class ReservationsService {
    * Returns { priceable: false } when the room type has no active rate plan,
    * so the drawer degrades gracefully instead of erroring.
    */
-  async priceReservation(id: string): Promise<ReservationPricing | NotPriceable> {
-    const reservation = await this.getReservationById(id);
+  async priceReservation(id: string, activePropertyId?: string): Promise<ReservationPricing | NotPriceable> {
+    const reservation = await this.getReservationById(id, activePropertyId);
     if (!this.rooms || !this.pricing) {
       throw AppError.internal('Pricing is not configured for this service');
     }
@@ -81,10 +81,19 @@ export class ReservationsService {
     });
   }
 
-  async getReservationById(id: string): Promise<ReservationRow> {
+  async getReservationById(id: string, activePropertyId?: string): Promise<ReservationRow> {
     const reservation = await this.repository.findById(id);
     if (!reservation) {
       throw AppError.notFound(`Reservation with id ${id} not found`);
+    }
+    // Property scope: a reservation outside the caller's active property is
+    // treated as "not found" so its existence doesn't leak across properties.
+    // This is the single chokepoint every by-id operation flows through.
+    if (activePropertyId) {
+      const pid = await this.repository.roomPropertyId(reservation.room_id);
+      if (pid !== activePropertyId) {
+        throw AppError.notFound(`Reservation with id ${id} not found`);
+      }
     }
     return reservation;
   }
@@ -100,7 +109,7 @@ export class ReservationsService {
     return this.repository.checkAvailability(roomId, checkIn, checkOut, excludeId);
   }
 
-  async createReservation(dto: CreateReservationDTO, meta: ReservationRequestMeta): Promise<ReservationRow> {
+  async createReservation(dto: CreateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     const checkIn = new Date(dto.check_in_date);
     const checkOut = new Date(dto.check_out_date);
 
@@ -108,6 +117,14 @@ export class ReservationsService {
     // so a booking made just after midnight in Gaborone isn't judged against the server's UTC day.
     if (checkIn.toISOString().slice(0, 10) < todayInPropertyTZ()) {
       throw AppError.badRequest('Cannot create reservation with check-in date in the past');
+    }
+
+    // Property scope: the chosen unit must belong to the active property.
+    if (activePropertyId) {
+      const roomProperty = await this.repository.roomPropertyId(dto.room_id);
+      if (roomProperty !== activePropertyId) {
+        throw AppError.badRequest('That unit is not in your active property');
+      }
     }
 
     // Check availability
@@ -134,8 +151,17 @@ export class ReservationsService {
     }
   }
 
-  async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta): Promise<ReservationRow> {
-    const existing = await this.getReservationById(id);
+  async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id, activePropertyId);
+
+    // If the booking is being moved to a different unit, that unit must also be in
+    // the active property.
+    if (activePropertyId && dto.room_id) {
+      const roomProperty = await this.repository.roomPropertyId(dto.room_id);
+      if (roomProperty !== activePropertyId) {
+        throw AppError.badRequest('That unit is not in your active property');
+      }
+    }
 
     // Commercial invariant: CONFIRMED / CHECKED_IN / CHECKED_OUT are owned by the
     // system (payment via settlePaid(), and the check-in flow) — never set by a
@@ -194,8 +220,8 @@ export class ReservationsService {
    * Apply (request) a discount on a PENDING booking. If the actor can approve
    * (Tameem/admin), it's signed off immediately; otherwise it waits for approval.
    */
-  async setDiscount(id: string, dto: SetDiscountDTO, meta: ReservationRequestMeta, canApprove: boolean): Promise<ReservationRow> {
-    const existing = await this.getReservationById(id);
+  async setDiscount(id: string, dto: SetDiscountDTO, meta: ReservationRequestMeta, canApprove: boolean, activePropertyId?: string): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id, activePropertyId);
     if (existing.status !== 'PENDING') {
       throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
     }
@@ -213,8 +239,8 @@ export class ReservationsService {
   }
 
   /** Manager sign-off on a pending discount. */
-  async approveDiscount(id: string, meta: ReservationRequestMeta): Promise<ReservationRow> {
-    const existing = await this.getReservationById(id);
+  async approveDiscount(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id, activePropertyId);
     if (existing.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
     if (existing.discount_approved_at) throw AppError.conflict('This discount has already been approved');
     const updated = await this.repository.update(id, {
@@ -226,8 +252,8 @@ export class ReservationsService {
     return updated;
   }
 
-  async removeDiscount(id: string, meta: ReservationRequestMeta): Promise<ReservationRow> {
-    await this.getReservationById(id);
+  async removeDiscount(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    await this.getReservationById(id, activePropertyId);
     const updated = await this.repository.update(id, {
       discount_type: null,
       discount_value: null,
@@ -241,8 +267,8 @@ export class ReservationsService {
     return updated;
   }
 
-  async cancelReservation(id: string, meta: ReservationRequestMeta): Promise<ReservationRow> {
-    const existing = await this.getReservationById(id);
+  async cancelReservation(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id, activePropertyId);
 
     if (['CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'].includes(existing.status)) {
       throw AppError.conflict(`Cannot cancel reservation with status ${existing.status}`);
@@ -266,8 +292,8 @@ export class ReservationsService {
    * booking — one still holding a unit or already checked in — can never be erased;
    * cancel it first (which frees the unit), then remove it.
    */
-  async removeReservation(id: string, meta: ReservationRequestMeta): Promise<void> {
-    const existing = await this.getReservationById(id);
+  async removeReservation(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<void> {
+    const existing = await this.getReservationById(id, activePropertyId);
 
     if (existing.status !== 'CANCELLED') {
       throw AppError.conflict(

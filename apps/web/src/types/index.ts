@@ -13,6 +13,21 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+// A property the signed-in user may enter (from /auth/me) — drives the picker.
+export interface MyProperty {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
+export interface MeResponse {
+  id: string;
+  email: string;
+  role: string;
+  permissions: string[];
+  properties: MyProperty[];
+}
+
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
 export type HousekeepingStatus = 'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED';
 export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';

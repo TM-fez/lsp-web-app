@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { env } from '../../config/env.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { accessiblePropertiesForUser } from '../../core/scope/activeProperty.js';
 import * as authService from './auth.service.js';
 import type { LoginInput } from './auth.schema.js';
 
@@ -106,11 +107,15 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
     const user = req.user;
     if (!user) throw AppError.unauthorized();
 
+    const properties = await accessiblePropertiesForUser(user.sub, user.role);
+
     res.status(200).json({
       id: user.sub,
       email: user.email,
       role: user.role,
       permissions: user.permissions,
+      // Properties this user may enter — drives the post-login property picker.
+      properties: properties.map((p) => ({ id: p.id, name: p.name, code: p.code })),
     });
   } catch (err) {
     next(err);

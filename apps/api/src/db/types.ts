@@ -159,6 +159,14 @@ export interface PropertiesTable {
   updated_at: Generated<Date>;
 }
 
+// User → property membership (Phase 1 multi-property scope).
+export interface UserPropertiesTable {
+  user_id: string;
+  property_id: string;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface BuildingsTable {
   id: Generated<string>;
   property_id: string;
@@ -441,6 +449,7 @@ export interface Database {
   reservations: ReservationsTable;
   rooms: RoomsTable;
   properties: PropertiesTable;
+  user_properties: UserPropertiesTable;
   buildings: BuildingsTable;
   occupancy: OccupancyTable;
   maintenance_work_orders: MaintenanceWorkOrdersTable;
@@ -482,6 +491,9 @@ export type UpdateRoom    = Updateable<RoomsTable>;
 export type PropertyRow    = Selectable<PropertiesTable>;
 export type NewProperty    = Insertable<PropertiesTable>;
 export type UpdateProperty = Updateable<PropertiesTable>;
+
+export type UserPropertyRow = Selectable<UserPropertiesTable>;
+export type NewUserProperty = Insertable<UserPropertiesTable>;
 
 export type BuildingRow    = Selectable<BuildingsTable>;
 export type NewBuilding    = Insertable<BuildingsTable>;

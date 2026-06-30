@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { AppShell } from '@/components/layout/AppShell';
+import { PropertyGate } from '@/features/auth/PropertyGate';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { CockpitPage } from '@/features/cockpit/CockpitPage';
 import { ReservationsPage } from '@/features/reservations/ReservationsPage';
@@ -33,8 +34,12 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        element: <AppShell />,
+        // Requires an active property to be chosen before any scoped screen loads.
+        element: <PropertyGate />,
         children: [
+          {
+            element: <AppShell />,
+            children: [
           { path: '/', element: <CockpitPage /> },
           { path: '/reservations', element: <ReservationsPage /> },
           { path: '/leads', element: <LeadsPage /> },
@@ -51,6 +56,8 @@ export const router = createBrowserRouter([
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },
           { path: '/finance', element: <ComingSoonPage /> },
+            ],
+          },
         ],
       },
     ],

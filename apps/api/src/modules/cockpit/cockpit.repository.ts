@@ -6,9 +6,10 @@ import type { CockpitUnit, CockpitGuestCard } from './cockpit.types.js';
 export class CockpitRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  // Every active unit with its current guest (if checked in).
-  async units(): Promise<CockpitUnit[]> {
-    return this.db
+  // Every active unit with its current guest (if checked in). Scoped to the
+  // active property when one is supplied (it always is on the live board route).
+  async units(propertyId?: string): Promise<CockpitUnit[]> {
+    let query = this.db
       .selectFrom('rooms as r')
       .leftJoin('occupancy as o', (join) =>
         join.onRef('o.room_id', '=', 'r.id').on('o.status', '=', 'CHECKED_IN').on('o.deleted_at', 'is', null)
@@ -35,14 +36,14 @@ export class CockpitRepository {
         'res.id as reservation_id',
         'res.check_out_date as check_out_date',
       ])
-      .where('r.deleted_at', 'is', null)
-      .orderBy('r.code', 'asc')
-      .execute();
+      .where('r.deleted_at', 'is', null);
+    if (propertyId) query = query.where('b.property_id', '=', propertyId);
+    return query.orderBy('r.code', 'asc').execute();
   }
 
   // Confirmed reservations arriving today, not yet checked in.
-  async arrivals(): Promise<CockpitGuestCard[]> {
-    return this.guestCards()
+  async arrivals(propertyId?: string): Promise<CockpitGuestCard[]> {
+    return this.guestCards(propertyId)
       .where('res.status', '=', 'CONFIRMED')
       .where(sql<boolean>`res.check_in_date = ${propertyToday()}`)
       .orderBy('r.code', 'asc')
@@ -50,21 +51,27 @@ export class CockpitRepository {
   }
 
   // Everyone currently in-house.
-  async inHouse(): Promise<CockpitGuestCard[]> {
-    return this.occupancyCards().orderBy('r.code', 'asc').execute();
+  async inHouse(propertyId?: string): Promise<CockpitGuestCard[]> {
+    return this.occupancyCards(propertyId).orderBy('r.code', 'asc').execute();
   }
 
   // In-house guests whose reservation departs today.
-  async departures(): Promise<CockpitGuestCard[]> {
-    return this.occupancyCards()
+  async departures(propertyId?: string): Promise<CockpitGuestCard[]> {
+    return this.occupancyCards(propertyId)
       .where(sql<boolean>`res.check_out_date = ${propertyToday()}`)
       .orderBy('r.code', 'asc')
       .execute();
   }
 
+  // Building ids belonging to a property — used to scope the guest-card queries
+  // (a room is in the property when its building_id is in this set).
+  private buildingIdsInProperty(propertyId: string) {
+    return this.db.selectFrom('buildings').select('id').where('property_id', '=', propertyId);
+  }
+
   // Reservation-rooted card (arrivals): no occupancy yet.
-  private guestCards() {
-    return this.db
+  private guestCards(propertyId?: string) {
+    let query = this.db
       .selectFrom('reservations as res')
       .innerJoin('contacts as c', 'c.id', 'res.contact_id')
       .innerJoin('rooms as r', 'r.id', 'res.room_id')
@@ -81,11 +88,13 @@ export class CockpitRepository {
         'res.status as status',
       ])
       .where('res.deleted_at', 'is', null);
+    if (propertyId) query = query.where('r.building_id', 'in', this.buildingIdsInProperty(propertyId));
+    return query;
   }
 
   // Occupancy-rooted card (in-house / departures).
-  private occupancyCards() {
-    return this.db
+  private occupancyCards(propertyId?: string) {
+    let query = this.db
       .selectFrom('occupancy as o')
       .innerJoin('reservations as res', 'res.id', 'o.reservation_id')
       .innerJoin('contacts as c', 'c.id', 'res.contact_id')
@@ -104,5 +113,7 @@ export class CockpitRepository {
       ])
       .where('o.status', '=', 'CHECKED_IN')
       .where('o.deleted_at', 'is', null);
+    if (propertyId) query = query.where('r.building_id', 'in', this.buildingIdsInProperty(propertyId));
+    return query;
   }
 }

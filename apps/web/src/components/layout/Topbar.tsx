@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
+import { useActivePropertyStore } from '@/store/activeProperty';
 import { Button } from '@/components/ui/button';
+import { PropertySwitcher } from './PropertySwitcher';
 import { logout as apiLogout } from '@/lib/api/auth';
 
 function useGaboroneClock() {
@@ -21,6 +23,7 @@ function useGaboroneClock() {
 export function Topbar() {
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
+  const clearActiveProperty = useActivePropertyStore((s) => s.clear);
   const navigate = useNavigate();
   const time = useGaboroneClock();
 
@@ -31,6 +34,7 @@ export function Topbar() {
       // best-effort; clear locally regardless
     }
     clear();
+    clearActiveProperty();
     navigate('/login');
   }
 
@@ -43,7 +47,7 @@ export function Topbar() {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-line bg-cream px-7">
-      <div />
+      <PropertySwitcher />
       <div className="flex items-center gap-5">
         <div className="hidden items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted sm:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-terra" />

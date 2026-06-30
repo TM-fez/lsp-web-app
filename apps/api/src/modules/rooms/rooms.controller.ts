@@ -26,7 +26,8 @@ export class RoomsController {
       const status = statusRaw ? RoomStatusEnum.parse(statusRaw) : undefined;
       const typeRaw = req.query.type;
       const type = typeRaw ? RoomTypeEnum.parse(typeRaw) : undefined;
-      const property_id = (req.query.property_id as string) || undefined;
+      // Property scope is server-enforced: always the validated active property.
+      const property_id = req.activePropertyId;
       const building_id = (req.query.building_id as string) || undefined;
 
       const result = await this.service.getRooms({ search, status, type, property_id, building_id }, { page, limit });
@@ -36,9 +37,9 @@ export class RoomsController {
     }
   };
 
-  listAvailable = async (_req: Request, res: Response, next: NextFunction) => {
+  listAvailable = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const rooms = await this.service.listAvailable();
+      const rooms = await this.service.listAvailable(req.activePropertyId);
       res.json({ data: rooms });
     } catch (err) {
       next(err);
