@@ -68,6 +68,13 @@ const schema = z.object({
     .string()
     .optional()
     .transform((v) => v === '1' || v?.toLowerCase() === 'true'),
+
+  // Claude/LLM (Phase 2 shared infra). Optional — the client is DARK until keyed:
+  // with ANTHROPIC_API_KEY unset, isLlmConfigured() is false and callers get a clear
+  // error instead of a failed request. Model + token ceiling have sane defaults.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
+  ANTHROPIC_MAX_TOKENS: z.coerce.number().int().positive().default(1024),
 });
 
 const result = schema.safeParse(process.env);

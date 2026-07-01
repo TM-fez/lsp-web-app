@@ -76,9 +76,15 @@ openssl rsa -pubout -in private.pem -out public.pem
 | `JWT_REFRESH_COOKIE_NAME` | `lsp_refresh` *(already in `render.yaml`)* |
 | `CORS_ORIGIN` | the Vercel web URL, e.g. `https://lsp-web-app-web.vercel.app` |
 | `CRON_SECRET` | *(optional — only for a serverless host; not needed on Render)* |
+| `ANTHROPIC_API_KEY` | *(optional — the Claude/LLM client stays dark until this is set)* |
+| `ANTHROPIC_MODEL` | *(optional — defaults to `claude-opus-4-8`)* |
 
 > `CORS_ORIGIN` must be the **web** URL, not the API URL. It's the browser origin the API
 > trusts.
+>
+> `ANTHROPIC_API_KEY` powers the shared Claude/LLM client (Phase 2). Leave it unset until
+> the AI features (target marketing, strategy engine) go live — the client is dark and any
+> call returns a clear "not configured" error rather than failing.
 
 ### 4. Web — Vercel
 Create a Vercel project from the same repo with **Root Directory = `apps/web`**. It picks up
