@@ -18,6 +18,7 @@
     "db:purge-test": "tsx src/db/purge-test-data.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.0",
     "@aws-sdk/client-s3": "^3.798.0",
     "@aws-sdk/s3-request-presigner": "^3.798.0",
     "@lsp/shared-types": "*",
