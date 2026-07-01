@@ -269,6 +269,23 @@ export interface AuditLogsTable {
   created_at: Generated<Date>;
 }
 
+// Phase 2 — Notifications. One row per recipient (fan-out at emit time), so
+// read/unread state is per-user and a recipient only queries `user_id = me`.
+export interface NotificationsTable {
+  id: Generated<string>;
+  user_id: string;                 // recipient
+  property_id: string | null;      // context; NULL = company-wide
+  type: string;                    // e.g. 'reminder.checkout_due'
+  title: string;
+  body: string | null;
+  entity_type: string | null;      // deep-link target table
+  entity_id: string | null;        // deep-link target id
+  link: string | null;             // optional web path
+  dedup_key: string | null;        // stable key for idempotent reminders (NULL = ad-hoc)
+  read_at: Date | null;
+  created_at: Generated<Date>;
+}
+
 // ── Sprint 8 — Commercial Core ────────────────────────────────────────────────
 // All money columns are INTEGER minor units (thebe; 100 = 1 BWP).
 
@@ -465,6 +482,7 @@ export interface Database {
   maintenance_work_orders: MaintenanceWorkOrdersTable;
   housekeeping_tasks: HousekeepingTasksTable;
   audit_logs: AuditLogsTable;
+  notifications: NotificationsTable;
   rate_plans: RatePlansTable;
   quotes: QuotesTable;
   holds: HoldsTable;
@@ -515,6 +533,9 @@ export type UpdateOccupancy = Updateable<OccupancyTable>;
 
 export type AuditLogRow   = Selectable<AuditLogsTable>;
 export type NewAuditLog   = Insertable<AuditLogsTable>;
+
+export type NotificationRow = Selectable<NotificationsTable>;
+export type NewNotification = Insertable<NotificationsTable>;
 
 export type FileRow       = Selectable<FilesTable>;
 export type NewFile       = Insertable<FilesTable>;

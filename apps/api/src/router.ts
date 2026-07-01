@@ -26,6 +26,7 @@ import { createOperatingExpensesRouter } from './modules/operating-expenses/oper
 import { createPayrollRouter } from './modules/payroll/payroll.routes.js';
 import { createReportsRouter } from './modules/reports/reports.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
+import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
 
 const router = Router();
 
@@ -83,6 +84,9 @@ router.use('/reports', createReportsRouter());
 
 // ── Build 2c — Activity feed (shared "what's changed", all staff) ─────────────
 router.use('/activity', createActivityRouter());
+
+// ── Phase 2 — Notifications (per-recipient in-app alerts; you see only your own) ─
+router.use('/notifications', createNotificationsRouter());
 
 // ── Sprint 9 — Operations Cockpit: housekeeping turn workflow ─────────────────
 router.use('/housekeeping', createHousekeepingRouter());

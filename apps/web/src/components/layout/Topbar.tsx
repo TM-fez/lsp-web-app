@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { useActivePropertyStore } from '@/store/activeProperty';
 import { Button } from '@/components/ui/button';
 import { PropertySwitcher } from './PropertySwitcher';
+import { NotificationBell } from './NotificationBell';
 import { logout as apiLogout } from '@/lib/api/auth';
 
 function useGaboroneClock() {
@@ -53,6 +54,7 @@ export function Topbar() {
           <span className="h-1.5 w-1.5 rounded-full bg-terra" />
           {time} CAT · Gaborone
         </div>
+        <NotificationBell />
         <div className="flex items-center gap-3 border-l border-line pl-5">
           <div className="text-right leading-tight">
             <div className="text-sm text-ink">{user?.name}</div>

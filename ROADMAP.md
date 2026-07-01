@@ -89,8 +89,14 @@ Everything downstream gets scoped through this, so it goes first.
 
 ### Phase 2 — Shared infrastructure
 Unblocks the operations + AI features that follow.
-- Notifications infrastructure (in-app + interval reminders via cron)
-- Claude/LLM integration scaffolding (one client, used by A4/A5/A6)
+- ✅ Notifications infrastructure (in-app + interval reminders via cron) — per-recipient
+  `notifications` table (052), `notifications` module with a reusable `notify()` emit helper
+  (fan-out to a user / list / whole property), read-model API (list, unread-count, read,
+  read-all), Topbar bell + dropdown, and a secret-guarded `GET /cron/reminders` sweep with
+  idempotent generators (checkouts-due, stale high-priority repairs). Follow-up: narrow
+  reminder targeting from "all property members" to the responsible department once Phase 3
+  role mapping lands.
+- ⏳ Claude/LLM integration scaffolding (one client, used by A4/A5/A6)
 
 ### Phase 3 — Operations depth (rides on Phase 1 + 2)
 - Maintenance (A2): scoped contractor login, notifications, reminders, L&P-vs-landlord mapping

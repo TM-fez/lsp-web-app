@@ -40,6 +40,12 @@ Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  
 - **`GET /api/v1/cron/sweep`** — a secret-guarded sweep endpoint (`CRON_SECRET`, Bearer
   token). This is only a **fallback for a serverless host**; on Render the in-process
   scheduler already does this, so you can leave `CRON_SECRET` unset.
+- **`GET /api/v1/cron/reminders`** — same `CRON_SECRET` guard; raises the in-app reminder
+  notifications (checkouts due today, stale high-priority repairs). Idempotent per day, so
+  it's safe on any cadence — point a **daily** external cron at it. Unlike the sweep there
+  is no in-process equivalent yet, so if you want daily reminders you must set `CRON_SECRET`
+  and schedule this (e.g. a Render Cron Job or an uptime pinger). Skipping it just means no
+  reminder notifications are generated; nothing else breaks.
 
 > **Legacy:** `apps/api/vercel.json` is left over from an earlier attempt to run the API on
 > Vercel. The API lives on Render now — that file (and any abandoned Vercel "-api" project)
