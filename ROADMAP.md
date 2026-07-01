@@ -96,7 +96,11 @@ Unblocks the operations + AI features that follow.
   idempotent generators (checkouts-due, stale high-priority repairs). Follow-up: narrow
   reminder targeting from "all property members" to the responsible department once Phase 3
   role mapping lands.
-- ⏳ Claude/LLM integration scaffolding (one client, used by A4/A5/A6)
+- ✅ Claude/LLM integration scaffolding (one client, used by A4/A5/A6) — `core/llm/llm.service.ts`
+  via the official `@anthropic-ai/sdk` (default model `claude-opus-4-8`), `isLlmConfigured()` gate +
+  `generateText()`. DARK until `ANTHROPIC_API_KEY` is set; no product code calls it yet (a seam for A4/A5/A6).
+
+**Phase 2 COMPLETE** — notifications (#54) + LLM client (#55) both merged.
 
 ### Phase 3 — Operations depth (rides on Phase 1 + 2)
 - Maintenance (A2): scoped contractor login, notifications, reminders, L&P-vs-landlord mapping
