@@ -17,16 +17,36 @@ let userA: string;
 let userB: string;
 let propertyId: string;
 
+// Create our own users + property rather than leaning on seed state — CI's test DB
+// is seeded more minimally than a dev DB, so relying on pre-existing rows is flaky.
+// roles are part of the baseline schema, so at least one always exists to reference.
 beforeAll(async () => {
-  const users = await db.selectFrom('users').select('id').orderBy('id').limit(2).execute();
-  const prop = await db.selectFrom('properties').select('id').limit(1).executeTakeFirst();
-  if (users.length < 2 || !prop) throw new Error('lsp_test needs ≥2 users and ≥1 property seeded');
-  [userA, userB] = [users[0].id, users[1].id];
+  const role = await db.selectFrom('roles').select('id').limit(1).executeTakeFirstOrThrow();
+  const prop = await db
+    .insertInto('properties')
+    .values({ name: `NOTIF_TEST_PROP_${Date.now()}` })
+    .returning('id')
+    .executeTakeFirstOrThrow();
   propertyId = prop.id;
+
+  const uniq = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const users = await db
+    .insertInto('users')
+    .values([
+      { role_id: role.id, name: 'Notif Test A', email: `notif-a-${uniq}@test.local`, password_hash: 'x' },
+      { role_id: role.id, name: 'Notif Test B', email: `notif-b-${uniq}@test.local`, password_hash: 'x' },
+    ])
+    .returning('id')
+    .execute();
+  [userA, userB] = [users[0].id, users[1].id];
 });
 
 afterAll(async () => {
+  // Deleting the users cascades their notifications (FK ON DELETE CASCADE); the
+  // explicit type-delete covers any rows addressed to other users (none here).
   await db.deleteFrom('notifications').where('type', '=', TYPE).execute();
+  await db.deleteFrom('users').where('id', 'in', [userA, userB]).execute();
+  await db.deleteFrom('properties').where('id', '=', propertyId).execute();
 });
 
 function row(userId: string, extra: Record<string, unknown> = {}) {
