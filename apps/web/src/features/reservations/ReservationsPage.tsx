@@ -13,7 +13,7 @@ import { ReservationFormDrawer } from './ReservationFormDrawer';
 import { nights, statusTone, statusLabel, fmtDate, sourceLabel, SOURCES } from './util';
 import type { Reservation, ReservationStatus, ReservationSource } from '@/types';
 
-const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'];
+const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'BLOCKED'];
 
 export function ReservationsPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);

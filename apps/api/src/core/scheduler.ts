@@ -8,6 +8,7 @@ import { QuotesRepository } from '../modules/quotes/quotes.repository.js';
 import { QuotesService } from '../modules/quotes/quotes.service.js';
 import { PricingRepository } from '../modules/pricing/pricing.repository.js';
 import { PricingService } from '../modules/pricing/pricing.service.js';
+import { createWebsiteBookingExpiry } from '../modules/reservations/reservations.expiry.js';
 
 /**
  * Background auto-expiry sweep.
@@ -18,8 +19,9 @@ import { PricingService } from '../modules/pricing/pricing.service.js';
  * a fixed interval so a guest who abandons a booking frees the room, and a stale price
  * quote stops being usable, without anyone lifting a finger.
  *
- * It adds no new logic and no new tables — it only invokes the existing services on a
- * timer, exactly as the manual endpoint does.
+ * The third sweep closes the hold-less public path: a /stay booking is a PENDING
+ * reservation that blocks its nights outright, so an abandoned one is auto-cancelled
+ * after WEBSITE_PENDING_TTL_HOURS (see reservations.expiry.ts).
  */
 
 export interface HoldsSweeper {
@@ -28,28 +30,38 @@ export interface HoldsSweeper {
 export interface QuotesSweeper {
   expireStaleQuotes(): Promise<number>;
 }
+export type WebsiteBookingsSweeper = () => Promise<number>;
 
 export interface SweepResult {
   holdsReleased: number;
   quotesExpired: number;
+  websiteBookingsExpired: number;
 }
 
 /**
- * Run both sweeps once. They are independent: one failing (e.g. a transient DB error)
- * must not cancel the other, so we settle both and surface counts for whatever succeeded.
+ * Run all sweeps once. They are independent: one failing (e.g. a transient DB error)
+ * must not cancel the others, so we settle all and surface counts for whatever succeeded.
  */
-export async function runSweep(holds: HoldsSweeper, quotes: QuotesSweeper): Promise<SweepResult> {
-  const [held, quoted] = await Promise.allSettled([
+export async function runSweep(
+  holds: HoldsSweeper,
+  quotes: QuotesSweeper,
+  websiteBookings: WebsiteBookingsSweeper = async () => 0,
+): Promise<SweepResult> {
+  const [held, quoted, website] = await Promise.allSettled([
     holds.releaseExpired(),
     quotes.expireStaleQuotes(),
+    websiteBookings(),
   ]);
 
   if (held.status === 'rejected') console.error('[scheduler] hold sweep failed:', held.reason);
   if (quoted.status === 'rejected') console.error('[scheduler] quote sweep failed:', quoted.reason);
+  if (website.status === 'rejected')
+    console.error('[scheduler] website-booking sweep failed:', website.reason);
 
   return {
     holdsReleased: held.status === 'fulfilled' ? held.value : 0,
     quotesExpired: quoted.status === 'fulfilled' ? quoted.value : 0,
+    websiteBookingsExpired: website.status === 'fulfilled' ? website.value : 0,
   };
 }
 
@@ -58,7 +70,8 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
   const pricing = new PricingService(new PricingRepository(dbInstance));
   const quotes = new QuotesService(new QuotesRepository(dbInstance), pricing);
   const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
-  return () => runSweep(holds, quotes);
+  const websiteBookings = createWebsiteBookingExpiry(dbInstance);
+  return () => runSweep(holds, quotes, websiteBookings);
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -79,9 +92,12 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
 
   const tick = () => {
     sweep()
-      .then(({ holdsReleased, quotesExpired }) => {
-        if (holdsReleased > 0 || quotesExpired > 0) {
-          console.log(`[scheduler] swept ${holdsReleased} expired hold(s), ${quotesExpired} stale quote(s)`);
+      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired }) => {
+        if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
+          console.log(
+            `[scheduler] swept ${holdsReleased} expired hold(s), ${quotesExpired} stale quote(s), ` +
+              `${websiteBookingsExpired} stale website booking(s)`,
+          );
         }
       })
       .catch((err) => console.error('[scheduler] sweep failed:', err));

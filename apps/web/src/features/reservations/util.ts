@@ -16,9 +16,12 @@ export const statusTone: Record<ReservationStatus, Tone> = {
   CHECKED_IN: 'blue',
   CHECKED_OUT: 'slate',
   CANCELLED: 'rose',
+  BLOCKED: 'violet',
 };
 
-export const statusLabel = (s: ReservationStatus) => s.replace(/_/g, ' ').toLowerCase();
+// "blocked" alone reads like a maintenance state — name the OTA origin instead.
+export const statusLabel = (s: ReservationStatus) =>
+  s === 'BLOCKED' ? 'OTA block' : s.replace(/_/g, ' ').toLowerCase();
 
 // Booking origin, ordered for the filter dropdown (most common first).
 export const SOURCES: ReservationSource[] = [

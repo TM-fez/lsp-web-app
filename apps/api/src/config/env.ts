@@ -21,6 +21,13 @@ const schema = z.object({
 
   CORS_ORIGIN: z.string(),
 
+  // How many reverse-proxy hops sit in front of Express, counted from the socket
+  // outward (production: 2 — Vercel rewrite → Render edge). Drives `trust proxy`,
+  // which is what makes req.ip (rate-limit keys, audit-log IPs) the real client
+  // address instead of the proxy's. 0 = trust nothing (local dev: Vite's proxy
+  // sends no X-Forwarded-For).
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+
   // Shared secret the scheduled sweep endpoint (GET /cron/sweep) requires, so only the
   // platform cron can trigger it. When unset, the endpoint refuses every caller.
   CRON_SECRET: z.string().optional(),
@@ -28,6 +35,11 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(200),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().default(10),
+  RATE_LIMIT_REFRESH_MAX: z.coerce.number().default(30),
+
+  // How long an unpaid /stay booking may sit PENDING (blocking its nights) before
+  // the sweep auto-cancels it and notifies the property. 0 disables the expiry.
+  WEBSITE_PENDING_TTL_HOURS: z.coerce.number().default(24),
 
   // Background auto-expiry sweep (expired holds + stale quotes).
   // Opt out anywhere with DISABLE_SCHEDULER=1; it is also always off under NODE_ENV=test.
