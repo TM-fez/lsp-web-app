@@ -255,6 +255,11 @@ export interface HousekeepingTasksTable {
   started_at: Date | null;
   inspected_at: Date | null;
   completed_at: Date | null;
+  // Three-stage accountability (migration 055): who cleaned, who validated,
+  // who signed the unit back to READY.
+  started_by: string | null;
+  inspected_by: string | null;
+  signed_off_by: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;

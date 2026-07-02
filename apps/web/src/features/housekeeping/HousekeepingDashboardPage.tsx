@@ -10,7 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
 import { housekeepingTone } from '@/features/cockpit/status';
 import { useTurn } from './hooks';
-import { nextAction, actionLabel, hkLabel } from './util';
+import { nextAction, actionLabel, canDoAction, hkLabel } from './util';
 import type { HousekeepingStatus, Room } from '@/types';
 
 // The four housekeeping states as KPI tiles, in workflow order (dirty → ready).
@@ -35,7 +35,6 @@ const TOP = 8;
 
 export function HousekeepingDashboardPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
-  const canUpdate = hasPerm('housekeeping.update');
   const { data: rooms, isLoading, isError, refetch } = useRooms();
   const turn = useTurn();
 
@@ -151,7 +150,7 @@ export function HousekeepingDashboardPage() {
                           {hkLabel(room.housekeeping_status)}
                         </Badge>
                         {pending && <Spinner className="h-4 w-4 text-slate-400" />}
-                        {action && canUpdate && (
+                        {action && canDoAction(action, hasPerm) && (
                           <Button
                             size="sm"
                             variant="outline"
