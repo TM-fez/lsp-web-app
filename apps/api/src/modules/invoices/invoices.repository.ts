@@ -76,6 +76,24 @@ export class InvoicesRepository {
       countQuery = countQuery.where('hold_id', '=', filters.hold_id);
     }
 
+    if (filters.property_id) {
+      // Property via the invoice's reservation, else its hold's room/reservation.
+      const inProperty = sql<boolean>`exists (
+        select 1 from rooms r
+        join buildings b on b.id = r.building_id
+        where r.id = coalesce(
+          (select res.room_id from reservations res where res.id = invoices.reservation_id),
+          (select h.room_id from holds h where h.id = invoices.hold_id),
+          (select res2.room_id from holds h2
+             join reservations res2 on res2.id = h2.reservation_id
+           where h2.id = invoices.hold_id)
+        )
+        and b.property_id = ${filters.property_id}
+      )`;
+      query = query.where(inProperty);
+      countQuery = countQuery.where(inProperty);
+    }
+
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
       query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),

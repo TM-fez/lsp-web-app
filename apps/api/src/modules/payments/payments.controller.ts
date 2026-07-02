@@ -16,7 +16,7 @@ export class PaymentsController {
       const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
       const status = req.query.status ? PaymentStatusEnum.parse(req.query.status) : undefined;
       const hold_id = req.query.hold_id as string | undefined;
-      res.json(await this.service.listIntents({ status, hold_id }, { page, limit }));
+      res.json(await this.service.listIntents({ status, hold_id , property_id: req.activePropertyId }, { page, limit }));
     } catch (err) {
       next(err);
     }

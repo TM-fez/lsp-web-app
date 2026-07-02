@@ -10,6 +10,8 @@ import { FilesRepository } from '../files/files.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
+import { requireInActiveProperty, requireBodyRefInActiveProperty, propertyOfInvoice, propertyOfHold } from '../../core/scope/propertyOf.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { IssueInvoiceSchema, SettleInvoiceSchema, RefundInvoiceSchema } from './invoices.types.js';
 
@@ -23,13 +25,17 @@ export function createInvoicesRouter(dbInstance = db): Router {
 
   router.use(authenticate);
 
-  router.get('/', authorize('invoices.read'), controller.list);
-  router.get('/:id/document', authorize('invoices.read'), controller.document);
-  router.post('/:id/send', authorize('invoices.update'), controller.send);
-  router.get('/:id', authorize('invoices.read'), controller.get);
-  router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), controller.issue);
-  router.post('/:id/settle', authorize('invoices.update'), validateBody(SettleInvoiceSchema), controller.settle);
-  router.post('/:id/refund', authorize('invoices.refund'), validateBody(RefundInvoiceSchema), controller.refund);
+  // H5 property scoping (see propertyOf.ts). Invoices resolve via reservation/hold.
+  const inProperty = requireInActiveProperty(dbInstance, propertyOfInvoice, 'Invoice');
+  const holdRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'hold_id', propertyOfHold, 'Hold');
+
+  router.get('/', authorize('invoices.read'), requireActiveProperty, controller.list);
+  router.get('/:id/document', authorize('invoices.read'), requireActiveProperty, inProperty, controller.document);
+  router.post('/:id/send', authorize('invoices.update'), requireActiveProperty, inProperty, controller.send);
+  router.get('/:id', authorize('invoices.read'), requireActiveProperty, inProperty, controller.get);
+  router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), requireActiveProperty, holdRefInProperty, controller.issue);
+  router.post('/:id/settle', authorize('invoices.update'), requireActiveProperty, inProperty, validateBody(SettleInvoiceSchema), controller.settle);
+  router.post('/:id/refund', authorize('invoices.refund'), requireActiveProperty, inProperty, validateBody(RefundInvoiceSchema), controller.refund);
 
   return router;
 }

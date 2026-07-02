@@ -40,6 +40,20 @@ export class HoldsRepository {
       query = query.where('quote_id', '=', filters.quote_id);
       countQuery = countQuery.where('quote_id', '=', filters.quote_id);
     }
+    if (filters.property_id) {
+      // Property via the pinned room, falling back to the reservation's room.
+      const inProperty = sql<boolean>`exists (
+        select 1 from rooms r
+        join buildings b on b.id = r.building_id
+        where r.id = coalesce(
+          holds.room_id,
+          (select res.room_id from reservations res where res.id = holds.reservation_id)
+        )
+        and b.property_id = ${filters.property_id}
+      )`;
+      query = query.where(inProperty);
+      countQuery = countQuery.where(inProperty);
+    }
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([

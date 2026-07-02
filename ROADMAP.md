@@ -214,12 +214,24 @@ carte. **DPO is out of scope for this track** (parked, see above).
   GET `/api/v1/cron/channel-sync`, header `Authorization: Bearer <CRON_SECRET>`).
 
 ### Phase H5 — Finish the security rollout *(~1 week; can ride alongside product Phase 3)*
-- 🆕 Property scoping extended to the money-loop first (quotes, holds, payments, invoices,
-  checkins, availability), then expenses/payroll/files/activity — only reservations,
-  cockpit, rooms, maintenance, housekeeping (+ reports/opex id-filters) are scoped today.
-- 🆕 Files module cleanup: `AppError`s (disallowed MIME is a 500 today), owner/property
-  filtering on list, drop the `as any`, stop hardcoding `/tmp`.
-- 🆕 Deliberate call on the ungated `GET /users/directory` (any logged-in user can list staff).
+**Code DONE (2026-07-02).**
+- ✅ Property scoping on the money-loop — shared `core/scope/propertyOf.ts` resolvers
+  (entity → room → building → property, one query each) + route guards, applied to
+  **holds, payments, invoices, checkins, availability**: lists filter to the active
+  property (SQL EXISTS via the FK chain), by-id routes 404 outside it (existence is
+  not leaked), creates validate body references (`hold_id`/`room_id`/`reservation_id`).
+- ✅ DELIBERATE: **quotes stay unscoped** — a quote references a rate plan + unit type,
+  never a room, so it has no property to scope to. It becomes scoped the moment it
+  turns into a hold.
+- ✅ Files module cleanup: `AppError`s (bad MIME/size → 400, missing file → 404, lost
+  binary → clear 404 instead of a 500), `os.tmpdir()`, `as any` casts removed, and the
+  list now shows **uploaders their own files; admins everything**.
+- ✅ DELIBERATE: `GET /users/directory` stays open to all signed-in staff (documented
+  in users.routes) — it powers assign-to pickers and returns only id/name/role/is_lead.
+- ⏳ Deferred with rationale: **expenses/payroll/activity** stay property-unscoped for
+  now — payroll is an org-wide Accounts function, the activity feed is deliberately
+  shared "what's changed" (Build 2c), and expenses ride on maintenance orders (scoped
+  at the maintenance layer). Revisit if a second operator company ever shares the DB.
 
 ### Phase H6 — Do-better / revenue *(~1–2 weeks, à la carte)*
 - 🆕 OTA contact info, Tier 2: parse Booking.com's new-booking notification emails (Brevo

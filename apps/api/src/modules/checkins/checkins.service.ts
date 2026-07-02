@@ -28,8 +28,8 @@ export class CheckinsService {
     return this.repository.findPaginated(filters, pagination);
   }
 
-  async listActive(): Promise<OccupancyRow[]> {
-    return this.repository.findActive();
+  async listActive(propertyId?: string): Promise<OccupancyRow[]> {
+    return this.repository.findActive(propertyId);
   }
 
   async checkIn(dto: CreateCheckInDTO, meta: OccupancyRequestMeta): Promise<OccupancyRow> {

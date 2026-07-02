@@ -26,6 +26,8 @@ export type SettleInvoiceDTO = z.infer<typeof SettleInvoiceSchema>;
 export type RefundInvoiceDTO = z.infer<typeof RefundInvoiceSchema>;
 
 export interface InvoiceFilters {
+  // H5: restrict to one property via the entity's room -> building chain.
+  property_id?: string;
   status?: InvoiceStatus;
   kind?: InvoiceKind;
   quote_id?: string;

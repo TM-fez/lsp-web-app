@@ -27,6 +27,8 @@ export type CreatePaymentIntentDTO = z.infer<typeof CreatePaymentIntentSchema>;
 export type AttemptPaymentDTO = z.infer<typeof AttemptPaymentSchema>;
 
 export interface PaymentFilters {
+  // H5: restrict to one property via the entity's room -> building chain.
+  property_id?: string;
   status?: PaymentStatus;
   hold_id?: string;
 }

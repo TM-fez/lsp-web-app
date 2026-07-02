@@ -67,6 +67,8 @@ export interface DateRange {
 export interface AvailabilityFilters {
   roomType?: z.infer<typeof RoomTypeEnum>;
   minCapacity: number; // derived from max(guests, capacity); 0 means no constraint
+  // H5: availability is answered within the caller's active property only.
+  propertyId?: string;
 }
 
 // ── Repository row shapes (raw signals; no domain verdict) ─────────────────────

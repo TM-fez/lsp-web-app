@@ -23,6 +23,8 @@ export type CreateCheckInDTO = z.infer<typeof CreateCheckInSchema>;
 export type CheckOutDTO = z.infer<typeof CheckOutSchema>;
 
 export interface OccupancyFilters {
+  // H5: restrict to one property via the entity's room -> building chain.
+  property_id?: string;
   status?: z.infer<typeof OccupancyStatusEnum>;
   room_id?: string;
   reservation_id?: string;

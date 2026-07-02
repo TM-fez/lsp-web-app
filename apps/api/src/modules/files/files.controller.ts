@@ -68,7 +68,8 @@ export class FilesController {
     try {
       const query = FileQuerySchema.parse(req.query);
       const meta = this.getRequestMeta(req);
-      const result = await this.service.listFiles(query, meta);
+      const isAdmin = ((req as any).user?.role ?? '') === 'admin';
+      const result = await this.service.listFiles(query, meta, isAdmin);
       res.json(result);
     } catch (err) {
       next(err);

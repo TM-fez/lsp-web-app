@@ -12,7 +12,7 @@ export class AvailabilityController {
   getRoomAvailability = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = AvailabilityQuerySchema.parse(req.query);
-      const result = await this.service.getRoomAvailability(query);
+      const result = await this.service.getRoomAvailability(query, req.activePropertyId);
       res.json(result);
     } catch (err) {
       next(err);
@@ -22,7 +22,7 @@ export class AvailabilityController {
   getAvailableRooms = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = AvailabilityQuerySchema.parse(req.query);
-      const result = await this.service.getAvailableRooms(query);
+      const result = await this.service.getAvailableRooms(query, req.activePropertyId);
       res.json(result);
     } catch (err) {
       next(err);
@@ -32,7 +32,7 @@ export class AvailabilityController {
   getQuote = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = AvailabilityQuoteSchema.parse(req.body);
-      const result = await this.service.getQuote(query);
+      const result = await this.service.getQuote(query, req.activePropertyId);
       res.json(result);
     } catch (err) {
       next(err);
@@ -42,7 +42,7 @@ export class AvailabilityController {
   getCalendar = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = AvailabilityCalendarSchema.parse(req.query);
-      const result = await this.service.getCalendar(query);
+      const result = await this.service.getCalendar(query, req.activePropertyId);
       res.json(result);
     } catch (err) {
       next(err);

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AppError } from '../../core/errors/AppError.js';
 import { FilesRepository } from './files.repository.js';
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, type FileRequestMeta, type FileQueryDTO } from './files.types.js';
 import type { StorageAdapter } from './files.storage.js';
@@ -24,11 +26,11 @@ export class FilesService {
     meta: FileRequestMeta
   ): Promise<FileRow> {
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
-      throw new Error(`Disallowed MIME type: ${mimeType}`);
+      throw AppError.badRequest(`Disallowed MIME type: ${mimeType}`);
     }
 
     if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-      throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE_BYTES} bytes`);
+      throw AppError.badRequest(`File size exceeds limit of ${MAX_FILE_SIZE_BYTES} bytes`);
     }
 
     // Hash the stream while writing to a temporary file
@@ -37,7 +39,7 @@ export class FilesService {
     const tempFileName = `${crypto.randomUUID()}.tmp`;
     
     // Pipe to disk and hash simultaneously
-    const tempPath = path.join('/tmp', tempFileName);
+    const tempPath = path.join(os.tmpdir(), tempFileName);
     const writeStream = fs.createWriteStream(tempPath);
     
     try {
@@ -86,8 +88,9 @@ export class FilesService {
         storage_driver: this.storageAdapter.name,
         bucket: this.storageAdapter.bucket,
         path: destinationPath,
-        is_public: isPublic
-      } as any, meta);
+        is_public: isPublic,
+        created_by: meta.userId,
+      }, meta);
     } finally {
       // Safe async cleanup of temp file
       await fs.promises.unlink(tempPath).catch(() => {});
@@ -96,25 +99,30 @@ export class FilesService {
 
   async getMetadata(id: string): Promise<FileRow> {
     const file = await this.repository.findById(id);
-    if (!file) throw new Error(`File ${id} not found`);
+    if (!file) throw AppError.notFound(`File ${id} not found`);
     return file;
   }
 
   async getDownloadStream(id: string): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
     const file = await this.getMetadata(id);
-    const stream = await this.storageAdapter.getStream(file.path);
-    return { stream, file };
+    try {
+      const stream = await this.storageAdapter.getStream(file.path);
+      return { stream, file };
+    } catch {
+      // The row survived but the binary didn't (e.g. pre-S3 uploads lost to the
+      // ephemeral disk) — a 404 the client can reason about, not a 500.
+      throw AppError.notFound('File content is no longer available; please re-upload it');
+    }
   }
 
-  async listFiles(query: FileQueryDTO, _meta: FileRequestMeta) {
-    // Usually admins see all, users see their own, but depending on RBAC we can filter.
-    // For now we just return paginated results without owner filter unless specified.
-    return this.repository.findPaginated(query.page, query.limit);
+  /** H5: uploaders see their own files; admins see everything. */
+  async listFiles(query: FileQueryDTO, meta: FileRequestMeta, isAdmin: boolean) {
+    return this.repository.findPaginated(query.page, query.limit, isAdmin ? undefined : meta.userId);
   }
 
   async delete(id: string, meta: FileRequestMeta): Promise<void> {
     const file = await this.repository.findById(id);
-    if (!file) throw new Error(`File ${id} not found`);
+    if (!file) throw AppError.notFound(`File ${id} not found`);
 
     // Soft delete only, preserving the binary just in case, but adapter can optionally delete.
     // The prompt says "soft delete only", meaning we do NOT call storageAdapter.delete.

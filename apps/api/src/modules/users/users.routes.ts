@@ -19,6 +19,9 @@ export function createUsersRouter(dbInstance = db): Router {
   // Static paths before /:id so they never match as a user id.
   // Directory is intentionally open to any authenticated staff (names + roles only)
   // so pickers like maintenance "assign to" work without users.read (admin-only).
+  // DELIBERATE (H5 review): no authorize() gate. Any signed-in staff member may read
+  // the directory — it powers assign-to pickers across modules and returns only
+  // id / name / role / is_lead (no emails, no permissions, no property memberships).
   router.get('/directory', controller.listDirectory);
   router.get('/roles', authorize('users.read'), controller.listRoles);
   router.get('/', authorize('users.read'), controller.listUsers);

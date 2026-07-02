@@ -26,16 +26,16 @@ export class CheckinsController {
       const room_id = req.query.room_id as string | undefined;
       const reservation_id = req.query.reservation_id as string | undefined;
 
-      const result = await this.service.listOccupancy({ status, room_id, reservation_id }, { page, limit });
+      const result = await this.service.listOccupancy({ status, room_id, reservation_id, property_id: req.activePropertyId }, { page, limit });
       res.json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  listActive = async (_req: Request, res: Response, next: NextFunction) => {
+  listActive = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const rows = await this.service.listActive();
+      const rows = await this.service.listActive(req.activePropertyId);
       res.json({ data: rows });
     } catch (err) {
       next(err);
