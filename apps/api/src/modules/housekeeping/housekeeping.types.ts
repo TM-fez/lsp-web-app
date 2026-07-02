@@ -28,6 +28,29 @@ export type StartCleaningDTO = z.infer<typeof StartCleaningSchema>;
 export type InspectDTO = z.infer<typeof InspectSchema>;
 export type ReadyDTO = z.infer<typeof ReadySchema>;
 
+// ── Compliance checklist (Phase 3) ─────────────────────────────────────────────
+
+export const ChecklistItemCreateSchema = z.object({
+  label: z.string().min(1).max(200),
+  sort_order: z.coerce.number().int().min(0).max(10_000).optional(),
+});
+
+export const ChecklistItemUpdateSchema = z.object({
+  label: z.string().min(1).max(200).optional(),
+  sort_order: z.coerce.number().int().min(0).max(10_000).optional(),
+  active: z.boolean().optional(),
+});
+
+// Tick or untick one item on a unit's live task.
+export const SetCheckSchema = z.object({
+  item_id: z.string().uuid(),
+  checked: z.boolean(),
+});
+
+export type ChecklistItemCreateDTO = z.infer<typeof ChecklistItemCreateSchema>;
+export type ChecklistItemUpdateDTO = z.infer<typeof ChecklistItemUpdateSchema>;
+export type SetCheckDTO = z.infer<typeof SetCheckSchema>;
+
 export interface HousekeepingQueryDTO {
   page: number;
   limit: number;

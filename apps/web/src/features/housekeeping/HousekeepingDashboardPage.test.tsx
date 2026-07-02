@@ -18,6 +18,7 @@ vi.mock('@/features/rooms/hooks', () => ({
 
 vi.mock('./hooks', () => ({
   useTurn: () => ({ isPending: false, mutate: vi.fn(), variables: undefined }),
+  useTurnaround: () => ({ data: { days: 30, completed: 4, avg_minutes: 95 } }),
 }));
 
 import { HousekeepingDashboardPage } from './HousekeepingDashboardPage';

@@ -41,6 +41,17 @@ export function createHousekeepingRouter(): Router {
   // Queue + list are scoped to the active property (the housekeeping page + cockpit feed).
   router.get('/queue', authorize('housekeeping.read'), requireActiveProperty, controller.queue);
   router.get('/', authorize('housekeeping.read'), requireActiveProperty, controller.list);
+
+  // Compliance checklist — the company cleaning standard. Reading it is
+  // property-independent; editing the standard is a manager action.
+  // (Registered BEFORE /:id so "checklist"/"turnaround" aren't taken for task ids.)
+  router.get('/checklist', authorize('housekeeping.read'), controller.checklist);
+  router.post('/checklist', authorize('housekeeping.signoff'), controller.addChecklistItem);
+  router.patch('/checklist/:itemId', authorize('housekeeping.signoff'), controller.updateChecklistItem);
+
+  // Turnaround KPI: avg DIRTY → READY minutes for the active property.
+  router.get('/turnaround', authorize('housekeeping.read'), requireActiveProperty, controller.turnaround);
+
   router.get('/:id', authorize('housekeeping.read'), requireActiveProperty, taskInActiveProperty, controller.get);
 
   // Unit-keyed three-stage turn workflow (Phase 3), each scoped to the active property:
@@ -50,6 +61,11 @@ export function createHousekeepingRouter(): Router {
   router.post('/rooms/:roomId/start', authorize('housekeeping.update'), requireActiveProperty, roomInActiveProperty, controller.start);
   router.post('/rooms/:roomId/inspect', authorize('housekeeping.update', 'housekeeping.inspect'), requireActiveProperty, roomInActiveProperty, controller.inspect);
   router.post('/rooms/:roomId/ready', authorize('housekeeping.signoff'), requireActiveProperty, roomInActiveProperty, controller.ready);
+
+  // Per-turn checklist state: the cleaner ticks items while the unit is CLEANING;
+  // inspect (stage 2) refuses until every active item is ticked.
+  router.get('/rooms/:roomId/checks', authorize('housekeeping.read'), requireActiveProperty, roomInActiveProperty, controller.roomChecks);
+  router.post('/rooms/:roomId/checks', authorize('housekeeping.update'), requireActiveProperty, roomInActiveProperty, controller.setRoomCheck);
 
   return router;
 }

@@ -245,15 +245,29 @@ describe('Operations Cockpit — end to end', () => {
     expect(blocked.body.message ?? blocked.body.error).toMatch(/ready/i);
   });
 
-  it('runs the turn start -> inspect -> ready and reopens the unit', async () => {
-    for (const action of ['start', 'inspect', 'ready']) {
-      const res = await request(app)
-        .post(`/api/v1/housekeeping/rooms/${roomId}/${action}`)
+  it('runs the turn start -> checklist -> inspect -> ready and reopens the unit', async () => {
+    const turn = (path: string, body: Record<string, unknown> = {}) =>
+      request(app)
+        .post(`/api/v1/housekeeping/rooms/${roomId}/${path}`)
         .set('Authorization', bearer())
         .set('X-Property-Id', propertyId)
-        .send({});
-      expect(res.status).toBe(200);
+        .send(body);
+
+    expect((await turn('start')).status).toBe(200);
+
+    // Compliance gate (Phase 3): inspect refuses until the checklist is done.
+    expect((await turn('inspect')).status).toBe(409);
+    const checks = await request(app)
+      .get(`/api/v1/housekeeping/rooms/${roomId}/checks`)
+      .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId);
+    expect(checks.status).toBe(200);
+    for (const item of checks.body.items) {
+      expect((await turn('checks', { item_id: item.id, checked: true })).status).toBe(200);
     }
+
+    expect((await turn('inspect')).status).toBe(200);
+    expect((await turn('ready')).status).toBe(200);
 
     const room = await request(app).get(`/api/v1/rooms/${roomId}`).set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(room.body.housekeeping_status).toBe('READY');

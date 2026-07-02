@@ -1,5 +1,5 @@
 import { Kysely, sql, Transaction } from 'kysely';
-import type { Database, HousekeepingTaskRow } from '../../db/types.js';
+import type { Database, HousekeepingChecklistItemRow, HousekeepingTaskRow } from '../../db/types.js';
 import type {
   HousekeepingQueryDTO,
   HousekeepingRequestMeta,
@@ -194,6 +194,107 @@ export class HousekeepingRepository {
         diff: inserted,
       }).execute();
     }
+  }
+
+  // ── Compliance checklist (migration 056) ────────────────────────────────────
+
+  /** The cleaning standard, in display order. activeOnly for the gate + cleaner UI. */
+  async listChecklistItems(activeOnly: boolean): Promise<HousekeepingChecklistItemRow[]> {
+    let q = this.db.selectFrom('housekeeping_checklist_items').selectAll();
+    if (activeOnly) q = q.where('active', '=', true);
+    return q.orderBy('sort_order', 'asc').orderBy('created_at', 'asc').execute();
+  }
+
+  async createChecklistItem(label: string, sortOrder: number, meta: HousekeepingRequestMeta): Promise<HousekeepingChecklistItemRow> {
+    return this.db
+      .insertInto('housekeeping_checklist_items')
+      .values({ label, sort_order: sortOrder, created_by: meta.userId, updated_by: meta.userId })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  async updateChecklistItem(
+    id: string,
+    patch: { label?: string; sort_order?: number; active?: boolean },
+    meta: HousekeepingRequestMeta,
+  ): Promise<HousekeepingChecklistItemRow | undefined> {
+    return this.db
+      .updateTable('housekeeping_checklist_items')
+      .set({ ...patch, updated_by: meta.userId, updated_at: sql`now()` })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirst();
+  }
+
+  /** Item ids already ticked on a task. */
+  async checkedItemIds(taskId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('housekeeping_task_checks')
+      .select('item_id')
+      .where('task_id', '=', taskId)
+      .execute();
+    return rows.map((r) => r.item_id);
+  }
+
+  /** Tick an item (idempotent) or untick it (delete). */
+  async setCheck(taskId: string, itemId: string, checked: boolean, meta: HousekeepingRequestMeta): Promise<void> {
+    if (checked) {
+      await this.db
+        .insertInto('housekeeping_task_checks')
+        .values({ task_id: taskId, item_id: itemId, checked_by: meta.userId })
+        .onConflict((oc) => oc.columns(['task_id', 'item_id']).doNothing())
+        .execute();
+    } else {
+      await this.db
+        .deleteFrom('housekeeping_task_checks')
+        .where('task_id', '=', taskId)
+        .where('item_id', '=', itemId)
+        .execute();
+    }
+  }
+
+  /** Active checklist items NOT yet ticked on a task — the compliance gate. */
+  async uncheckedItems(taskId: string): Promise<HousekeepingChecklistItemRow[]> {
+    return this.db
+      .selectFrom('housekeeping_checklist_items as i')
+      .selectAll('i')
+      .where('i.active', '=', true)
+      .where(({ not, exists, selectFrom }) =>
+        not(
+          exists(
+            selectFrom('housekeeping_task_checks as c')
+              .select('c.item_id')
+              .whereRef('c.item_id', '=', 'i.id')
+              .where('c.task_id', '=', taskId),
+          ),
+        ),
+      )
+      .orderBy('i.sort_order', 'asc')
+      .execute();
+  }
+
+  // ── Turnaround tracking ──────────────────────────────────────────────────────
+
+  /**
+   * How long turns take in a property: completed tasks in the window, averaged
+   * from DIRTY (opened_at) to signed-off READY (completed_at).
+   */
+  async turnaround(propertyId: string, days: number): Promise<{ completed: number; avg_minutes: number | null }> {
+    const row = await this.db
+      .selectFrom('housekeeping_tasks as t')
+      .innerJoin('rooms as r', 'r.id', 't.room_id')
+      .innerJoin('buildings as b', 'b.id', 'r.building_id')
+      .select([
+        sql<number>`count(t.id)`.as('completed'),
+        sql<number | null>`round(avg(extract(epoch from (t.completed_at - t.opened_at)) / 60))`.as('avg_minutes'),
+      ])
+      .where('b.property_id', '=', propertyId)
+      .where('t.status', '=', 'DONE')
+      .where('t.completed_at', 'is not', null)
+      .where('t.completed_at', '>=', sql<Date>`now() - make_interval(days => ${days})`)
+      .where('t.deleted_at', 'is', null)
+      .executeTakeFirstOrThrow();
+    return { completed: Number(row.completed), avg_minutes: row.avg_minutes == null ? null : Number(row.avg_minutes) };
   }
 
   /**

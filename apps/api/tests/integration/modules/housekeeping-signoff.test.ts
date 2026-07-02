@@ -2,9 +2,11 @@
  * Requires a running PostgreSQL instance with migrations applied (lsp_test).
  *
  * Proves the Phase 3 three-stage housekeeping flow end-to-end through the real
- * router + live DB: a cleaner starts the turn, a supervisor validates it, and
- * ONLY a manager with housekeeping.signoff can sign the unit back to READY —
- * with each stage stamping who did it. Fixtures are self-created (CI's
+ * router + live DB: a cleaner starts the turn, works through the compliance
+ * checklist (inspect is BLOCKED until every active item is ticked), a
+ * supervisor validates it, and ONLY a manager with housekeeping.signoff can
+ * sign the unit back to READY — with each stage stamping who did it. Also
+ * covers the turnaround KPI endpoint. Fixtures are self-created (CI's
  * lsp_test is seeded minimally).
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
@@ -49,6 +51,9 @@ const asManager = () => as(managerId, ['housekeeping.read', 'housekeeping.signof
 
 function post(path: string, body: Record<string, unknown> = {}) {
   return request(app).post(path).set('Authorization', 'Bearer t').set('X-Property-Id', propertyId).send(body);
+}
+function get(path: string) {
+  return request(app).get(path).set('Authorization', 'Bearer t').set('X-Property-Id', propertyId);
 }
 
 beforeAll(async () => {
@@ -128,12 +133,47 @@ describe('Three-stage housekeeping flow (live DB)', () => {
     expect((await post(`/api/housekeeping/rooms/${roomId}/inspect`)).status).toBe(403);
   });
 
-  it('stage 2 — the supervisor validates (inspected_by stamped)', async () => {
+  it('compliance gate — inspect is blocked until every checklist item is ticked', async () => {
+    asSupervisor();
+    const blocked = await post(`/api/housekeeping/rooms/${roomId}/inspect`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toContain('Checklist incomplete');
+  });
+
+  it('the cleaner works through the checklist (tick + untick round-trips)', async () => {
+    asCleaner();
+    const { body: before } = await get(`/api/housekeeping/rooms/${roomId}/checks`);
+    expect(before.task_id).toBe(taskId);
+    expect(before.items.length).toBeGreaterThan(0);
+    expect(before.items.every((i: any) => !i.checked)).toBe(true);
+
+    // Tick the first item, untick it, tick everything.
+    const first = before.items[0].id;
+    const ticked = await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: first, checked: true });
+    expect(ticked.body.items.find((i: any) => i.id === first).checked).toBe(true);
+    const unticked = await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: first, checked: false });
+    expect(unticked.body.items.find((i: any) => i.id === first).checked).toBe(false);
+
+    for (const item of before.items) {
+      await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: item.id, checked: true });
+    }
+    const { body: after } = await get(`/api/housekeeping/rooms/${roomId}/checks`);
+    expect(after.items.every((i: any) => i.checked)).toBe(true);
+  });
+
+  it('stage 2 — the supervisor validates once the checklist is complete (inspected_by stamped)', async () => {
     asSupervisor();
     const res = await post(`/api/housekeeping/rooms/${roomId}/inspect`);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('INSPECTED');
     expect(res.body.inspected_by).toBe(supervisorId);
+  });
+
+  it('ticking is only possible while the unit is CLEANING (409 after validation)', async () => {
+    asCleaner();
+    const { body } = await get(`/api/housekeeping/rooms/${roomId}/checks`);
+    const res = await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: body.items[0].id, checked: false });
+    expect(res.status).toBe(409);
   });
 
   it('neither the cleaner nor the supervisor can sign off (403)', async () => {
@@ -173,5 +213,29 @@ describe('Three-stage housekeeping flow (live DB)', () => {
     const res = await post(`/api/housekeeping/rooms/${roomId}/ready`);
     expect(res.status).toBe(409);
     await db.updateTable('housekeeping_tasks').set({ status: 'DONE' }).where('id', '=', taskId).execute();
+  });
+
+  it('managing the standard is signoff-only; the turnaround KPI counts the finished turn', async () => {
+    // A cleaner cannot edit the standard…
+    asCleaner();
+    expect((await post('/api/housekeeping/checklist', { label: 'Nope' })).status).toBe(403);
+
+    // …a manager can add and retire an item.
+    asManager();
+    const added = await post('/api/housekeeping/checklist', { label: 'Test-only item' });
+    expect(added.status).toBe(201);
+    const retired = await request(app)
+      .patch(`/api/housekeeping/checklist/${added.body.id}`)
+      .set('Authorization', 'Bearer t')
+      .send({ active: false });
+    expect(retired.status).toBe(200);
+    expect(retired.body.active).toBe(false);
+    await db.deleteFrom('housekeeping_checklist_items').where('id', '=', added.body.id).execute();
+
+    // Turnaround: our signed-off turn is inside the 30-day window.
+    const res = await get('/api/housekeeping/turnaround?days=30');
+    expect(res.status).toBe(200);
+    expect(res.body.completed).toBeGreaterThanOrEqual(1);
+    expect(res.body.avg_minutes).not.toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
 import { housekeepingTone, roomStatusTone } from '@/features/cockpit/status';
 import { useTurn } from './hooks';
+import { ChecklistDialog, ManageChecklistDialog } from './ChecklistDialog';
 import { nextAction, actionLabel, canDoAction, hkLabel } from './util';
 import type { HousekeepingStatus, Room } from '@/types';
 
@@ -23,6 +24,8 @@ export function HousekeepingPage() {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | HousekeepingStatus>('ALL');
+  const [checklistRoom, setChecklistRoom] = useState<Room | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const counts = useMemo(() => {
     const c: Record<HousekeepingStatus, number> = { DIRTY: 0, CLEANING: 0, INSPECTED: 0, READY: 0 };
@@ -52,15 +55,22 @@ export function HousekeepingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-display text-4xl text-ink">Housekeeping</h1>
-        <p className="text-sm text-slate-500">
-          {!rooms
-            ? 'Track every unit from dirty to ready'
-            : needsAttention === 0
-              ? 'Every unit is ready ✨'
-              : `${needsAttention} unit${needsAttention === 1 ? ' needs' : 's need'} attention`}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-4xl text-ink">Housekeeping</h1>
+          <p className="text-sm text-slate-500">
+            {!rooms
+              ? 'Track every unit from dirty to ready'
+              : needsAttention === 0
+                ? 'Every unit is ready ✨'
+                : `${needsAttention} unit${needsAttention === 1 ? ' needs' : 's need'} attention`}
+          </p>
+        </div>
+        {hasPerm('housekeeping.signoff') && (
+          <Button variant="outline" onClick={() => setManageOpen(true)}>
+            Edit checklist
+          </Button>
+        )}
       </div>
 
       {!isLoading && !isError && (rooms?.length ?? 0) > 0 && (
@@ -156,6 +166,11 @@ export function HousekeepingPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         {pending && <Spinner className="h-4 w-4 text-slate-400" />}
+                        {room.housekeeping_status === 'CLEANING' && (
+                          <Button size="sm" variant="ghost" onClick={() => setChecklistRoom(room)}>
+                            Checklist
+                          </Button>
+                        )}
                         {action == null ? (
                           <span className="text-xs text-emerald-600">Ready ✨</span>
                         ) : canDoAction(action, hasPerm) ? (
@@ -181,6 +196,9 @@ export function HousekeepingPage() {
           </table>
         </div>
       )}
+
+      <ChecklistDialog room={checklistRoom} onClose={() => setChecklistRoom(null)} />
+      <ManageChecklistDialog open={manageOpen} onOpenChange={setManageOpen} />
     </div>
   );
 }

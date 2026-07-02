@@ -9,8 +9,8 @@ import { cn } from '@/lib/utils/cn';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
 import { housekeepingTone } from '@/features/cockpit/status';
-import { useTurn } from './hooks';
-import { nextAction, actionLabel, canDoAction, hkLabel } from './util';
+import { useTurn, useTurnaround } from './hooks';
+import { nextAction, actionLabel, canDoAction, formatMinutes, hkLabel } from './util';
 import type { HousekeepingStatus, Room } from '@/types';
 
 // The four housekeeping states as KPI tiles, in workflow order (dirty → ready).
@@ -36,6 +36,7 @@ const TOP = 8;
 export function HousekeepingDashboardPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const { data: rooms, isLoading, isError, refetch } = useRooms();
+  const { data: turnaround } = useTurnaround(30);
   const turn = useTurn();
 
   const counts = useMemo(() => {
@@ -75,6 +76,12 @@ export function HousekeepingDashboardPage() {
                 ? `All ${total} units are ready ✨`
                 : `${needsAttention} of ${total} units need attention`}
           </p>
+          {turnaround && turnaround.completed > 0 && turnaround.avg_minutes != null && (
+            <p className="mt-0.5 text-xs text-slate-400">
+              Avg turnaround {formatMinutes(turnaround.avg_minutes)} across {turnaround.completed} turn
+              {turnaround.completed === 1 ? '' : 's'} (last {turnaround.days} days)
+            </p>
+          )}
         </div>
         <Link to="/housekeeping/all" className={buttonVariants({ variant: 'outline' })}>
           View full queue
