@@ -82,7 +82,10 @@ async function remindCheckoutsDue(
   return inserted;
 }
 
-/** High-priority repairs still open after a couple of days — nag until resolved. */
+/** High-priority repairs still open after a couple of days — nag until resolved.
+ *  Targeting (the Phase 2 follow-up, landed with the Phase 3 role mapping): an
+ *  assigned order nags the responsible person directly; an ownerless one still
+ *  fans out to the whole property. */
 async function remindStaleMaintenance(
   db: Kysely<Database>,
   service: NotificationsService,
@@ -92,7 +95,7 @@ async function remindStaleMaintenance(
     .selectFrom('maintenance_work_orders as w')
     .innerJoin('rooms as rm', 'rm.id', 'w.room_id')
     .innerJoin('buildings as b', 'b.id', 'rm.building_id')
-    .select(['w.id as work_order_id', 'w.title', 'w.priority', 'rm.name as room_name', 'b.property_id'])
+    .select(['w.id as work_order_id', 'w.title', 'w.priority', 'w.assigned_to', 'rm.name as room_name', 'b.property_id'])
     .where('w.status', 'in', ['OPEN', 'IN_PROGRESS'])
     .where('w.priority', 'in', ['HIGH', 'CRITICAL'])
     .where('w.opened_at', '<', daysAgo(MAINTENANCE_STALE_DAYS))
@@ -102,8 +105,11 @@ async function remindStaleMaintenance(
   let inserted = 0;
   for (const row of rows) {
     inserted += await service.notify(
-      { propertyId: row.property_id },
+      row.assigned_to
+        ? { userId: row.assigned_to }
+        : { propertyId: row.property_id },
       {
+        propertyId: row.property_id,
         type: 'reminder.maintenance_stale',
         title: `${row.priority} repair still open — ${row.room_name}`,
         body: `"${row.title}" has been open for over ${MAINTENANCE_STALE_DAYS} days.`,

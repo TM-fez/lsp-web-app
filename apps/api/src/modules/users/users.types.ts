@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { RequestMeta } from '../auth/auth.types.js';
 
-// Roles are FIXED (seeded in migration 002) — this screen assigns them, never creates them.
+// Roles are FIXED (seeded in migrations 011/053) — this screen assigns them, never creates them.
 export const ASSIGNABLE_ROLES = [
   'admin',
   'operations',
@@ -9,6 +9,7 @@ export const ASSIGNABLE_ROLES = [
   'accounts',
   'maintenance',
   'housekeeping',
+  'contractor',
 ] as const;
 
 export const RoleNameEnum = z.enum(ASSIGNABLE_ROLES);

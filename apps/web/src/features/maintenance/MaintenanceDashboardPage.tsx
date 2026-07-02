@@ -30,6 +30,8 @@ const TOP = 8;
 export function MaintenanceDashboardPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canUpdate = hasPerm('maintenance.update');
+  // Contractors carry the narrower maintenance.work instead of maintenance.update.
+  const canStart = canUpdate || hasPerm('maintenance.work');
   const canComplete = hasPerm('maintenance.complete');
 
   const { data: rooms } = useRooms();
@@ -80,7 +82,7 @@ export function MaintenanceDashboardPage() {
     if (action === 'start') start.mutate(o.id);
     else if (action === 'complete') complete.mutate({ id: o.id });
   }
-  const canDo = (action: 'start' | 'complete') => (action === 'complete' ? canComplete : canUpdate);
+  const canDo = (action: 'start' | 'complete') => (action === 'complete' ? canComplete : canStart);
 
   const headline = isLoading
     ? 'Loading the board…'

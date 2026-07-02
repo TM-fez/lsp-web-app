@@ -4,7 +4,8 @@ export type Role =
   | 'operations'
   | 'housekeeping'
   | 'maintenance'
-  | 'accounts';
+  | 'accounts'
+  | 'contractor';
 
 export interface JwtPayload {
   sub: string;        // user id

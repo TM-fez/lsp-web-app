@@ -100,6 +100,17 @@ export class MaintenanceRepository {
     return row?.property_id ?? null;
   }
 
+  /** Who a work order is assigned to (or null) — feeds the contractor by-id guard. */
+  async workOrderAssignee(workOrderId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('maintenance_work_orders')
+      .select('assigned_to')
+      .where('id', '=', workOrderId)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.assigned_to ?? null;
+  }
+
   /** The property a room belongs to (room → building → property), or null. */
   async roomPropertyId(roomId: string): Promise<string | null> {
     const row = await this.db

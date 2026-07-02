@@ -26,7 +26,10 @@ export class MaintenanceController {
       const limit = parseInt(req.query.limit as string) || 20;
       const room_id = req.query.room_id as string | undefined;
       const status = req.query.status as string | undefined;
-      const assigned_to = req.query.assigned_to as string | undefined;
+      // A contractor only ever sees their own tickets — the filter is pinned
+      // server-side, whatever the query string says.
+      const assigned_to =
+        req.user!.role === 'contractor' ? req.user!.sub : (req.query.assigned_to as string | undefined);
 
       let parsedStatus;
       if (status) {
