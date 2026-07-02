@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { PublicService } from './public.service.js';
-import { CreateBookingSchema } from './public.types.js';
+import { CreateBookingSchema, LookupBookingSchema } from './public.types.js';
 
 export class PublicController {
   constructor(private readonly service: PublicService) {}
@@ -8,6 +8,15 @@ export class PublicController {
   getStayInfo = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       res.json(await this.service.getStayInfo());
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  lookupBooking = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = LookupBookingSchema.parse(req.query);
+      res.json(await this.service.lookupBooking(dto));
     } catch (err) {
       next(err);
     }

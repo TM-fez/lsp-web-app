@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { propertyToday } from '../../core/time.js';
 
 export interface RepoWindow {
   from: string;     // YYYY-MM-DD inclusive
@@ -144,6 +145,43 @@ export class ReportsRepository {
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
+  }
+
+  // ── H6 nudges — forward-looking occupancy over the next 7/30 property-days ────
+  // Demand = CONFIRMED/CHECKED_IN/BLOCKED nights (unpaid PENDING is not demand);
+  // capacity = active non-out-of-service rooms × days.
+  async forwardOccupancy(): Promise<
+    Array<{ property_id: string; property_name: string; booked_nights_7: number; booked_nights_30: number; room_count: number }>
+  > {
+    const res = await sql<{
+      property_id: string;
+      property_name: string;
+      booked_nights_7: number;
+      booked_nights_30: number;
+      room_count: number;
+    }>`
+      WITH win AS (SELECT ${propertyToday()} AS s)
+      SELECT
+        p.id AS property_id,
+        p.name AS property_name,
+        coalesce(sum(GREATEST(0, LEAST(res.check_out_date, w.s + 7)  - GREATEST(res.check_in_date, w.s))), 0)::int AS booked_nights_7,
+        coalesce(sum(GREATEST(0, LEAST(res.check_out_date, w.s + 30) - GREATEST(res.check_in_date, w.s))), 0)::int AS booked_nights_30,
+        (SELECT count(*) FROM rooms r2
+           JOIN buildings b2 ON b2.id = r2.building_id
+         WHERE b2.property_id = p.id AND r2.deleted_at IS NULL AND r2.status != 'OUT_OF_SERVICE')::int AS room_count
+      FROM properties p
+      CROSS JOIN win w
+      LEFT JOIN buildings b ON b.property_id = p.id
+      LEFT JOIN rooms r ON r.building_id = b.id AND r.deleted_at IS NULL
+      LEFT JOIN reservations res ON res.room_id = r.id
+        AND res.deleted_at IS NULL
+        AND res.status IN ('CONFIRMED', 'CHECKED_IN', 'BLOCKED')
+        AND res.check_in_date < w.s + 30 AND res.check_out_date > w.s
+      WHERE p.active
+      GROUP BY p.id, p.name
+      ORDER BY p.name
+    `.execute(this.db);
+    return res.rows;
   }
 
   // ── Occupancy — booked room-nights + stay count, clipped to the window ────────

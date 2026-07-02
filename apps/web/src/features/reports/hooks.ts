@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getPnl, type PnlParams } from '@/lib/api/reports';
+import { getPnl, getNudges, type PnlParams, type Nudge } from '@/lib/api/reports';
 import type { ReportsResponse } from '@/types';
 
 export function usePnl(params: PnlParams) {
@@ -7,4 +7,8 @@ export function usePnl(params: PnlParams) {
     queryKey: ['reports', 'pnl', params],
     queryFn: () => getPnl(params),
   });
+}
+
+export function useNudges() {
+  return useQuery<Nudge[]>({ queryKey: ['reports', 'nudges'], queryFn: getNudges });
 }

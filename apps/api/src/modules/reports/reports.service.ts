@@ -1,3 +1,4 @@
+import { buildNudges, type Nudge } from './reports.nudges.js';
 import { ReportsRepository, type RepoWindow } from './reports.repository.js';
 import type { ReportWindow, ReportsResponse, MonthlyPoint, PropertyPnl } from './reports.types.js';
 
@@ -39,6 +40,16 @@ function monthsBetween(from: string, toExcl: string): string[] {
 
 export class ReportsService {
   constructor(private readonly repo: ReportsRepository) {}
+
+  /** H6 — occupancy nudges, filtered to the caller's accessible properties. */
+  async getNudges(accessiblePropertyIds: string[] | null): Promise<Nudge[]> {
+    let rows = await this.repo.forwardOccupancy();
+    if (accessiblePropertyIds !== null) {
+      const allowed = new Set(accessiblePropertyIds);
+      rows = rows.filter((r) => allowed.has(r.property_id));
+    }
+    return buildNudges(rows);
+  }
 
   async getReports(reqWindow: ReportWindow): Promise<ReportsResponse> {
     const w = normalize(reqWindow);

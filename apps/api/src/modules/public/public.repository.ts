@@ -1,4 +1,4 @@
-import { Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow } from '../../db/types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 import type { StayUnitOption } from './public.types.js';
@@ -49,6 +49,33 @@ export class PublicRepository {
       .where('deleted_at', 'is', null)
       .orderBy('created_at', 'asc')
       .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
+   * A guest's own website booking, by confirmation-code prefix + booking email.
+   * The code is the first 6 hex chars of the reservation id (see createBooking's
+   * confirmation_code); BOTH must match, and only WEBSITE bookings resolve —
+   * staff/OTA bookings are not guest-lookupable.
+   */
+  async findWebsiteBookingByCode(codeHex: string, email: string) {
+    return this.db
+      .selectFrom('reservations as res')
+      .innerJoin('contacts as c', 'c.id', 'res.contact_id')
+      .innerJoin('rooms as r', 'r.id', 'res.room_id')
+      .select([
+        'res.id',
+        'res.status',
+        'res.check_in_date',
+        'res.check_out_date',
+        'c.name as guest_name',
+        'r.name as unit_name',
+        'r.type as unit_type',
+      ])
+      .where(sql<boolean>`replace(res.id::text, '-', '') ilike ${codeHex + '%'}`)
+      .where('res.source', '=', 'WEBSITE')
+      .where('res.deleted_at', 'is', null)
+      .where(sql<boolean>`c.email ilike ${email}`)
       .executeTakeFirst();
   }
 
