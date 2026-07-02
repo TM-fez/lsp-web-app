@@ -23,6 +23,8 @@ vi.mock('./hooks', () => ({
     },
     isLoading: false, isError: false, refetch: () => {},
   }),
+  // H6 nudges: none in this fixture — the strip should simply not render.
+  useNudges: () => ({ data: [] }),
 }));
 
 import { ReportsPage } from './ReportsPage';

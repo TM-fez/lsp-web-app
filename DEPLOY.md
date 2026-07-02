@@ -47,6 +47,12 @@ Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  
   and schedule this (e.g. a Render Cron Job or an uptime pinger). Skipping it just means no
   reminder notifications are generated; nothing else breaks.
 
+- **`GET /api/v1/cron/channel-sync`** — same `CRON_SECRET` guard; pulls each unit's
+  Booking.com calendar (the 15-minute import poll). Mounted but **inert until go-live**:
+  it refuses every caller without the secret, and with no rooms configured it is a no-op.
+  At channel-sync go-live, add a 15-min Render Cron Job / GitHub Action pointing here
+  (see `HANDOVER.md` §5 for the full owner checklist).
+
 > **Legacy:** `apps/api/vercel.json` is left over from an earlier attempt to run the API on
 > Vercel. The API lives on Render now — that file (and any abandoned Vercel "-api" project)
 > can be deleted.
@@ -81,7 +87,14 @@ openssl rsa -pubout -in private.pem -out public.pem
 | `JWT_PUBLIC_KEY` | contents of `public.pem` |
 | `JWT_REFRESH_COOKIE_NAME` | `lsp_refresh` *(already in `render.yaml`)* |
 | `CORS_ORIGIN` | the Vercel web URL, e.g. `https://lsp-web-app-web.vercel.app` |
-| `CRON_SECRET` | *(optional — only for a serverless host; not needed on Render)* |
+| `CRON_SECRET` | needed for `/cron/reminders` (daily) and `/cron/channel-sync` (15-min, at go-live) |
+| `TRUST_PROXY_HOPS` | `2` *(already in `render.yaml` — Vercel→Render chain; makes `req.ip` the real client)* |
+| `PUBLIC_WEB_URL` | the Vercel web URL *(already in `render.yaml` — used for guest links in emails)* |
+| `SENTRY_DSN` | *(optional — error tracking goes live the moment this is set)* |
+| `BREVO_API_KEY` / `EMAIL_FROM` | *(email: invoices, booking confirmations, channel alerts)* |
+| `CHANNEL_ALERT_EMAIL` | manager inbox for double-booking alerts *(channel-sync go-live)* |
+| `STORAGE_DRIVER` + `STORAGE_S3_*` | flip to `s3` once the R2/B2 bucket exists *(see render.yaml comments — uploads on local disk DIE on every deploy)* |
+| `WEBSITE_PENDING_TTL_HOURS` | *(optional — default 24; unpaid /stay bookings auto-cancel after this)* |
 | `ANTHROPIC_API_KEY` | *(optional — the Claude/LLM client stays dark until this is set)* |
 | `ANTHROPIC_MODEL` | *(optional — defaults to `claude-opus-4-8`)* |
 
@@ -123,6 +136,12 @@ A new database change is a new forward-only migration in
   slow (cold start) while it wakes. A paid plan keeps it always warm.
 - **Payments are simulated.** This is a live internal tool for staff; taking real guest
   money online (DPO Pay) is a later, separate build — see `ROADMAP.md`.
+- **Nightly DB backups** exist as a GitHub Action (`.github/workflows/db-backup.yml`) but
+  stay **inert until the `BACKUP_*` repo secrets are set** (Render external DB URL + an
+  S3-compatible bucket). Set them — the database is the business's memory.
+- **Error tracking (Sentry)** and an **uptime monitor** on `/health` (UptimeRobot free —
+  bonus: its pings keep the free service awake) each take ~5 minutes to activate; both
+  are documented in `ROADMAP.md` Part 3 (H2/H3 owner steps).
 - **Manual sweep, if ever needed:** with `CRON_SECRET` set, you can trigger the housekeeping
   sweep directly:
   ```bash

@@ -3,7 +3,12 @@ import type { CockpitGuestCard } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { reservationTone } from './status';
+import { sourceLabel } from '@/features/reservations/util';
 import { useCheckIn, useCheckOut } from './hooks';
+
+// Origins worth flagging on the rail: front desk should instantly see an OTA or
+// website guest (different arrival workflow — claim/verify, deposit already paid…).
+const FLAGGED_SOURCES = new Set(['BOOKING_COM', 'WEBSITE']);
 
 function GuestRow({ no, card, action }: { no: number; card: CockpitGuestCard; action?: ReactNode }) {
   return (
@@ -15,6 +20,7 @@ function GuestRow({ no, card, action }: { no: number; card: CockpitGuestCard; ac
           {card.room_code} · {card.check_in_date.slice(5)} → {card.check_out_date.slice(5)}
         </div>
       </div>
+      {FLAGGED_SOURCES.has(card.source) && <Badge tone="violet">{sourceLabel(card.source)}</Badge>}
       <Badge tone={reservationTone[card.status]}>{card.status.toLowerCase().replace('_', ' ')}</Badge>
       {action}
     </div>

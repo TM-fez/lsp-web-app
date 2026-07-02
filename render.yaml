@@ -51,6 +51,9 @@ services:
       # Sentry error tracking — dark until the DSN is set in the dashboard.
       - key: SENTRY_DSN
         sync: false
+      # Guest-facing links in emails (manage-my-booking) point at the public site.
+      - key: PUBLIC_WEB_URL
+        value: https://lsp-web-app-web.vercel.app
       # Email (Brevo). API key is a secret → set its value in the Render dashboard.
       # The other two are not secret, so they apply automatically on deploy.
       - key: BREVO_API_KEY

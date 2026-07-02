@@ -72,6 +72,7 @@ export interface CockpitGuestCard {
   check_in_date: string;
   check_out_date: string;
   status: ReservationStatus;
+  source: ReservationSource;
 }
 
 export interface HousekeepingQueueItem {

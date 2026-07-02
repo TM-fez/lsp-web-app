@@ -6,9 +6,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils/cn';
 import { todayISO } from '@/lib/utils/date';
-import { usePnl } from './hooks';
+import { usePnl, useNudges } from './hooks';
 import { downloadPnlCsv } from './csv';
 import type { MonthlyPoint, PropertyPnl } from '@/types';
+import type { Nudge } from '@/lib/api/reports';
 
 // ── palette (matches the editorial theme tokens) ──────────────────────────────
 const FOREST = '#22402F';
@@ -108,6 +109,7 @@ export function ReportsPage() {
   const to = useCustom ? customTo : preset.to;
 
   const { data, isLoading, isError, refetch } = usePnl({ from, to });
+  const { data: nudges } = useNudges();
   const s = data?.summary;
 
   const openStatement = () => window.open(`/reports/print?from=${from}&to=${to}`, '_blank');
@@ -138,6 +140,8 @@ export function ReportsPage() {
           ))}
         </div>
       </header>
+
+      {nudges && nudges.length > 0 && <NudgeStrip nudges={nudges} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[11px] uppercase tracking-[0.18em] text-muted">Custom range</span>
@@ -231,6 +235,30 @@ export function ReportsPage() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+// H6 — occupancy nudges: what a revenue manager would notice, one line each.
+// Rule-based on forward 7/30-day demand (the pre-AI Strategy Engine).
+function NudgeStrip({ nudges }: { nudges: Nudge[] }) {
+  return (
+    <div className="grid animate-rise gap-3 sm:grid-cols-2">
+      {nudges.map((n) => (
+        <div
+          key={`${n.property_id}:${n.title}`}
+          className={cn(
+            'rounded-lg border p-4',
+            n.tone === 'opportunity' ? 'border-forest/30 bg-forest/5' : 'border-line bg-paper',
+          )}
+        >
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-muted">
+            {n.tone === 'opportunity' ? 'Opportunity' : 'Heads up'}
+          </div>
+          <div className="font-display text-lg text-ink">{n.title}</div>
+          <p className="mt-1 text-sm text-char">{n.detail}</p>
+        </div>
+      ))}
     </div>
   );
 }

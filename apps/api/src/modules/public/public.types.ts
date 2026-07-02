@@ -20,6 +20,29 @@ export const CreateBookingSchema = z
 
 export type CreateBookingDTO = z.infer<typeof CreateBookingSchema>;
 
+// Manage-my-booking lookup: BOTH the confirmation code and the booking email must
+// match — the code alone is guessable-ish (6 hex chars), the pair is not.
+export const LookupBookingSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^(LSP-)?[0-9a-fA-F]{6}$/, 'That does not look like an LSP confirmation code'),
+  email: z.string().trim().email().max(200),
+});
+
+export type LookupBookingDTO = z.infer<typeof LookupBookingSchema>;
+
+/** What a guest may see about their own booking — no ids, no internals. */
+export interface PublicBookingSummary {
+  confirmation_code: string;
+  guest_name: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+  unit_name: string;
+  unit_type: string;
+  check_in: string; // YYYY-MM-DD
+  check_out: string;
+}
+
 export interface PublicRequestMeta {
   ip?: string;
   requestId?: string;

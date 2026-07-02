@@ -24,6 +24,7 @@ import { OperatingExpensesPage } from '@/features/operating-expenses/OperatingEx
 import { PayrollPage } from '@/features/payroll/PayrollPage';
 import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
 import { StayPage } from '@/features/stay/StayPage';
+import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -34,6 +35,7 @@ function ProtectedRoute() {
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/stay', element: <StayPage /> },
+  { path: '/stay/manage', element: <ManageBookingPage /> },
   {
     element: <ProtectedRoute />,
     children: [

@@ -86,6 +86,7 @@ export class CockpitRepository {
         'res.check_in_date as check_in_date',
         'res.check_out_date as check_out_date',
         'res.status as status',
+        'res.source as source',
       ])
       .where('res.deleted_at', 'is', null);
     if (propertyId) query = query.where('r.building_id', 'in', this.buildingIdsInProperty(propertyId));
@@ -110,6 +111,7 @@ export class CockpitRepository {
         'res.check_in_date as check_in_date',
         'res.check_out_date as check_out_date',
         'res.status as status',
+        'res.source as source',
       ])
       .where('o.status', '=', 'CHECKED_IN')
       .where('o.deleted_at', 'is', null);

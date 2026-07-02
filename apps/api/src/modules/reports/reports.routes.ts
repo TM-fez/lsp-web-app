@@ -13,6 +13,7 @@ export function createReportsRouter(dbInstance = db): Router {
 
   router.use(authenticate);
   router.get('/pnl', authorize('reports.read'), controller.pnl);
+  router.get('/nudges', authorize('reports.read'), controller.nudges);
 
   return router;
 }

@@ -7,6 +7,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export class ReportsController {
   constructor(private readonly service: ReportsService) {}
 
+  // GET /reports/nudges — rule-based occupancy nudges for the caller's properties.
+  nudges = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      res.json({ data: await this.service.getNudges(accessiblePropertyIds) });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   // GET /reports/pnl?from=YYYY-MM-DD&to=YYYY-MM-DD&property_id=…
   pnl = async (req: Request, res: Response, next: NextFunction) => {
     try {

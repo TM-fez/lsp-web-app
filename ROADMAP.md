@@ -233,11 +233,26 @@ carte. **DPO is out of scope for this track** (parked, see above).
   shared "what's changed" (Build 2c), and expenses ride on maintenance orders (scoped
   at the maintenance layer). Revisit if a second operator company ever shares the DB.
 
-### Phase H6 — Do-better / revenue *(~1–2 weeks, à la carte)*
-- 🆕 OTA contact info, Tier 2: parse Booking.com's new-booking notification emails (Brevo
-  inbound) → auto-attach guest details to the matching block; Tier 1 becomes the fallback.
-- 🆕 Booking-source badges across cockpit/reservations UI (column exists, UI doesn't show it).
-- 🆕 "Manage my booking" link in guest confirmation emails (dates, invoice, WhatsApp button).
-- 🆕 Rule-based occupancy/pricing nudges on the dashboard (pre-AI version of A5).
-- 🧹 Go-live cleanups already listed in Part 1B: demo-data wipe, empty "Main" building,
-  DEPLOY.md rewrite.
+### Phase H6 — Do-better / revenue *(à la carte)*
+**Code DONE (2026-07-02)** except Tier 2, which is 🔒 client-gated (see below).
+- 🔒 OTA contact info, Tier 2 (auto-enrich from Booking.com's new-booking notification
+  emails) — **blocked on a real sample**: forward one actual Booking.com "new booking"
+  notification email (full original, with headers if possible) so the parser is built
+  against reality instead of guesswork. Then: Brevo inbound webhook → parse → match the
+  BLOCKED row by unit+dates → auto-attach the contact; Tier 1 stays as the fallback.
+- ✅ Booking-source badges — cockpit guest cards now carry `source`; the Today rail flags
+  Booking.com/Website arrivals with a violet badge (different arrival workflow).
+  (The reservations list already showed source — that half predated H6.)
+- ✅ Guest confirmation email on /stay bookings (dark until Brevo is configured;
+  fire-and-forget — the booking stands even if the email fails) with a
+  **manage-my-booking link**: public `/stay/manage` page + `GET /public/bookings/lookup`
+  (code + email must BOTH match; rate-limited; WEBSITE bookings only). `PUBLIC_WEB_URL`
+  env (render.yaml carries it) builds the absolute link.
+- ✅ Occupancy nudges — `reports.nudges.ts` (pure rules over forward 7/30-day demand:
+  ≥85%/80% booked → "firm up rates"; ≤35%/30% → "plan a campaign"), served at
+  `GET /reports/nudges`, shown as a strip on the Reports page. The pre-AI Strategy
+  Engine — and the grounding data for the AI version (A5) later.
+- ✅ DEPLOY.md refreshed with every H1–H6 env var + the cron/backup/monitoring notes
+  (the full rewrite happened back in Phase 0 — the stale backlog line said otherwise).
+- ⏸️ Still parked (owner-run, live data): demo-data wipe + deactivate the empty "Main"
+  building — needs a deliberate DB target + owner eyeball before firing (see memory note).

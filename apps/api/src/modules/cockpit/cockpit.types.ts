@@ -32,6 +32,9 @@ export interface CockpitGuestCard {
   check_in_date: Date;
   check_out_date: Date;
   status: string;
+  // Booking origin (DIRECT/WEBSITE/BOOKING_COM/…) — front desk sees at a glance
+  // whether an arrival is an OTA guest (H6 source badges).
+  source: string;
 }
 
 export interface CockpitBoard {

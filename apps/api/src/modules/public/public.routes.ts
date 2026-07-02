@@ -35,8 +35,18 @@ export function createPublicRouter(dbInstance = db): Router {
     message: { statusCode: 429, error: 'Too Many Requests', message: 'Too many booking attempts. Please try again later.' },
   });
 
+  const lookupLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30, // generous for a guest re-checking their booking; hostile scanning is not
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { statusCode: 429, error: 'Too Many Requests', message: 'Too many lookups. Please try again later.' },
+  });
+
   router.get('/stay', controller.getStayInfo);
   router.post('/bookings', bookingLimiter, controller.createBooking);
+  // Manage-my-booking: code + email must both match (never enumerable by code alone).
+  router.get('/bookings/lookup', lookupLimiter, controller.lookupBooking);
 
   return router;
 }

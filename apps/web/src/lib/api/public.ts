@@ -53,3 +53,21 @@ export async function createBooking(input: BookingInput): Promise<BookingConfirm
   const { data } = await api.post<BookingConfirmation>('/public/bookings', input);
   return data;
 }
+
+export interface PublicBookingSummary {
+  confirmation_code: string;
+  guest_name: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+  unit_name: string;
+  unit_type: string;
+  check_in: string;
+  check_out: string;
+}
+
+/** Manage-my-booking: both the code and the booking email must match. */
+export async function lookupBooking(code: string, email: string): Promise<PublicBookingSummary> {
+  const { data } = await api.get<PublicBookingSummary>('/public/bookings/lookup', {
+    params: { code, email },
+  });
+  return data;
+}

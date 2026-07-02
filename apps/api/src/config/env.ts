@@ -70,6 +70,11 @@ const schema = z.object({
   BCRYPT_ROUNDS: z.coerce.number().default(12),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
+  // Public site origin (e.g. https://lsp-web-app-web.vercel.app) — used to build
+  // absolute guest-facing links (manage-my-booking) in emails. Optional: when unset,
+  // emails simply omit the link.
+  PUBLIC_WEB_URL: z.string().url().optional(),
+
   // Sentry error tracking. Optional — DARK until a DSN is set (create the project at
   // sentry.io, free tier is plenty). Errors only; no performance tracing.
   SENTRY_DSN: z.string().optional(),
