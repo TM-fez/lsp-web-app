@@ -41,11 +41,11 @@ Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  
   token). This is only a **fallback for a serverless host**; on Render the in-process
   scheduler already does this, so you can leave `CRON_SECRET` unset.
 - **`GET /api/v1/cron/reminders`** — same `CRON_SECRET` guard; raises the in-app reminder
-  notifications (checkouts due today, stale high-priority repairs). Idempotent per day, so
-  it's safe on any cadence — point a **daily** external cron at it. Unlike the sweep there
-  is no in-process equivalent yet, so if you want daily reminders you must set `CRON_SECRET`
-  and schedule this (e.g. a Render Cron Job or an uptime pinger). Skipping it just means no
-  reminder notifications are generated; nothing else breaks.
+  notifications (checkouts due today, stale high-priority repairs, unassigned repairs).
+  Idempotent per day, so it's safe on any cadence. Like the sweep, this is only a
+  **fallback for a serverless host**: since Phase 3 the in-process scheduler runs the
+  reminder generators once a day on its own, so on Render you can leave `CRON_SECRET`
+  unset and reminders still fire.
 
 - **`GET /api/v1/cron/channel-sync`** — same `CRON_SECRET` guard; pulls each unit's
   Booking.com calendar (the 15-minute import poll). Mounted but **inert until go-live**:
@@ -87,7 +87,7 @@ openssl rsa -pubout -in private.pem -out public.pem
 | `JWT_PUBLIC_KEY` | contents of `public.pem` |
 | `JWT_REFRESH_COOKIE_NAME` | `lsp_refresh` *(already in `render.yaml`)* |
 | `CORS_ORIGIN` | the Vercel web URL, e.g. `https://lsp-web-app-web.vercel.app` |
-| `CRON_SECRET` | needed for `/cron/reminders` (daily) and `/cron/channel-sync` (15-min, at go-live) |
+| `CRON_SECRET` | needed for `/cron/channel-sync` (15-min, at go-live); `/cron/sweep` + `/cron/reminders` run in-process on Render |
 | `TRUST_PROXY_HOPS` | `2` *(already in `render.yaml` — Vercel→Render chain; makes `req.ip` the real client)* |
 | `PUBLIC_WEB_URL` | the Vercel web URL *(already in `render.yaml` — used for guest links in emails)* |
 | `SENTRY_DSN` | *(optional — error tracking goes live the moment this is set)* |

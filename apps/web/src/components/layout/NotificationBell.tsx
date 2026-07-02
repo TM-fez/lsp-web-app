@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
 import {
@@ -7,6 +7,7 @@ import {
   useMarkNotificationsRead,
 } from '@/features/notifications/useNotifications';
 import type { NotificationItem } from '@/lib/api/notifications';
+import { toast } from '@/store/toast';
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -32,6 +33,26 @@ export function NotificationBell() {
 
   const items = data?.data ?? [];
   const unread = data?.unread_count ?? 0;
+
+  // Pop-up on arrival: when a poll brings notifications newer than anything we've
+  // seen this session, surface them as toasts (the badge alone is easy to miss on
+  // a busy screen). The first load is history, not news — it only sets the baseline.
+  const newestSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const newest = data.data[0]?.created_at ?? '';
+    if (newestSeenRef.current === null) {
+      newestSeenRef.current = newest;
+      return;
+    }
+    const fresh = data.data.filter((n) => !n.read_at && n.created_at > newestSeenRef.current!);
+    if (fresh.length > 3) {
+      toast.info(`${fresh.length} new notifications`);
+    } else {
+      fresh.forEach((n) => toast.info(n.title));
+    }
+    if (newest > newestSeenRef.current) newestSeenRef.current = newest;
+  }, [data]);
 
   function handleItem(n: NotificationItem) {
     if (!n.read_at) markRead.mutate([n.id]);

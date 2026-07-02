@@ -9,6 +9,7 @@ import { QuotesService } from '../modules/quotes/quotes.service.js';
 import { PricingRepository } from '../modules/pricing/pricing.repository.js';
 import { PricingService } from '../modules/pricing/pricing.service.js';
 import { createWebsiteBookingExpiry } from '../modules/reservations/reservations.expiry.js';
+import { createRemindersSweeper, NO_REMINDERS, type ReminderResult } from '../modules/notifications/reminders.js';
 import { createRetentionSweeper, type RetentionResult } from './retention.js';
 import { logger } from './logger.js';
 
@@ -34,6 +35,7 @@ export interface QuotesSweeper {
 }
 export type WebsiteBookingsSweeper = () => Promise<number>;
 export type RetentionSweeper = () => Promise<RetentionResult>;
+export type RemindersSweeper = () => Promise<ReminderResult>;
 
 export interface SweepResult {
   holdsReleased: number;
@@ -41,6 +43,7 @@ export interface SweepResult {
   websiteBookingsExpired: number;
   refreshTokensPruned: number;
   auditLogsPruned: number;
+  remindersRaised: number;
 }
 
 const NO_RETENTION: RetentionResult = { refreshTokensPruned: 0, auditLogsPruned: 0 };
@@ -54,12 +57,14 @@ export async function runSweep(
   quotes: QuotesSweeper,
   websiteBookings: WebsiteBookingsSweeper = async () => 0,
   retention: RetentionSweeper = async () => NO_RETENTION,
+  reminders: RemindersSweeper = async () => NO_REMINDERS,
 ): Promise<SweepResult> {
-  const [held, quoted, website, retained] = await Promise.allSettled([
+  const [held, quoted, website, retained, reminded] = await Promise.allSettled([
     holds.releaseExpired(),
     quotes.expireStaleQuotes(),
     websiteBookings(),
     retention(),
+    reminders(),
   ]);
 
   if (held.status === 'rejected') logger.error({ err: held.reason }, '[scheduler] hold sweep failed');
@@ -68,8 +73,11 @@ export async function runSweep(
     logger.error({ err: website.reason }, '[scheduler] website-booking sweep failed');
   if (retained.status === 'rejected')
     logger.error({ err: retained.reason }, '[scheduler] retention sweep failed');
+  if (reminded.status === 'rejected')
+    logger.error({ err: reminded.reason }, '[scheduler] reminders sweep failed');
 
   const retentionCounts = retained.status === 'fulfilled' ? retained.value : NO_RETENTION;
+  const reminderCounts = reminded.status === 'fulfilled' ? reminded.value : NO_REMINDERS;
 
   return {
     holdsReleased: held.status === 'fulfilled' ? held.value : 0,
@@ -77,6 +85,8 @@ export async function runSweep(
     websiteBookingsExpired: website.status === 'fulfilled' ? website.value : 0,
     refreshTokensPruned: retentionCounts.refreshTokensPruned,
     auditLogsPruned: retentionCounts.auditLogsPruned,
+    remindersRaised:
+      reminderCounts.checkoutDue + reminderCounts.maintenanceStale + reminderCounts.maintenanceUnassigned,
   };
 }
 
@@ -87,7 +97,8 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
   const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
   const websiteBookings = createWebsiteBookingExpiry(dbInstance);
   const retention = createRetentionSweeper(dbInstance); // self-gates to once per day
-  return () => runSweep(holds, quotes, websiteBookings, retention);
+  const reminders = createRemindersSweeper(dbInstance); // self-gates to once per day
+  return () => runSweep(holds, quotes, websiteBookings, retention, reminders);
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -108,7 +119,7 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
 
   const tick = () => {
     sweep()
-      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired, refreshTokensPruned, auditLogsPruned }) => {
+      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired, refreshTokensPruned, auditLogsPruned, remindersRaised }) => {
         if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
           logger.info(
             { holdsReleased, quotesExpired, websiteBookingsExpired },
@@ -120,6 +131,9 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
             { refreshTokensPruned, auditLogsPruned },
             '[scheduler] retention pruned rows',
           );
+        }
+        if (remindersRaised > 0) {
+          logger.info({ remindersRaised }, '[scheduler] reminder notifications raised');
         }
       })
       .catch((err) => logger.error({ err }, '[scheduler] sweep failed'));

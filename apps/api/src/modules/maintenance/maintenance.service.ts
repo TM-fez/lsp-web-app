@@ -1,11 +1,15 @@
 import { MaintenanceRepository } from './maintenance.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { logger } from '../../core/logger.js';
+import { notifications as sharedNotifications } from '../notifications/notifications.routes.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
+import type { NotifyTarget, NotifyPayload } from '../notifications/notifications.types.js';
 import type { FilesRepository } from '../files/files.repository.js';
 import type {
-  CreateWorkOrderDTO, 
-  UpdateWorkOrderDTO, 
-  CompleteWorkOrderDTO, 
-  StartWorkOrderDTO, 
+  CreateWorkOrderDTO,
+  UpdateWorkOrderDTO,
+  CompleteWorkOrderDTO,
+  StartWorkOrderDTO,
   AssignWorkOrderDTO,
   MaintenanceQueryDTO
 } from './maintenance.types.js';
@@ -13,8 +17,21 @@ import type {
 export class MaintenanceService {
   constructor(
     private readonly repo: MaintenanceRepository,
-    private readonly filesRepo: FilesRepository
+    private readonly filesRepo: FilesRepository,
+    private readonly notifications: NotificationsService = sharedNotifications,
   ) {}
+
+  /**
+   * Alerts ride along with mutations but must never sink them — a failed insert
+   * into `notifications` is logged and swallowed, the work order still saves.
+   */
+  private async emit(target: NotifyTarget, payload: NotifyPayload): Promise<void> {
+    try {
+      await this.notifications.notify(target, payload);
+    } catch (err) {
+      logger.error({ err, type: payload.type }, '[maintenance] notification emit failed');
+    }
+  }
 
   async list(query: MaintenanceQueryDTO, propertyId?: string) {
     return this.repo.findPaginated(query, propertyId);
@@ -34,9 +51,9 @@ export class MaintenanceService {
         throw AppError.badRequest('That unit is not in your active property');
       }
     }
-    return this.repo.transaction(async (trx) => {
+    const order = await this.repo.transaction(async (trx) => {
       // Create work order
-      const order = await this.repo.create({
+      const created = await this.repo.create({
         room_id: data.room_id,
         title: data.title,
         description: data.description ?? null,
@@ -52,8 +69,47 @@ export class MaintenanceService {
       // Update room to MAINTENANCE
       await this.repo.updateRoomStatus(data.room_id, 'MAINTENANCE', meta, trx);
 
-      return order;
+      return created;
     });
+
+    // Alert AFTER the commit (a rolled-back order must not notify). Everything in
+    // here — including the property lookup — is best-effort: the order is saved.
+    try {
+      const propertyId = await this.repo.roomPropertyId(data.room_id);
+      if (propertyId) {
+        await this.emit(
+          { propertyId, excludeUserIds: [meta.userId] },
+          {
+            type: 'maintenance.opened',
+            title: `New ${data.priority} repair${data.assigned_to ? '' : ' (unassigned)'} — ${data.title}`,
+            body: data.assigned_to
+              ? 'A new work order has been opened and assigned.'
+              : 'A new work order has been opened and needs someone assigned.',
+            entityType: 'maintenance_work_orders',
+            entityId: order.id,
+            link: `/maintenance/${order.id}`,
+          },
+        );
+      }
+      if (data.assigned_to && data.assigned_to !== meta.userId) {
+        await this.emit(
+          { userId: data.assigned_to },
+          {
+            type: 'maintenance.assigned',
+            title: `You've been assigned a repair — ${data.title}`,
+            body: `Priority ${data.priority}.`,
+            propertyId,
+            entityType: 'maintenance_work_orders',
+            entityId: order.id,
+            link: `/maintenance/${order.id}`,
+          },
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, '[maintenance] open-work-order alerts failed');
+    }
+
+    return order;
   }
 
   async assign(id: string, data: AssignWorkOrderDTO, meta: { userId: string, requestId?: string }) {
@@ -66,7 +122,30 @@ export class MaintenanceService {
       throw AppError.badRequest('Cannot assign to an unknown or inactive staff member');
     }
 
-    return this.repo.update(id, { assigned_to: data.assigned_to }, meta);
+    const updated = await this.repo.update(id, { assigned_to: data.assigned_to }, meta);
+
+    // Tell the new assignee (unless they assigned themselves or it's a re-save).
+    // Best-effort: the assignment is saved regardless.
+    if (data.assigned_to && data.assigned_to !== meta.userId && data.assigned_to !== order.assigned_to) {
+      try {
+        await this.emit(
+          { userId: data.assigned_to },
+          {
+            type: 'maintenance.assigned',
+            title: `You've been assigned a repair — ${order.title}`,
+            body: `Priority ${order.priority}.`,
+            propertyId: await this.repo.workOrderPropertyId(id),
+            entityType: 'maintenance_work_orders',
+            entityId: id,
+            link: `/maintenance/${id}`,
+          },
+        );
+      } catch (err) {
+        logger.error({ err }, '[maintenance] assign alert failed');
+      }
+    }
+
+    return updated;
   }
 
   async start(id: string, data: StartWorkOrderDTO, meta: { userId: string, requestId?: string }) {

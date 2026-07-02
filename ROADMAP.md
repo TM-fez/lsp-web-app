@@ -21,8 +21,13 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 ### A2. Maintenance
 - 🟡 Module + contractor costs/expenses + completion/approval accountability — exists (024/037/038)
 - 🆕 Scoped service-provider login (new contractor role; portal limited to their tickets)
-- 🆕 In-app pop-up notifications (pending/unassigned) — **no notifications infra exists yet**
-- 🆕 Automated interval reminders for overdue/pending (reuse cron pattern)
+- ✅ In-app pop-up notifications (pending/unassigned) — `maintenance.opened` (property fan-out,
+  actor excluded, unassigned flagged) + `maintenance.assigned` (direct to the assignee) emitted
+  from the maintenance service; the web bell now also toasts newly arrived notifications
+- ✅ Automated interval reminders for overdue/pending — `reminder.maintenance_unassigned`
+  (any-priority OPEN with nobody assigned > 1 day, nagged daily) joins the existing stale-repair
+  generator; the reminder sweep now runs **in-process daily** (retention-style self-gate), so
+  `/cron/reminders` is just the serverless fallback like `/cron/sweep`
 - 🆕 wa.me WhatsApp follow-up button (frontend deep link; staff sends from own phone)
 - 🆕 L&P-unit vs third-party-landlord financial mapping (current accountability = who-did/who-approved, not owner attribution)
 
@@ -102,8 +107,9 @@ Unblocks the operations + AI features that follow.
 
 **Phase 2 COMPLETE** — notifications (#54) + LLM client (#55) both merged.
 
-### Phase 3 — Operations depth (rides on Phase 1 + 2)
-- Maintenance (A2): scoped contractor login, notifications, reminders, L&P-vs-landlord mapping
+### Phase 3 — Operations depth (rides on Phase 1 + 2) — IN PROGRESS
+- Maintenance (A2): ✅ notifications + reminders (in-process daily sweep);
+  next: scoped contractor login, L&P-vs-landlord mapping
 - Housekeeping (A3): three-stage flow, compliance checklists, tablet view
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)

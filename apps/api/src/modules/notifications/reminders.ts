@@ -18,10 +18,19 @@ import { notifications as sharedNotifications } from './notifications.routes.js'
 export interface ReminderResult {
   checkoutDue: number;
   maintenanceStale: number;
+  maintenanceUnassigned: number;
 }
+
+export const NO_REMINDERS: ReminderResult = {
+  checkoutDue: 0,
+  maintenanceStale: 0,
+  maintenanceUnassigned: 0,
+};
 
 /** A stale work order is HIGH/CRITICAL, still open, and has sat untouched this long. */
 const MAINTENANCE_STALE_DAYS = 2;
+/** A pending work order is any-priority OPEN with nobody assigned for this long. */
+const MAINTENANCE_UNASSIGNED_DAYS = 1;
 
 export async function runReminders(
   db: Kysely<Database>,
@@ -29,12 +38,13 @@ export async function runReminders(
 ): Promise<ReminderResult> {
   const today = todayInPropertyTZ();
 
-  const [checkoutDue, maintenanceStale] = await Promise.all([
+  const [checkoutDue, maintenanceStale, maintenanceUnassigned] = await Promise.all([
     remindCheckoutsDue(db, service, today),
     remindStaleMaintenance(db, service, today),
+    remindUnassignedMaintenance(db, service, today),
   ]);
 
-  return { checkoutDue, maintenanceStale };
+  return { checkoutDue, maintenanceStale, maintenanceUnassigned };
 }
 
 /** Guests departing today — a heads-up so reception/housekeeping can plan the turn. */
@@ -106,6 +116,66 @@ async function remindStaleMaintenance(
     );
   }
   return inserted;
+}
+
+/** Work orders nobody has picked up — any priority, nagged daily until assigned. */
+async function remindUnassignedMaintenance(
+  db: Kysely<Database>,
+  service: NotificationsService,
+  today: string,
+): Promise<number> {
+  const rows = await db
+    .selectFrom('maintenance_work_orders as w')
+    .innerJoin('rooms as rm', 'rm.id', 'w.room_id')
+    .innerJoin('buildings as b', 'b.id', 'rm.building_id')
+    .select(['w.id as work_order_id', 'w.title', 'w.priority', 'rm.name as room_name', 'b.property_id'])
+    .where('w.status', '=', 'OPEN')
+    .where('w.assigned_to', 'is', null)
+    .where('w.opened_at', '<', daysAgo(MAINTENANCE_UNASSIGNED_DAYS))
+    .where('w.deleted_at', 'is', null)
+    .execute();
+
+  let inserted = 0;
+  for (const row of rows) {
+    inserted += await service.notify(
+      { propertyId: row.property_id },
+      {
+        type: 'reminder.maintenance_unassigned',
+        title: `Repair still unassigned — ${row.room_name}`,
+        body: `"${row.title}" (${row.priority}) has been waiting over ${MAINTENANCE_UNASSIGNED_DAYS} day(s) for someone to be assigned.`,
+        entityType: 'maintenance_work_orders',
+        entityId: row.work_order_id,
+        link: `/maintenance/${row.work_order_id}`,
+        // Date in the key => a fresh nudge once per day until it's assigned.
+        dedupKey: `reminder.maintenance_unassigned:${row.work_order_id}:${today}`,
+      },
+    );
+  }
+  return inserted;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The closure the in-process sweep runs. The sweep ticks every minute, but the
+ * reminder generators only need to run daily — so it self-gates and returns zeros
+ * in between (per process; a restart just re-runs them, which the dedup keys make
+ * a no-op). Same pattern as the retention sweeper. `/cron/reminders` remains as
+ * the fallback for a serverless host, exactly like `/cron/sweep`.
+ */
+export function createRemindersSweeper(
+  db: Kysely<Database>,
+  service: NotificationsService = sharedNotifications,
+  intervalMs: number = DAY_MS,
+): () => Promise<ReminderResult> {
+  let lastRunMs = 0;
+
+  return async () => {
+    const nowMs = Date.now();
+    if (nowMs - lastRunMs < intervalMs) return NO_REMINDERS;
+    lastRunMs = nowMs;
+    return runReminders(db, service);
+  };
 }
 
 function daysAgo(days: number): Date {

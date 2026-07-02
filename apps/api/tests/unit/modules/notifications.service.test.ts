@@ -42,6 +42,20 @@ describe('NotificationsService.notify — fan-out', () => {
     expect(rows.every((r: any) => r.property_id === 'p1')).toBe(true);
   });
 
+  it('property target drops excluded users (the actor) from the fan-out', async () => {
+    const { svc, repo } = setup();
+    await svc.notify({ propertyId: 'p1', excludeUserIds: ['a'] }, { type: 't', title: 'hi' });
+    const rows = repo.insertMany.mock.calls[0][0];
+    expect(rows.map((r: any) => r.user_id)).toEqual(['b']);
+  });
+
+  it('excluding every member → no insert, returns 0', async () => {
+    const { svc, repo } = setup();
+    const n = await svc.notify({ propertyId: 'p1', excludeUserIds: ['a', 'b'] }, { type: 't', title: 'hi' });
+    expect(n).toBe(0);
+    expect(repo.insertMany).not.toHaveBeenCalled();
+  });
+
   it('no recipients → no insert, returns 0', async () => {
     const { svc, repo } = setup({ userIdsForProperty: vi.fn(async () => []) });
     const n = await svc.notify({ propertyId: 'empty' }, { type: 't', title: 'hi' });

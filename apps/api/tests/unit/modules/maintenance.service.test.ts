@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MaintenanceService } from '../../../src/modules/maintenance/maintenance.service.js';
 import { MaintenanceRepository } from '../../../src/modules/maintenance/maintenance.repository.js';
 import { FilesRepository } from '../../../src/modules/files/files.repository.js';
+import type { NotificationsService } from '../../../src/modules/notifications/notifications.service.js';
 import { AppError } from '../../../src/core/errors/AppError.js';
 
 describe('MaintenanceService', () => {
   let service: MaintenanceService;
   let repo: vi.Mocked<MaintenanceRepository>;
   let filesRepo: vi.Mocked<FilesRepository>;
+  let notifications: vi.Mocked<NotificationsService>;
 
   beforeEach(() => {
     repo = {
@@ -19,6 +21,8 @@ describe('MaintenanceService', () => {
       update: vi.fn(),
       softDelete: vi.fn(),
       updateRoomStatus: vi.fn(),
+      roomPropertyId: vi.fn().mockResolvedValue('p1'),
+      workOrderPropertyId: vi.fn().mockResolvedValue('p1'),
       transaction: vi.fn(async (cb) => cb({} as any)),
     } as unknown as vi.Mocked<MaintenanceRepository>;
 
@@ -26,7 +30,11 @@ describe('MaintenanceService', () => {
       findById: vi.fn(),
     } as unknown as vi.Mocked<FilesRepository>;
 
-    service = new MaintenanceService(repo, filesRepo);
+    notifications = {
+      notify: vi.fn().mockResolvedValue(1),
+    } as unknown as vi.Mocked<NotificationsService>;
+
+    service = new MaintenanceService(repo, filesRepo, notifications);
   });
 
   it('openWorkOrder sets room status to MAINTENANCE', async () => {
@@ -34,6 +42,65 @@ describe('MaintenanceService', () => {
     await service.openWorkOrder({ room_id: 'r1', title: 'Fix sink', priority: 'HIGH' }, { userId: 'u1' });
     expect(repo.create).toHaveBeenCalled();
     expect(repo.updateRoomStatus).toHaveBeenCalledWith('r1', 'MAINTENANCE', { userId: 'u1' }, expect.anything());
+  });
+
+  describe('notifications', () => {
+    it('openWorkOrder alerts the property, excluding the reporter, and flags unassigned', async () => {
+      repo.create.mockResolvedValue({ id: 'm1' } as any);
+      await service.openWorkOrder({ room_id: 'r1', title: 'Fix sink', priority: 'HIGH' }, { userId: 'u1' });
+      expect(notifications.notify).toHaveBeenCalledTimes(1);
+      const [target, payload] = notifications.notify.mock.calls[0]!;
+      expect(target).toEqual({ propertyId: 'p1', excludeUserIds: ['u1'] });
+      expect(payload.type).toBe('maintenance.opened');
+      expect(payload.title).toContain('(unassigned)');
+      expect(payload.link).toBe('/maintenance/m1');
+    });
+
+    it('openWorkOrder with an assignee also alerts the assignee directly', async () => {
+      repo.create.mockResolvedValue({ id: 'm1' } as any);
+      await service.openWorkOrder(
+        { room_id: 'r1', title: 'Fix sink', priority: 'HIGH', assigned_to: 'kabelo' },
+        { userId: 'u1' },
+      );
+      expect(notifications.notify).toHaveBeenCalledTimes(2);
+      const [target, payload] = notifications.notify.mock.calls[1]!;
+      expect(target).toEqual({ userId: 'kabelo' });
+      expect(payload.type).toBe('maintenance.assigned');
+      const opened = notifications.notify.mock.calls[0]![1];
+      expect(opened.title).not.toContain('(unassigned)');
+    });
+
+    it('a notify failure is swallowed — the work order still saves', async () => {
+      repo.create.mockResolvedValue({ id: 'm1' } as any);
+      notifications.notify.mockRejectedValue(new Error('db down'));
+      const order = await service.openWorkOrder(
+        { room_id: 'r1', title: 'Fix sink', priority: 'HIGH' },
+        { userId: 'u1' },
+      );
+      expect(order).toEqual({ id: 'm1' });
+    });
+
+    it('assign alerts the new assignee but not on self-assign or re-save', async () => {
+      repo.findByIdWithPeople.mockResolvedValue({ id: 'm1', status: 'OPEN', title: 'Fix sink', priority: 'HIGH', assigned_to: null } as any);
+      repo.isActiveUser.mockResolvedValue(true);
+      repo.update.mockResolvedValue({ id: 'm1' } as any);
+
+      await service.assign('m1', { assigned_to: 'kabelo' }, { userId: 'u1' });
+      expect(notifications.notify).toHaveBeenCalledTimes(1);
+      const [target, payload] = notifications.notify.mock.calls[0]!;
+      expect(target).toEqual({ userId: 'kabelo' });
+      expect(payload.type).toBe('maintenance.assigned');
+
+      // Self-assign: no alert.
+      notifications.notify.mockClear();
+      await service.assign('m1', { assigned_to: 'u1' }, { userId: 'u1' });
+      expect(notifications.notify).not.toHaveBeenCalled();
+
+      // Re-save of the same assignee: no alert.
+      repo.findByIdWithPeople.mockResolvedValue({ id: 'm1', status: 'OPEN', title: 'Fix sink', priority: 'HIGH', assigned_to: 'kabelo' } as any);
+      await service.assign('m1', { assigned_to: 'kabelo' }, { userId: 'u1' });
+      expect(notifications.notify).not.toHaveBeenCalled();
+    });
   });
 
   it('complete restores the room AND stamps completed_by', async () => {
