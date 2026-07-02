@@ -15,6 +15,16 @@ import { router } from './router.js';
 // binding a port. Starting the HTTP listener + the background scheduler lives in server.ts.
 const app = express();
 
+// ── Proxy awareness ───────────────────────────────────────────────────────────
+// Behind Vercel→Render every request arrives from the proxy's socket; without this,
+// req.ip is the proxy for ALL users, so every per-IP rate limit is shared globally
+// and audit logs record the proxy address. A fixed hop count (never `true`) means we
+// only trust the X-Forwarded-For entries our own infrastructure appended — a caller
+// hitting the Render URL directly can spoof at most the entries beyond that count.
+if (env.TRUST_PROXY_HOPS > 0) {
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
+}
+
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet());
 

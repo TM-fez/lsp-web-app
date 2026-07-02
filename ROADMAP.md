@@ -115,6 +115,81 @@ Unblocks the operations + AI features that follow.
 - In-apartment QR → check-in/checkout asks → post-stay follow-up → CRM + AI marketing
 
 ### Parallel track — client-gated (slot in whenever unblocked)
-- 🔒 Phase B DPO payments + discount-into-charge (when sandbox keys arrive)
-- 🔒 OTA guest details (when Fahad decides manual vs Reservations API)
-- 🔒 Render Postgres → paid (before real daily use; hard deadline ~Sep 2026)
+- 🔒 Phase B DPO payments + discount-into-charge — **PARKED by owner decision (2026-07-02)**;
+  registration was deliberately stopped (reason to be re-confirmed before ever resuming)
+- 🔒 OTA guest details (when Fahad decides manual vs Reservations API) — interim answer now
+  planned as H4/H6 below (claim flow + email enrich), which need no Booking.com approval
+- 🔒 Render Postgres → paid (before real daily use; hard deadline ~Sep 2026) — also a
+  prerequisite for H4 channel-sync go-live (free service sleeps; OTA fetches time out)
+
+---
+
+## Part 3 — Hardening track (H1–H6)
+
+From the full app review of 2026-07-02 (bugs-in-waiting + do-better items), bundled into
+phases. Runs alongside Part 2: H1–H3 first (fast, everything leans on them), H4 whenever
+the client is ready to switch Booking.com sync on, H5 alongside product Phase 3, H6 à la
+carte. **DPO is out of scope for this track** (parked, see above).
+
+### Phase H1 — Stop the bleeding *(live defects; ~2–3 days, one PR, no client dependency)*
+**DONE (2026-07-02)** — new env vars: `TRUST_PROXY_HOPS` (render.yaml sets 2),
+`WEBSITE_PENDING_TTL_HOURS` (default 24; 0 disables), `RATE_LIMIT_REFRESH_MAX` (default 30).
+- ✅ `trust proxy` in `app.ts` — env-driven hop count (`TRUST_PROXY_HOPS`, prod = 2 for
+  Vercel→Render) so per-IP rate limits + audit-log IPs see the real client, not the proxy.
+  ⏳ Follow-up: verify `req.ip` on live after deploy.
+- ✅ Auto-expire unpaid WEBSITE `PENDING` reservations — `reservations.expiry.ts`, third
+  sweeper in the sweep (interval + `/cron/sweep`): cancels after the TTL with an audit row
+  and a `reservation.website_expired` notification to the property; race-guarded so a
+  just-confirmed booking is left alone. Staff-created PENDING is untouched.
+- ✅ Auth tidy-ups: well-formed dummy bcrypt hash (timing parity actually works), rate
+  limit on `/auth/refresh`, plus a per-ACCOUNT login limiter (keyed by email) that holds
+  even if X-Forwarded-For is spoofed past the trust boundary.
+- ✅ `BLOCKED` in the web `ReservationStatus` union + tone/label maps ("OTA block",
+  violet), in the reservations filter, and excluded from edit/cancel (`isOpen`).
+
+### Phase H2 — Don't lose data *(~3–4 days + one client decision)*
+- 🆕 S3-compatible storage driver (Cloudflare R2 / Backblaze B2; adapter seam exists) —
+  uploads currently live on Render's ephemeral disk and vanish on redeploy; also make the
+  checksum-dedupe verify the binary exists before skipping the write.
+- 🆕 Nightly automated `pg_dump` backup (GitHub Action → bucket).
+- 🆕 Prune revoked/expired `refresh_tokens` + old `audit_logs` in the cron sweep.
+- 🔒 Render → paid plan (owner pays; service must stop sleeping before H4).
+
+### Phase H3 — Eyes and guardrails *(~3–4 days)*
+- 🆕 Sentry on API + web; uptime monitor on `/health`.
+- 🆕 Structured logging (pino) wired to the existing request-id.
+- 🆕 GitHub Actions CI: typecheck + lint + tests on every PR.
+- 🆕 Security headers/CSP on the Vercel web app + a deliberate decision on access-token
+  storage (zustand `persist` writes it to localStorage today; comment claims in-memory).
+
+### Phase H4 — Channel-sync go-live package *(~1.5–2 weeks; needs H2's paid Render)*
+- 🆕 Channel admin UI: per-unit export URL (copy button), edit `booking_ical_url`, rotate
+  `ical_token` — today both are DB-only (go-live would mean 25 manual SQL updates).
+- 🆕 Import hardening: empty-feed mass-cancel guard, pg advisory lock against overlapping
+  runs, skip unchanged block writes, validate import URLs (https + booking.com host).
+- 🆕 OTA contact info, Tier 0: keep the feed's SUMMARY (parse DESCRIPTION too, for Airbnb
+  later) on the block instead of discarding it.
+- 🆕 OTA contact info, Tier 1 — **"Claim this booking"**: staff copy guest details from the
+  Booking.com extranet/Pulse app → real contact linked, block becomes check-in-able (needs
+  a deliberate status decision so the `settlePaid()`-only-CONFIRMED invariant survives).
+  Unblocks: arrivals rail, check-in, invoicing, CRM for OTA guests (all impossible today).
+- 🆕 Mount `/cron/channel-sync` + 15-min trigger, then the owner-run go-live checklist in
+  HANDOVER §5 (backup → verify migrations → **extranet URL exchange (owner has the
+  Booking.com login)** → `CHANNEL_ALERT_EMAIL` → enable trigger).
+
+### Phase H5 — Finish the security rollout *(~1 week; can ride alongside product Phase 3)*
+- 🆕 Property scoping extended to the money-loop first (quotes, holds, payments, invoices,
+  checkins, availability), then expenses/payroll/files/activity — only reservations,
+  cockpit, rooms, maintenance, housekeeping (+ reports/opex id-filters) are scoped today.
+- 🆕 Files module cleanup: `AppError`s (disallowed MIME is a 500 today), owner/property
+  filtering on list, drop the `as any`, stop hardcoding `/tmp`.
+- 🆕 Deliberate call on the ungated `GET /users/directory` (any logged-in user can list staff).
+
+### Phase H6 — Do-better / revenue *(~1–2 weeks, à la carte)*
+- 🆕 OTA contact info, Tier 2: parse Booking.com's new-booking notification emails (Brevo
+  inbound) → auto-attach guest details to the matching block; Tier 1 becomes the fallback.
+- 🆕 Booking-source badges across cockpit/reservations UI (column exists, UI doesn't show it).
+- 🆕 "Manage my booking" link in guest confirmation emails (dates, invoice, WhatsApp button).
+- 🆕 Rule-based occupancy/pricing nudges on the dashboard (pre-AI version of A5).
+- 🧹 Go-live cleanups already listed in Part 1B: demo-data wipe, empty "Main" building,
+  DEPLOY.md rewrite.

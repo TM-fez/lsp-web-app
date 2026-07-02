@@ -28,6 +28,10 @@ services:
         value: lsp_refresh
       - key: CORS_ORIGIN
         sync: false
+      # Vercel rewrite → Render edge = 2 proxy hops. Makes req.ip the real client, so
+      # per-IP rate limits + audit-log IPs stop lumping every user onto the proxy IP.
+      - key: TRUST_PROXY_HOPS
+        value: "2"
       # Email (Brevo). API key is a secret → set its value in the Render dashboard.
       # The other two are not secret, so they apply automatically on deploy.
       - key: BREVO_API_KEY

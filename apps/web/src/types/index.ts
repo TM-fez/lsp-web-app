@@ -31,7 +31,9 @@ export interface MeResponse {
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
 export type HousekeepingStatus = 'READY' | 'DIRTY' | 'CLEANING' | 'INSPECTED';
 export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';
-export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
+// BLOCKED = a night imported from an OTA calendar (channel sync). Importer-owned,
+// never user-set — read-only in every form, shown as "OTA block".
+export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED';
 export type ReservationSource = 'DIRECT' | 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'BOOKING_COM' | 'CORPORATE' | 'OTHER';
 export type UnitType = 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
 export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';

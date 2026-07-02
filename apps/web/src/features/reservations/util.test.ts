@@ -19,7 +19,7 @@ describe('nights', () => {
 
 describe('status helpers', () => {
   it('has a tone for every status', () => {
-    (['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'] as const).forEach((s) => {
+    (['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'BLOCKED'] as const).forEach((s) => {
       expect(statusTone[s]).toBeTruthy();
     });
   });
@@ -28,11 +28,16 @@ describe('status helpers', () => {
     expect(statusLabel('CHECKED_IN')).toBe('checked in');
   });
 
+  it('names the OTA origin instead of a bare "blocked"', () => {
+    expect(statusLabel('BLOCKED')).toBe('OTA block');
+  });
+
   it('only PENDING/CONFIRMED are open for edit/cancel', () => {
     expect(isOpen('PENDING')).toBe(true);
     expect(isOpen('CONFIRMED')).toBe(true);
     expect(isOpen('CHECKED_IN')).toBe(false);
     expect(isOpen('CHECKED_OUT')).toBe(false);
     expect(isOpen('CANCELLED')).toBe(false);
+    expect(isOpen('BLOCKED')).toBe(false);
   });
 });

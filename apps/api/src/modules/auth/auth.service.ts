@@ -68,8 +68,11 @@ export async function login(
   const userRow = await authRepo.findUserByEmail(email);
 
   // Deliberate timing parity: run bcrypt even on unknown email to prevent
-  // user enumeration via response time differences.
-  const DUMMY_HASH = '$2b$12$invalidhashplaceholderaabbcc';
+  // user enumeration via response time differences. Must be a WELL-FORMED hash
+  // (60 chars, matching BCRYPT_ROUNDS) — bcrypt rejects a malformed one instantly,
+  // which would leak "user not found" through the fast path. Hash of a discarded
+  // random secret; it can never match any password.
+  const DUMMY_HASH = '$2b$12$8im/hIB6B9xgyhtl1G/ve.MF8krR.eYb3Z6scW02XRcZQ4mbj1zzS';
   const hashToCompare = userRow?.passwordHash ?? DUMMY_HASH;
   const passwordMatch = await bcrypt.compare(password, hashToCompare);
 
