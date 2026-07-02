@@ -68,12 +68,16 @@ export class ReservationsRepository {
     let query = this.db
       .selectFrom('reservations')
       .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
+      .leftJoin('contacts as coordinator', 'coordinator.id', 'reservations.booking_coordinator_id')
+      .leftJoin('contacts as biller', 'biller.id', 'reservations.billing_contact_id')
       .leftJoin('rooms', 'rooms.id', 'reservations.room_id')
       .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
       .leftJoin('properties', 'properties.id', 'buildings.property_id')
       .selectAll('reservations')
       .select([
         'contacts.name as guest_name',
+        'coordinator.name as booking_coordinator_name',
+        'biller.name as billing_contact_name',
         'rooms.code as room_code',
         'rooms.name as room_name',
         'properties.id as property_id',

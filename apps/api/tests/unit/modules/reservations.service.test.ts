@@ -86,6 +86,39 @@ describe('ReservationsService', () => {
       expect(passed.status).toBe('PENDING'); // only settlePaid() may confirm
     });
 
+    it('rejects a bogus CRM contact with a clean 400 (coordinator + billing checked)', async () => {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
+      repository.contactExists.mockResolvedValue(false);
+
+      const base = { contact_id: 'c1', room_id: 'r1', check_in_date: tomorrow, check_out_date: nextWeek };
+      await expect(
+        service.createReservation({ ...base, booking_coordinator_id: 'ghost' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('Booking coordinator must be an existing contact');
+      await expect(
+        service.createReservation({ ...base, billing_contact_id: 'ghost' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('Billing contact must be an existing contact');
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts valid CRM contacts and passes them through to the insert', async () => {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
+      repository.contactExists.mockResolvedValue(true);
+      repository.checkAvailability.mockResolvedValue(true);
+      repository.create.mockResolvedValue({ id: 'res1' } as any);
+
+      const dto = {
+        contact_id: 'c1', room_id: 'r1', check_in_date: tomorrow, check_out_date: nextWeek,
+        booking_coordinator_id: 'coord1', billing_contact_id: 'bill1',
+      };
+      await service.createReservation(dto as any, { userId: 'u1' } as any);
+
+      const passed = (repository.create as any).mock.calls[0][0];
+      expect(passed.booking_coordinator_id).toBe('coord1');
+      expect(passed.billing_contact_id).toBe('bill1');
+    });
+
     it('translates the DB overlap constraint (a race) into a 409 conflict', async () => {
       const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
       const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);

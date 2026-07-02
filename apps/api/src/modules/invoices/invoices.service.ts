@@ -39,15 +39,17 @@ export class InvoicesService {
     return doc;
   }
 
-  /** Email the invoice/receipt to the guest on the linked reservation. */
+  /** Email the invoice/receipt to the bill-to: the reservation's billing/accounts
+   *  contact when one is assigned (A4), otherwise the guest. */
   async sendInvoiceToGuest(id: string, meta: InvoiceRequestMeta): Promise<{ sent: true; to: string }> {
     const doc = await this.repository.findDocumentData(id);
     if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
-    if (!doc.guest_email) throw AppError.badRequest('This invoice has no guest email on file.');
+    const to = doc.bill_to_email;
+    if (!to) throw AppError.badRequest('This invoice has no billing or guest email on file.');
     const { subject, html } = renderInvoiceEmail(doc);
-    await sendEmail({ to: doc.guest_email, subject, html });
-    await this.repository.recordEmailSent(id, doc.guest_email, meta);
-    return { sent: true, to: doc.guest_email };
+    await sendEmail({ to, subject, html });
+    await this.repository.recordEmailSent(id, to, meta);
+    return { sent: true, to };
   }
 
   async listInvoices(filters: InvoiceFilters, pagination: PaginationOptions): Promise<PaginatedResult<InvoiceRow>> {

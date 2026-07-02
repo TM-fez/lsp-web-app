@@ -195,8 +195,13 @@ export interface Reservation {
   discount_reason: string | null;
   discount_approved_at: string | null;
   created_at: string;
+  // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
+  booking_coordinator_id?: string | null;
+  billing_contact_id?: string | null;
   // Enriched by the list endpoint's joins; absent on create/update responses.
   guest_name?: string | null;
+  booking_coordinator_name?: string | null;
+  billing_contact_name?: string | null;
   room_code?: string | null;
   room_name?: string | null;
   property_id?: string | null;
@@ -427,6 +432,10 @@ export interface InvoiceDocument {
   guest_name: string | null;
   guest_email: string | null;
   guest_phone: string | null;
+  // The bill-to (A4): the reservation's billing/accounts contact when assigned,
+  // otherwise the guest (coalesced server-side).
+  bill_to_name: string | null;
+  bill_to_email: string | null;
   check_in_date: string | null;
   check_out_date: string | null;
   unit_code: string | null;

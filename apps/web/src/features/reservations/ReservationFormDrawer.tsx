@@ -64,6 +64,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     removeDisc.isPending;
 
   const [guest, setGuest] = useState<PickedGuest | null>(null);
+  // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
+  const [coordinator, setCoordinator] = useState<PickedGuest | null>(null);
+  const [billingContact, setBillingContact] = useState<PickedGuest | null>(null);
   const [roomId, setRoomId] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -78,6 +81,16 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   useEffect(() => {
     if (!open) return;
     setGuest(reservation ? { id: reservation.contact_id, name: reservation.guest_name ?? 'Guest' } : null);
+    setCoordinator(
+      reservation?.booking_coordinator_id
+        ? { id: reservation.booking_coordinator_id, name: reservation.booking_coordinator_name ?? 'Contact' }
+        : null,
+    );
+    setBillingContact(
+      reservation?.billing_contact_id
+        ? { id: reservation.billing_contact_id, name: reservation.billing_contact_name ?? 'Contact' }
+        : null,
+    );
     setRoomId(reservation?.room_id ?? '');
     setCheckIn(toDateInput(reservation?.check_in_date));
     setCheckOut(toDateInput(reservation?.check_out_date));
@@ -121,6 +134,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
       check_out_date: checkOut,
       notes: notes.trim() || null,
       source,
+      booking_coordinator_id: coordinator?.id ?? null,
+      billing_contact_id: billingContact?.id ?? null,
     };
     try {
       if (reservation) {
@@ -180,6 +195,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               <Badge tone={statusTone[r.status]}>{statusLabel(r.status)}</Badge>
             </Row>
             <Row label="Guest">{r.guest_name ?? '—'}</Row>
+            {r.booking_coordinator_name && <Row label="Coordinator">{r.booking_coordinator_name}</Row>}
+            {r.billing_contact_name && <Row label="Bill to">{r.billing_contact_name}</Row>}
             <Row label="Unit">{r.room_code ? `${r.room_code} · ${r.room_name ?? ''}` : '—'}</Row>
             <Row label="Source">{sourceLabel(r.source)}</Row>
             <Row label="Stay">
@@ -242,6 +259,20 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
           <div className="flex flex-col gap-1">
             <Label>Guest</Label>
             <GuestPicker value={guest} onChange={setGuest} disabled={busy} />
+          </div>
+
+          {/* CRM (A4): corporate bookings carry who arranged it + who the invoice
+              goes to. Both optional — individual stays leave them empty. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label>Booking coordinator (optional)</Label>
+              <GuestPicker value={coordinator} onChange={setCoordinator} disabled={busy} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Billing contact (optional)</Label>
+              <GuestPicker value={billingContact} onChange={setBillingContact} disabled={busy} />
+              <span className="text-xs text-slate-500">Invoices go here instead of the guest.</span>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">

@@ -17,6 +17,9 @@ export interface CreateReservationInput {
   check_out_date: string; // YYYY-MM-DD
   notes?: string | null;
   source?: ReservationSource;
+  // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
+  booking_coordinator_id?: string | null;
+  billing_contact_id?: string | null;
 }
 
 export type UpdateReservationInput = Partial<CreateReservationInput>;
