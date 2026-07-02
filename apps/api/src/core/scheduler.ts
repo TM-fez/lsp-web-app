@@ -9,6 +9,7 @@ import { QuotesService } from '../modules/quotes/quotes.service.js';
 import { PricingRepository } from '../modules/pricing/pricing.repository.js';
 import { PricingService } from '../modules/pricing/pricing.service.js';
 import { createWebsiteBookingExpiry } from '../modules/reservations/reservations.expiry.js';
+import { createRetentionSweeper, type RetentionResult } from './retention.js';
 
 /**
  * Background auto-expiry sweep.
@@ -31,12 +32,17 @@ export interface QuotesSweeper {
   expireStaleQuotes(): Promise<number>;
 }
 export type WebsiteBookingsSweeper = () => Promise<number>;
+export type RetentionSweeper = () => Promise<RetentionResult>;
 
 export interface SweepResult {
   holdsReleased: number;
   quotesExpired: number;
   websiteBookingsExpired: number;
+  refreshTokensPruned: number;
+  auditLogsPruned: number;
 }
+
+const NO_RETENTION: RetentionResult = { refreshTokensPruned: 0, auditLogsPruned: 0 };
 
 /**
  * Run all sweeps once. They are independent: one failing (e.g. a transient DB error)
@@ -46,22 +52,30 @@ export async function runSweep(
   holds: HoldsSweeper,
   quotes: QuotesSweeper,
   websiteBookings: WebsiteBookingsSweeper = async () => 0,
+  retention: RetentionSweeper = async () => NO_RETENTION,
 ): Promise<SweepResult> {
-  const [held, quoted, website] = await Promise.allSettled([
+  const [held, quoted, website, retained] = await Promise.allSettled([
     holds.releaseExpired(),
     quotes.expireStaleQuotes(),
     websiteBookings(),
+    retention(),
   ]);
 
   if (held.status === 'rejected') console.error('[scheduler] hold sweep failed:', held.reason);
   if (quoted.status === 'rejected') console.error('[scheduler] quote sweep failed:', quoted.reason);
   if (website.status === 'rejected')
     console.error('[scheduler] website-booking sweep failed:', website.reason);
+  if (retained.status === 'rejected')
+    console.error('[scheduler] retention sweep failed:', retained.reason);
+
+  const retentionCounts = retained.status === 'fulfilled' ? retained.value : NO_RETENTION;
 
   return {
     holdsReleased: held.status === 'fulfilled' ? held.value : 0,
     quotesExpired: quoted.status === 'fulfilled' ? quoted.value : 0,
     websiteBookingsExpired: website.status === 'fulfilled' ? website.value : 0,
+    refreshTokensPruned: retentionCounts.refreshTokensPruned,
+    auditLogsPruned: retentionCounts.auditLogsPruned,
   };
 }
 
@@ -71,7 +85,8 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
   const quotes = new QuotesService(new QuotesRepository(dbInstance), pricing);
   const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
   const websiteBookings = createWebsiteBookingExpiry(dbInstance);
-  return () => runSweep(holds, quotes, websiteBookings);
+  const retention = createRetentionSweeper(dbInstance); // self-gates to once per day
+  return () => runSweep(holds, quotes, websiteBookings, retention);
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -92,11 +107,16 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
 
   const tick = () => {
     sweep()
-      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired }) => {
+      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired, refreshTokensPruned, auditLogsPruned }) => {
         if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
           console.log(
             `[scheduler] swept ${holdsReleased} expired hold(s), ${quotesExpired} stale quote(s), ` +
               `${websiteBookingsExpired} stale website booking(s)`,
+          );
+        }
+        if (refreshTokensPruned > 0 || auditLogsPruned > 0) {
+          console.log(
+            `[scheduler] retention pruned ${refreshTokensPruned} refresh token(s), ${auditLogsPruned} audit log(s)`,
           );
         }
       })

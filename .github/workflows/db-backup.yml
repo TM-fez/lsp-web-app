@@ -1,0 +1,79 @@
+# Nightly Postgres backup — pg_dump the live Render DB, compress, push to an
+# S3-compatible bucket (Cloudflare R2 / Backblaze B2). The DB is the business's
+# system of record; this is the difference between "annoying morning" and
+# "company-ending event".
+#
+# INERT until the repo secrets exist (each run checks and skips with a notice):
+#   BACKUP_DATABASE_URL   Render Postgres EXTERNAL connection string
+#                         (Render dashboard → lsp-db → External Database URL)
+#   BACKUP_S3_BUCKET      bucket name
+#   BACKUP_S3_REGION      region ("auto" for R2)
+#   BACKUP_S3_ACCESS_KEY  access key id
+#   BACKUP_S3_SECRET_KEY  secret access key
+#   BACKUP_S3_ENDPOINT    endpoint URL (R2: https://<account-id>.r2.cloudflarestorage.com)
+#
+# Retention: objects are date-stamped (lsp-db/YYYY/lsp-YYYY-MM-DDTHHMM.dump.gz);
+# set a lifecycle rule on the bucket (e.g. expire after 90 days) rather than
+# deleting from here — the backup job should never hold delete permissions.
+#
+# Restore (never run against a DB you haven't just snapshotted):
+#   gunzip -c lsp-....dump.gz | pg_restore --clean --if-exists -d "$TARGET_DATABASE_URL"
+
+name: db-backup
+
+on:
+  schedule:
+    - cron: '30 1 * * *' # 01:30 UTC = 03:30 Gaborone, off-peak
+  workflow_dispatch: {} # manual "back up now" button
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
+          HAS_BUCKET: ${{ secrets.BACKUP_S3_BUCKET != '' }}
+        run: |
+          if [ "$HAS_DB" != "true" ] || [ "$HAS_BUCKET" != "true" ]; then
+            echo "::notice::Backup secrets not configured yet (BACKUP_DATABASE_URL / BACKUP_S3_*) — skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install postgresql-client 17
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Dump and compress
+        if: steps.config.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          STAMP=$(date -u +%Y-%m-%dT%H%M)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
+            | gzip -9 > "lsp-$STAMP.dump.gz"
+          ls -lh "lsp-$STAMP.dump.gz"
+          # An empty dump means something went wrong upstream — fail loudly.
+          test "$(stat -c%s "lsp-$STAMP.dump.gz")" -gt 10240
+
+      - name: Upload to bucket
+        if: steps.config.outputs.configured == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+        run: |
+          YEAR=$(date -u +%Y)
+          aws s3 cp "lsp-$STAMP.dump.gz" "s3://$BUCKET/lsp-db/$YEAR/lsp-$STAMP.dump.gz"
+          echo "::notice::Backup uploaded: lsp-db/$YEAR/lsp-$STAMP.dump.gz"

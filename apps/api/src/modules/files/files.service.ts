@@ -1,54 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { pipeline } from 'node:stream/promises';
 import { FilesRepository } from './files.repository.js';
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, type FileRequestMeta, type FileQueryDTO } from './files.types.js';
+import type { StorageAdapter } from './files.storage.js';
 import type { FileRow } from '../../db/types.js';
 
-export interface StorageAdapter {
-  save(inputStream: NodeJS.ReadableStream, destinationPath: string): Promise<void>;
-  delete(destinationPath: string): Promise<void>;
-  getUrl(file: FileRow): string;
-  getStream(destinationPath: string): NodeJS.ReadableStream;
-}
-
-export class LocalStorageDriver implements StorageAdapter {
-  constructor(private readonly baseDir: string) {
-    if (!fs.existsSync(baseDir)) {
-      fs.mkdirSync(baseDir, { recursive: true });
-    }
-  }
-
-  async save(inputStream: NodeJS.ReadableStream, destinationPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, destinationPath);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const writeStream = fs.createWriteStream(fullPath);
-    await pipeline(inputStream, writeStream);
-  }
-
-  async delete(destinationPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, destinationPath);
-    if (fs.existsSync(fullPath)) {
-      await fs.promises.unlink(fullPath);
-    }
-  }
-
-  getUrl(file: FileRow): string {
-    return `/api/files/${file.id}/download`;
-  }
-
-  getStream(destinationPath: string): NodeJS.ReadableStream {
-    const fullPath = path.join(this.baseDir, destinationPath);
-    if (!fs.existsSync(fullPath)) {
-      throw new Error('File not found on disk');
-    }
-    return fs.createReadStream(fullPath);
-  }
-}
+// Drivers + factory live in files.storage.ts; re-exported so existing imports keep working.
+export { LocalStorageDriver, S3StorageDriver, createStorageAdapter, type StorageAdapter } from './files.storage.js';
 
 export class FilesService {
   constructor(
@@ -92,20 +51,27 @@ export class FilesService {
       });
 
       const checksum = hash.digest('hex');
+      const { size: actualBytes } = await fs.promises.stat(tempPath);
 
-      // Duplicate prevention (Storage-only Dedupe)
+      // Duplicate prevention (storage-only dedupe) — but the DB row alone doesn't
+      // prove the binary survived (an ephemeral disk wipes on redeploy), so verify
+      // the bytes actually exist before skipping the write.
       const existing = await this.repository.findByChecksum(checksum);
       let destinationPath = '';
-      
+
       if (existing) {
         destinationPath = existing.path;
+        if (!(await this.storageAdapter.exists(destinationPath))) {
+          const readStream = fs.createReadStream(tempPath);
+          await this.storageAdapter.save(readStream, destinationPath, actualBytes);
+        }
       } else {
         const storedName = `${checksum}.${ext}`;
         destinationPath = `${new Date().getFullYear()}/${new Date().getMonth() + 1}/${storedName}`;
 
         // Move from temp to permanent storage via adapter
         const readStream = fs.createReadStream(tempPath);
-        await this.storageAdapter.save(readStream, destinationPath);
+        await this.storageAdapter.save(readStream, destinationPath, actualBytes);
       }
 
       return await this.repository.create({
@@ -115,8 +81,10 @@ export class FilesService {
         extension: ext,
         size_bytes: sizeBytes,
         checksum,
-        storage_driver: existing ? existing.storage_driver : 'local',
-        bucket: existing ? existing.bucket : null,
+        // Where THIS upload verified/wrote the binary — the active driver, not
+        // whatever the first-ever upload of these bytes used.
+        storage_driver: this.storageAdapter.name,
+        bucket: this.storageAdapter.bucket,
         path: destinationPath,
         is_public: isPublic
       } as any, meta);
@@ -134,7 +102,7 @@ export class FilesService {
 
   async getDownloadStream(id: string): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
     const file = await this.getMetadata(id);
-    const stream = this.storageAdapter.getStream(file.path);
+    const stream = await this.storageAdapter.getStream(file.path);
     return { stream, file };
   }
 

@@ -1,19 +1,19 @@
 import { Router } from 'express';
 import { FilesController } from './files.controller.js';
-import { FilesService, LocalStorageDriver } from './files.service.js';
+import { FilesService, createStorageAdapter } from './files.service.js';
 import { FilesRepository } from './files.repository.js';
-import { db } from '../../config/db.js'; 
+import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 
 export function createFilesRouter(dbInstance = db): Router {
   const router = Router();
-  
+
   const repository = new FilesRepository(dbInstance);
-  
-  // Storage adapter points to a persistent data directory
-  // In production, this would be an S3 bucket or mounted volume
-  const storageAdapter = new LocalStorageDriver('./uploads');
+
+  // Local disk in dev; STORAGE_DRIVER=s3 (+ STORAGE_S3_*) in production — Render's
+  // disk is ephemeral, so anything uploaded to it dies on the next deploy.
+  const storageAdapter = createStorageAdapter();
   
   const service = new FilesService(repository, storageAdapter);
   const controller = new FilesController(service);

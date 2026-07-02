@@ -32,6 +32,22 @@ services:
       # per-IP rate limits + audit-log IPs stop lumping every user onto the proxy IP.
       - key: TRUST_PROXY_HOPS
         value: "2"
+      # File storage — Render's disk is EPHEMERAL (uploads die on every deploy), so
+      # production must use an S3-compatible bucket (Cloudflare R2 / Backblaze B2).
+      # Uncomment STORAGE_DRIVER + set the four secrets in the dashboard ONLY once the
+      # bucket exists — with s3 selected and no credentials the API refuses to boot.
+      # - key: STORAGE_DRIVER
+      #   value: s3
+      # - key: STORAGE_S3_BUCKET
+      #   sync: false
+      # - key: STORAGE_S3_REGION
+      #   sync: false   # R2: "auto"
+      # - key: STORAGE_S3_ACCESS_KEY
+      #   sync: false
+      # - key: STORAGE_S3_SECRET_KEY
+      #   sync: false
+      # - key: STORAGE_S3_ENDPOINT
+      #   sync: false   # R2: https://<account-id>.r2.cloudflarestorage.com
       # Email (Brevo). API key is a secret → set its value in the Render dashboard.
       # The other two are not secret, so they apply automatically on deploy.
       - key: BREVO_API_KEY
