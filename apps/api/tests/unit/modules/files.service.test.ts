@@ -21,7 +21,11 @@ describe('FilesService', () => {
     adapter = {
       name: 'local',
       bucket: null,
-      save: vi.fn(),
+      // Drain like the real drivers do — an unconsumed fs read stream would lazily
+      // open AFTER the service's finally-unlink and surface a spurious ENOENT.
+      save: vi.fn(async (stream: NodeJS.ReadableStream) => {
+        for await (const chunk of stream as AsyncIterable<unknown>) void chunk;
+      }),
       delete: vi.fn(),
       exists: vi.fn().mockResolvedValue(true),
       getUrl: vi.fn(),

@@ -166,11 +166,25 @@ carte. **DPO is out of scope for this track** (parked, see above).
 - 🔒 Owner: Render → paid plan (service must stop sleeping before H4).
 
 ### Phase H3 — Eyes and guardrails *(~3–4 days)*
-- 🆕 Sentry on API + web; uptime monitor on `/health`.
-- 🆕 Structured logging (pino) wired to the existing request-id.
-- 🆕 GitHub Actions CI: typecheck + lint + tests on every PR.
-- 🆕 Security headers/CSP on the Vercel web app + a deliberate decision on access-token
-  storage (zustand `persist` writes it to localStorage today; comment claims in-memory).
+**Code DONE (2026-07-02)** — two 🔒 owner steps below.
+- ✅ Sentry on API (`SENTRY_DSN`) + web (`VITE_SENTRY_DSN`) — errors only (no tracing,
+  free-tier friendly), 4xx AppErrors not reported, DARK until the DSNs are set.
+- ✅ Structured logging — `core/logger.ts` (pino; JSON in prod, pretty in dev, quiet in
+  tests) + a hand-rolled per-request log line (`requestLog.middleware.ts`) tagged with
+  the existing request id; errorHandler now logs unexpected (non-AppError) errors.
+  (pino-http was tried and dropped — its global `req.id` re-typing broke 16 controllers.)
+- ✅ CI — already existed (correction to the review!); patched: runs the cockpit e2e
+  suite, seeds the DB, `BCRYPT_ROUNDS=4`, and triggers on PRs against ANY base branch
+  (stacked PRs were skipped before).
+- ✅ Security headers on the Vercel app — CSP (`script-src 'self'`), nosniff,
+  frame-ancestors 'none', referrer + permissions policies.
+- ✅ Token-storage decision (documented in `store/auth.ts`): keep localStorage. An XSS
+  can mint fresh tokens via same-origin `/auth/refresh` regardless of where the token
+  sits, so memory-only buys nothing — the real defence is the CSP + 15-min expiry.
+- 🔒 Owner: create the Sentry account/projects (sentry.io, free) → set `SENTRY_DSN`
+  (Render) + `VITE_SENTRY_DSN` (Vercel).
+- 🔒 Owner: uptime monitor on `https://lsp-api-p3zx.onrender.com/health` (UptimeRobot
+  free, 5-min interval — side benefit: pings keep the free Render service awake).
 
 ### Phase H4 — Channel-sync go-live package *(~1.5–2 weeks; needs H2's paid Render)*
 - 🆕 Channel admin UI: per-unit export URL (copy button), edit `booking_ical_url`, rotate

@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [main, develop]
+  # No branch filter: stacked PRs (base = another feature branch) must run CI too.
   pull_request:
-    branches: [main, develop]
 
 jobs:
   lint-typecheck:
@@ -51,14 +51,17 @@ jobs:
           mkdir -p apps/api/keys
           openssl genrsa -out apps/api/keys/private.pem 2048
           openssl rsa -in apps/api/keys/private.pem -pubout -out apps/api/keys/public.pem
-      - name: Run migrations
+      - name: Run migrations + seed
         working-directory: apps/api
-        run: npm run db:migrate
+        run: |
+          npm run db:migrate
+          npm run db:seed
         env:
           DATABASE_URL: postgresql://lsp:lsp@localhost:5433/lsp_test
           JWT_PRIVATE_KEY_PATH: ./keys/private.pem
           JWT_PUBLIC_KEY_PATH: ./keys/public.pem
           CORS_ORIGIN: http://localhost:5173
+          BCRYPT_ROUNDS: '4'
       - name: Run tests
         working-directory: apps/api
         run: npm test
@@ -67,6 +70,7 @@ jobs:
           JWT_PRIVATE_KEY_PATH: ./keys/private.pem
           JWT_PUBLIC_KEY_PATH: ./keys/public.pem
           CORS_ORIGIN: http://localhost:5173
+          BCRYPT_ROUNDS: '4'
       # Live-DB suites (excluded from the default no-DB run). CI already has a migrated
       # Postgres, so run them here to gate real-data guarantees — including the channel
       # export filter that must never echo a Booking.com block back to the OTA.
@@ -78,6 +82,17 @@ jobs:
           JWT_PRIVATE_KEY_PATH: ./keys/private.pem
           JWT_PUBLIC_KEY_PATH: ./keys/public.pem
           CORS_ORIGIN: http://localhost:5173
+          BCRYPT_ROUNDS: '4'
+      # Cockpit e2e (12 tests) — designed for a fresh DB, which CI is on every run.
+      - name: Run cockpit e2e tests
+        working-directory: apps/api
+        run: npx vitest run --config vitest.e2e.config.ts
+        env:
+          DATABASE_URL: postgresql://lsp:lsp@localhost:5433/lsp_test
+          JWT_PRIVATE_KEY_PATH: ./keys/private.pem
+          JWT_PUBLIC_KEY_PATH: ./keys/public.pem
+          CORS_ORIGIN: http://localhost:5173
+          BCRYPT_ROUNDS: '4'
 
   test-web:
     name: Web Tests

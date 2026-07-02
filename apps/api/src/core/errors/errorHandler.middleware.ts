@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from './AppError.js';
 import { env } from '../../config/env.js';
+import { logger } from '../logger.js';
 
 export function errorHandler(
   err: unknown,
@@ -10,6 +11,12 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const requestId = res.locals['requestId'] as string | undefined;
+
+  // Expected errors (AppError/Zod) are the response, not an incident. Anything else
+  // is a bug — log it with full context, because the client only gets a generic 500.
+  if (!(err instanceof AppError) && !(err instanceof ZodError)) {
+    logger.error({ requestId, err, method: req.method, url: req.originalUrl }, 'unhandled error');
+  }
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({

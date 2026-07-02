@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runSweep, startScheduler, stopScheduler } from '../../../src/core/scheduler.js';
+import { logger } from '../../../src/core/logger.js';
 
 describe('runSweep', () => {
   it('runs all sweeps and reports each count', async () => {
@@ -25,7 +26,7 @@ describe('runSweep', () => {
   });
 
   it('isolates failures — one sweep throwing does not cancel the others', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
     const holds = { releaseExpired: vi.fn().mockRejectedValue(new Error('db blip')) };
     const quotes = { expireStaleQuotes: vi.fn().mockResolvedValue(5) };
     const website = vi.fn().mockRejectedValue(new Error('db blip'));

@@ -10,6 +10,7 @@ import { PricingRepository } from '../modules/pricing/pricing.repository.js';
 import { PricingService } from '../modules/pricing/pricing.service.js';
 import { createWebsiteBookingExpiry } from '../modules/reservations/reservations.expiry.js';
 import { createRetentionSweeper, type RetentionResult } from './retention.js';
+import { logger } from './logger.js';
 
 /**
  * Background auto-expiry sweep.
@@ -61,12 +62,12 @@ export async function runSweep(
     retention(),
   ]);
 
-  if (held.status === 'rejected') console.error('[scheduler] hold sweep failed:', held.reason);
-  if (quoted.status === 'rejected') console.error('[scheduler] quote sweep failed:', quoted.reason);
+  if (held.status === 'rejected') logger.error({ err: held.reason }, '[scheduler] hold sweep failed');
+  if (quoted.status === 'rejected') logger.error({ err: quoted.reason }, '[scheduler] quote sweep failed');
   if (website.status === 'rejected')
-    console.error('[scheduler] website-booking sweep failed:', website.reason);
+    logger.error({ err: website.reason }, '[scheduler] website-booking sweep failed');
   if (retained.status === 'rejected')
-    console.error('[scheduler] retention sweep failed:', retained.reason);
+    logger.error({ err: retained.reason }, '[scheduler] retention sweep failed');
 
   const retentionCounts = retained.status === 'fulfilled' ? retained.value : NO_RETENTION;
 
@@ -109,23 +110,24 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
     sweep()
       .then(({ holdsReleased, quotesExpired, websiteBookingsExpired, refreshTokensPruned, auditLogsPruned }) => {
         if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
-          console.log(
-            `[scheduler] swept ${holdsReleased} expired hold(s), ${quotesExpired} stale quote(s), ` +
-              `${websiteBookingsExpired} stale website booking(s)`,
+          logger.info(
+            { holdsReleased, quotesExpired, websiteBookingsExpired },
+            '[scheduler] sweep expired stale items',
           );
         }
         if (refreshTokensPruned > 0 || auditLogsPruned > 0) {
-          console.log(
-            `[scheduler] retention pruned ${refreshTokensPruned} refresh token(s), ${auditLogsPruned} audit log(s)`,
+          logger.info(
+            { refreshTokensPruned, auditLogsPruned },
+            '[scheduler] retention pruned rows',
           );
         }
       })
-      .catch((err) => console.error('[scheduler] sweep failed:', err));
+      .catch((err) => logger.error({ err }, '[scheduler] sweep failed'));
   };
 
   timer = setInterval(tick, intervalMs);
   timer.unref(); // the sweep must never keep the process alive on its own
-  console.log(`[scheduler] auto-expiry sweep running every ${Math.round(intervalMs / 1000)}s`);
+  logger.info({ intervalMs }, '[scheduler] auto-expiry sweep running');
   tick(); // clear any backlog that built up while the server was down
   return true;
 }
