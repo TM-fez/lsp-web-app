@@ -1,13 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { HousekeepingService } from '../../../src/modules/housekeeping/housekeeping.service.js';
 
-function setup(liveTask: any) {
+function setup(liveTask: any, uncheckedItems: any[] = []) {
   const repo = {
     findLiveTaskByRoom: vi.fn().mockResolvedValue(liveTask),
     transition: vi.fn(async () => ({ id: 't1' })),
     listQueue: vi.fn(),
     findPaginated: vi.fn(),
     findById: vi.fn(),
+    uncheckedItems: vi.fn().mockResolvedValue(uncheckedItems),
   } as any;
   return { svc: new HousekeepingService(repo), repo };
 }
@@ -43,6 +44,18 @@ describe('HousekeepingService turn workflow', () => {
       expect.objectContaining({ status: 'DONE', signed_off_by: 'u1' }),
       'READY', meta
     );
+  });
+
+  it('inspect is blocked while active checklist items are unticked (compliance gate)', async () => {
+    const { svc, repo } = setup(
+      { id: 't1', status: 'CLEANING', assigned_to: 'hk1', notes: null },
+      [{ id: 'i1', label: 'Bathroom cleaned and sanitised' }],
+    );
+    const err = await svc.inspect('rm1', {} as any, meta).catch((e) => e);
+    expect(err.statusCode).toBe(409);
+    expect(err.message).toContain('Checklist incomplete');
+    expect(err.message).toContain('Bathroom cleaned');
+    expect(repo.transition).not.toHaveBeenCalled();
   });
 
   it('rejects a transition out of order (start requires OPEN)', async () => {

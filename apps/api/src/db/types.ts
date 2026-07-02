@@ -268,6 +268,27 @@ export interface HousekeepingTasksTable {
   updated_at: Generated<Date>;
 }
 
+// The company cleaning standard (migration 056) — manager-maintained items every
+// turn must satisfy before supervisor validation.
+export interface HousekeepingChecklistItemsTable {
+  id: Generated<string>;
+  label: string;
+  sort_order: Generated<number>;
+  active: Generated<boolean>;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// One tick per item per task (migration 056). Unticking deletes the row.
+export interface HousekeepingTaskChecksTable {
+  task_id: string;
+  item_id: string;
+  checked_by: string;
+  checked_at: Generated<Date>;
+}
+
 export interface AuditLogsTable {
   id: Generated<string>;
   request_id: string | null;
@@ -492,6 +513,8 @@ export interface Database {
   occupancy: OccupancyTable;
   maintenance_work_orders: MaintenanceWorkOrdersTable;
   housekeeping_tasks: HousekeepingTasksTable;
+  housekeeping_checklist_items: HousekeepingChecklistItemsTable;
+  housekeeping_task_checks: HousekeepingTaskChecksTable;
   audit_logs: AuditLogsTable;
   notifications: NotificationsTable;
   rate_plans: RatePlansTable;
@@ -559,6 +582,9 @@ export type UpdateMaintenanceWorkOrder    = Updateable<MaintenanceWorkOrdersTabl
 export type HousekeepingTaskRow    = Selectable<HousekeepingTasksTable>;
 export type NewHousekeepingTask    = Insertable<HousekeepingTasksTable>;
 export type UpdateHousekeepingTask = Updateable<HousekeepingTasksTable>;
+
+export type HousekeepingChecklistItemRow = Selectable<HousekeepingChecklistItemsTable>;
+export type HousekeepingTaskCheckRow     = Selectable<HousekeepingTaskChecksTable>;
 
 // ── Sprint 8 — Commercial Core row helpers ────────────────────────────────────
 

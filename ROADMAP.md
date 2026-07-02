@@ -47,7 +47,11 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   admin+operations; grantable per-user via the second-hat mechanism), and each stage stamps
   who did it (`started_by`/`inspected_by`/`signed_off_by`); the web queue gates each button
   by its stage permission ("Sign off" replaces "Mark ready")
-- 🆕 Compliance checklists with turnaround tracking (new tables)
+- ✅ Compliance checklists with turnaround tracking — manager-curated cleaning standard
+  (`housekeeping_checklist_items`, seeded with 8 defaults, migration 056) + per-turn ticks
+  (`housekeeping_task_checks`); **inspect is blocked (409) until every active item is ticked**;
+  cleaners tick from a checklist dialog while the unit is CLEANING; avg DIRTY→READY turnaround
+  (last 30 days) on the housekeeping dashboard via `GET /housekeeping/turnaround`
 - 🆕 Tablet view — live room status + tasks (responsive/PWA view, not a separate app)
 
 ### A4. Reservations / CRM
@@ -123,7 +127,7 @@ Unblocks the operations + AI features that follow.
 ### Phase 3 — Operations depth (rides on Phase 1 + 2) — IN PROGRESS
 - Maintenance (A2): ✅ COMPLETE — notifications + reminders (in-process daily sweep),
   scoped contractor login, L&P-vs-landlord ownership mapping
-- Housekeeping (A3): ✅ three-stage flow; next: compliance checklists, tablet view
+- Housekeeping (A3): ✅ three-stage flow, ✅ compliance checklists + turnaround; next: tablet view
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)
 - Reservations/CRM new fields (A4)

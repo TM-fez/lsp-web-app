@@ -34,3 +34,10 @@ export function canDoAction(action: HousekeepingAction, hasPerm: (p: string) => 
 }
 
 export const hkLabel = (s: HousekeepingStatus) => s.charAt(0) + s.slice(1).toLowerCase();
+
+/** Render minutes as a compact duration, e.g. 95 → "1h 35m", 45 → "45m". */
+export function formatMinutes(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+}

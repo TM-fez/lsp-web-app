@@ -5,6 +5,9 @@ import {
   InspectSchema,
   ReadySchema,
   HousekeepingTaskStatusEnum,
+  ChecklistItemCreateSchema,
+  ChecklistItemUpdateSchema,
+  SetCheckSchema,
 } from './housekeeping.types.js';
 
 export class HousekeepingController {
@@ -66,6 +69,60 @@ export class HousekeepingController {
     try {
       const dto = ReadySchema.parse(req.body);
       res.json(await this.service.ready(req.params.roomId as string, dto, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // ── Compliance checklist + turnaround ────────────────────────────────────────
+
+  checklist = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json({ data: await this.service.checklist(req.query.include_inactive === 'true') });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  addChecklistItem = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = ChecklistItemCreateSchema.parse(req.body);
+      res.status(201).json(await this.service.addChecklistItem(dto, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateChecklistItem = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = ChecklistItemUpdateSchema.parse(req.body);
+      res.json(await this.service.updateChecklistItem(req.params.itemId as string, dto, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  roomChecks = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.roomChecks(req.params.roomId as string));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  setRoomCheck = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = SetCheckSchema.parse(req.body);
+      res.json(await this.service.setRoomCheck(req.params.roomId as string, dto, this.getRequestMeta(req)));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  turnaround = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      res.json(await this.service.turnaround(req.activePropertyId as string, days));
     } catch (err) {
       next(err);
     }
