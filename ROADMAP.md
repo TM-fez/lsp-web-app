@@ -34,7 +34,11 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   generator; the reminder sweep now runs **in-process daily** (retention-style self-gate), so
   `/cron/reminders` is just the serverless fallback like `/cron/sweep`
 - 🆕 wa.me WhatsApp follow-up button (frontend deep link; staff sends from own phone)
-- 🆕 L&P-unit vs third-party-landlord financial mapping (current accountability = who-did/who-approved, not owner attribution)
+- ✅ L&P-unit vs third-party-landlord financial mapping — per-room `ownership`
+  (LIFESTYLE default / LANDLORD + landlord name & wa.me-able phone, migration 054), set in
+  the unit drawer; the Expenses money view gains a "Unit owner" column and the maintenance
+  drawer flags landlord units (with a WhatsApp button), so every repair bill is attributable
+  to the right owner
 
 ### A3. Housekeeping
 - 🟡 Module — exists (032)
@@ -113,8 +117,8 @@ Unblocks the operations + AI features that follow.
 **Phase 2 COMPLETE** — notifications (#54) + LLM client (#55) both merged.
 
 ### Phase 3 — Operations depth (rides on Phase 1 + 2) — IN PROGRESS
-- Maintenance (A2): ✅ notifications + reminders (in-process daily sweep);
-  ✅ scoped contractor login; next: L&P-vs-landlord mapping
+- Maintenance (A2): ✅ COMPLETE — notifications + reminders (in-process daily sweep),
+  scoped contractor login, L&P-vs-landlord ownership mapping
 - Housekeeping (A3): three-stage flow, compliance checklists, tablet view
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)

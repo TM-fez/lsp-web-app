@@ -149,6 +149,11 @@ export function RoomsPage() {
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-900">{room.code}</div>
                       <div className="text-xs text-slate-500">{room.name}</div>
+                      {room.ownership === 'LANDLORD' && (
+                        <div className="mt-0.5 text-[11px] text-amber-700">
+                          Landlord{room.landlord_name ? ` · ${room.landlord_name}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 capitalize text-slate-600">{label(room.type)}</td>
                     <td className="px-4 py-3 text-slate-600">{room.capacity}</td>

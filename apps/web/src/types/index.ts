@@ -115,6 +115,10 @@ export interface Contact {
   updated_at: string;
 }
 
+// Whose unit this is — Lifestyle's own or a third-party landlord's. Drives the
+// repair-cost owner attribution in maintenance + expenses.
+export type RoomOwnership = 'LIFESTYLE' | 'LANDLORD';
+
 export interface Room {
   id: string;
   name: string;
@@ -124,6 +128,9 @@ export interface Room {
   housekeeping_status: HousekeepingStatus;
   capacity: number;
   notes?: string | null;
+  ownership: RoomOwnership;
+  landlord_name?: string | null;
+  landlord_phone?: string | null;
   // Multi-property (list endpoint enriches these via building → property).
   building_id?: string | null;
   floor?: number | null;
@@ -237,6 +244,10 @@ export interface WorkOrder {
   assigned_to_name?: string | null;
   completed_by_name?: string | null;
   approved_by_name?: string | null;
+  // Unit owner attribution (LEFT-joined from the room): whose repair bill this is.
+  room_ownership?: RoomOwnership | null;
+  landlord_name?: string | null;
+  landlord_phone?: string | null;
 }
 
 export type ExpenseStatus = 'PENDING' | 'APPROVED' | 'RECONCILED';
@@ -250,6 +261,9 @@ export interface Expense {
   contractor_name: string | null;
   cost_amount: number; // thebe
   status: ExpenseStatus;
+  // Owner attribution: Lifestyle's own unit vs a third-party landlord's.
+  room_ownership: RoomOwnership | null;
+  landlord_name: string | null;
   cost_approved_by_name: string | null;
   cost_approved_at: string | null;
   cost_reconciled_by_name: string | null;

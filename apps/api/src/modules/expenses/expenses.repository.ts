@@ -23,6 +23,9 @@ export class ExpensesRepository {
         'wo.cost_reconciled_at',
         'wo.opened_at',
         'r.code as room_code',
+        // Owner attribution (Phase 3): whose unit the repair cost belongs to.
+        'r.ownership as room_ownership',
+        'r.landlord_name',
         'appr.name as cost_approved_by_name',
         'rec.name as cost_reconciled_by_name',
       ])

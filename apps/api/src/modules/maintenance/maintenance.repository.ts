@@ -31,7 +31,8 @@ export class MaintenanceRepository {
   }
 
   // Base select that LEFT-joins users for the accountability names. selectAll('wo')
-  // keeps every work-order column, then we add the four resolved names.
+  // keeps every work-order column, then we add the four resolved names plus the
+  // unit's owner attribution (Phase 3 — whose repair bill this is).
   private withPeople(trx: DB = this.db) {
     return trx
       .selectFrom('maintenance_work_orders as wo')
@@ -39,12 +40,16 @@ export class MaintenanceRepository {
       .leftJoin('users as assignee', 'assignee.id', 'wo.assigned_to')
       .leftJoin('users as completer', 'completer.id', 'wo.completed_by')
       .leftJoin('users as approver', 'approver.id', 'wo.approved_by')
+      .leftJoin('rooms as room', 'room.id', 'wo.room_id')
       .selectAll('wo')
       .select([
         'reporter.name as reported_by_name',
         'assignee.name as assigned_to_name',
         'completer.name as completed_by_name',
         'approver.name as approved_by_name',
+        'room.ownership as room_ownership',
+        'room.landlord_name',
+        'room.landlord_phone',
       ]);
   }
 

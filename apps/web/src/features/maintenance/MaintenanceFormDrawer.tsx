@@ -286,6 +286,17 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
 
           {isEdit && order && <People order={order} />}
 
+          {/* Owner attribution: whose repair bill this is (from the unit). */}
+          {isEdit && order?.room_ownership === 'LANDLORD' && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              <span className="text-sm text-amber-800">
+                Landlord unit{order.landlord_name ? ` — ${order.landlord_name}` : ''}. Repair costs are
+                attributed to the landlord in Expenses.
+              </span>
+              {order.landlord_phone && <WhatsAppButton phone={order.landlord_phone} className="shrink-0" />}
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 border-t border-line pt-4">
             <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Contractor &amp; cost</Label>
             <div className="grid grid-cols-[1fr_9rem] gap-3">

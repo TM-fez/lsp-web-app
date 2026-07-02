@@ -94,6 +94,7 @@ export function ExpensesPage() {
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Repair</th>
                 <th className="px-4 py-3.5 font-medium">Contractor</th>
+                <th className="px-4 py-3.5 font-medium">Unit owner</th>
                 <th className="px-4 py-3.5 text-right font-medium">Cost</th>
                 <th className="px-4 py-3.5 font-medium">Status</th>
                 <th className="px-4 py-3.5 text-right font-medium">Action</th>
@@ -107,6 +108,16 @@ export function ExpensesPage() {
                     <div className="text-[11px] uppercase tracking-[0.12em] text-muted">{e.room_code ?? '—'}</div>
                   </td>
                   <td className="px-4 py-3.5 text-muted">{e.contractor_name ?? '—'}</td>
+                  <td className="px-4 py-3.5">
+                    {e.room_ownership === 'LANDLORD' ? (
+                      <>
+                        <span className="text-amber-700">Landlord</span>
+                        {e.landlord_name && <div className="text-xs text-muted">{e.landlord_name}</div>}
+                      </>
+                    ) : (
+                      <span className="text-muted">Lifestyle</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3.5 text-right tabnum text-ink">{formatMoney(e.cost_amount)}</td>
                   <td className="px-4 py-3.5">
                     <Badge tone={statusTone[e.status]}>{statusLabel[e.status]}</Badge>

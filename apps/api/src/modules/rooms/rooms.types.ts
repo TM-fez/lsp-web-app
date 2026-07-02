@@ -22,6 +22,10 @@ export const UserInputRoomStatusEnum = z.enum([
   'OUT_OF_SERVICE',
 ]);
 
+// Whose unit this is — Lifestyle's own or a third-party landlord's (migration 054).
+// Drives the repair-cost owner attribution in the expenses view.
+export const RoomOwnershipEnum = z.enum(['LIFESTYLE', 'LANDLORD']);
+
 export const CreateRoomSchema = z.object({
   name: z.string().min(1).max(200),
   code: z.string().min(1).max(50),
@@ -32,6 +36,10 @@ export const CreateRoomSchema = z.object({
   // Multi-property: which building this unit sits in, plus an optional floor label.
   building_id: z.string().uuid().nullable().optional(),
   floor: z.coerce.number().int().min(0).max(200).nullable().optional(),
+  // Ownership attribution + landlord contact (free text, wa.me-able phone).
+  ownership: RoomOwnershipEnum.default('LIFESTYLE'),
+  landlord_name: z.string().max(255).nullable().optional(),
+  landlord_phone: z.string().max(50).nullable().optional(),
 });
 
 // Status changes go through the dedicated maintenance/out-of-service/restore
@@ -44,6 +52,9 @@ export const UpdateRoomSchema = z.object({
   notes: z.string().nullable().optional(),
   building_id: z.string().uuid().nullable().optional(),
   floor: z.coerce.number().int().min(0).max(200).nullable().optional(),
+  ownership: RoomOwnershipEnum.optional(),
+  landlord_name: z.string().max(255).nullable().optional(),
+  landlord_phone: z.string().max(50).nullable().optional(),
 });
 
 // Channel sync config: where the importer PULLS this unit's Booking.com calendar
