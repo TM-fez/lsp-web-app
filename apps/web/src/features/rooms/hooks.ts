@@ -1,12 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listRooms,
+  getRoom,
   createRoom,
   updateRoom,
   deleteRoom,
   setRoomMaintenance,
   setRoomOutOfService,
   restoreRoom,
+  setRoomChannelConfig,
+  rotateRoomIcalToken,
   type CreateRoomInput,
   type UpdateRoomInput,
 } from '@/lib/api/rooms';
@@ -56,6 +59,39 @@ export function useDeleteRoom() {
     onSuccess: () => {
       toast.success('Unit removed');
       invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+/** Full unit row (incl. channel-sync fields the list endpoint omits). */
+export function useRoom(id: string | undefined) {
+  return useQuery<Room>({
+    queryKey: [...ROOMS_KEY, id],
+    queryFn: () => getRoom(id!),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSetChannelConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, url }: { id: string; url: string | null }) => setRoomChannelConfig(id, url),
+    onSuccess: (_room, { url }) => {
+      toast.success(url ? 'Booking.com calendar linked' : 'Booking.com calendar unlinked');
+      qc.invalidateQueries({ queryKey: ROOMS_KEY });
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useRotateIcalToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => rotateRoomIcalToken(id),
+    onSuccess: () => {
+      toast.success('Export link rotated — update it in the Booking.com extranet');
+      qc.invalidateQueries({ queryKey: ROOMS_KEY });
     },
     onError: (e) => toast.error(errMessage(e)),
   });

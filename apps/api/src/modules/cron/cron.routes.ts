@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import { createSweeper } from '../../core/scheduler.js';
 import { db } from '../../config/db.js';
 import { runReminders } from '../notifications/reminders.js';
+import { createChannelSyncHandler } from '../channel/channel.cron.js';
 
 /**
  * Scheduled jobs triggered by the platform's cron (e.g. Vercel Cron) instead of the
@@ -47,6 +48,12 @@ export function createCronRouter(): Router {
       next(err);
     }
   });
+
+  // Booking.com iCal import poll (H4). Mounting is safe before go-live: the handler
+  // refuses every caller without CRON_SECRET, and with no rooms configured it is a
+  // no-op. Going live = adding the 15-min platform trigger (Render Cron / GH Action)
+  // that GETs this with Authorization: Bearer <CRON_SECRET>.
+  router.get('/channel-sync', createChannelSyncHandler());
 
   return router;
 }

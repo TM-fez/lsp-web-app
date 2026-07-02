@@ -13,6 +13,7 @@ describe('ReservationsService', () => {
       checkAvailability: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      contactExists: vi.fn(),
     } as unknown as vi.Mocked<ReservationsRepository>;
 
     service = new ReservationsService(repository);
@@ -110,6 +111,46 @@ describe('ReservationsService', () => {
       await expect(
         service.modifyReservation('res1', { status: 'CHECKED_IN' } as any, { userId: 'u1' } as any),
       ).rejects.toThrow(/set by the system/i);
+    });
+  });
+
+  describe('claimOtaBooking — Tier 1 OTA contact capture', () => {
+    const block = { id: 'res-b', status: 'BLOCKED', source: 'BOOKING_COM' };
+
+    it('attaches the contact and promotes the block to CONFIRMED', async () => {
+      repository.findById.mockResolvedValue(block as any);
+      repository.contactExists.mockResolvedValue(true);
+      repository.update.mockResolvedValue({ ...block, status: 'CONFIRMED', contact_id: 'c9' } as any);
+
+      const res = await service.claimOtaBooking('res-b', { contact_id: 'c9' }, { userId: 'u1' } as any);
+
+      expect(res.status).toBe('CONFIRMED');
+      expect(repository.update).toHaveBeenCalledWith(
+        'res-b',
+        expect.objectContaining({ contact_id: 'c9', status: 'CONFIRMED' }),
+        expect.anything(),
+      );
+    });
+
+    it('refuses anything that is not an unclaimed Booking.com block', async () => {
+      repository.findById.mockResolvedValue({ ...block, status: 'CONFIRMED' } as any);
+      await expect(
+        service.claimOtaBooking('res-b', { contact_id: 'c9' }, { userId: 'u1' } as any),
+      ).rejects.toThrow('Only an unclaimed Booking.com block can be claimed');
+
+      repository.findById.mockResolvedValue({ ...block, source: 'DIRECT' } as any);
+      await expect(
+        service.claimOtaBooking('res-b', { contact_id: 'c9' }, { userId: 'u1' } as any),
+      ).rejects.toThrow('Only an unclaimed Booking.com block can be claimed');
+    });
+
+    it('refuses a contact that does not exist', async () => {
+      repository.findById.mockResolvedValue(block as any);
+      repository.contactExists.mockResolvedValue(false);
+      await expect(
+        service.claimOtaBooking('res-b', { contact_id: 'ghost' }, { userId: 'u1' } as any),
+      ).rejects.toThrow('Contact not found');
+      expect(repository.update).not.toHaveBeenCalled();
     });
   });
 

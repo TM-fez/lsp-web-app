@@ -15,6 +15,7 @@ import type {
   CreateReservationDTO,
   UpdateReservationDTO,
   SetDiscountDTO,
+  ClaimOtaBookingDTO,
   ReservationListRow
 } from './reservations.types.js';
 
@@ -264,6 +265,43 @@ export class ReservationsService {
       updated_by: meta.userId,
     }, meta);
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    return updated;
+  }
+
+  /**
+   * Tier 1 of the OTA contact-info plan: attach a REAL guest contact to an imported
+   * Booking.com block and promote it into the normal reservation lifecycle
+   * (arrivals rail, check-in, invoicing, CRM).
+   *
+   * This is the SECOND sanctioned writer of CONFIRMED — the first is settlePaid().
+   * The commercial invariant ("confirmed only once the money is settled") holds:
+   * an OTA booking's payment is already guaranteed on the OTA's side, so there is
+   * nothing for LSP to collect before confirming. Source stays BOOKING_COM, so the
+   * export feed keeps excluding it (no feedback loop), and the importer treats it
+   * as claimed from here on: the feed may still move its dates, but status,
+   * contact, and notes are staff-owned.
+   */
+  async claimOtaBooking(
+    id: string,
+    dto: ClaimOtaBookingDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string,
+  ): Promise<ReservationRow> {
+    const existing = await this.getReservationById(id, activePropertyId);
+
+    if (existing.source !== 'BOOKING_COM' || existing.status !== 'BLOCKED') {
+      throw AppError.conflict('Only an unclaimed Booking.com block can be claimed');
+    }
+    if (!(await this.repository.contactExists(dto.contact_id))) {
+      throw AppError.badRequest('Contact not found');
+    }
+
+    const updated = await this.repository.update(
+      id,
+      { contact_id: dto.contact_id, status: 'CONFIRMED', updated_by: meta.userId },
+      meta,
+    );
+    if (!updated) throw AppError.notFound(`Failed to claim reservation with id ${id}`);
     return updated;
   }
 

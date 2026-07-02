@@ -10,7 +10,7 @@ import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
-import { CreateReservationSchema, UpdateReservationSchema } from './reservations.types.js';
+import { CreateReservationSchema, UpdateReservationSchema, ClaimOtaBookingSchema } from './reservations.types.js';
 
 export function createReservationsRouter(dbInstance = db): Router {
   const router = Router();
@@ -33,6 +33,10 @@ export function createReservationsRouter(dbInstance = db): Router {
   router.post('/', authorize('reservations.create'), validateBody(CreateReservationSchema), controller.createReservation);
 
   router.patch('/:id', authorize('reservations.update'), validateBody(UpdateReservationSchema), controller.modifyReservation);
+
+  // Claim an imported Booking.com block: attach a real guest contact and promote it
+  // to CONFIRMED (Tier 1 of the OTA contact-info plan; see service.claimOtaBooking).
+  router.post('/:id/claim', authorize('reservations.update'), validateBody(ClaimOtaBookingSchema), controller.claimOtaBooking);
   
   // Specific endpoint for cancellation could be POST /:id/cancel or DELETE /:id
   router.delete('/:id', authorize('reservations.delete'), controller.cancelReservation);

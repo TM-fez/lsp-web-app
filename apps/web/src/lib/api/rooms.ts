@@ -44,6 +44,22 @@ export async function updateRoom(id: string, input: UpdateRoomInput): Promise<Ro
   return data;
 }
 
+export async function getRoom(id: string): Promise<Room> {
+  const { data } = await api.get<Room>(`/rooms/${id}`);
+  return data;
+}
+
+// Channel sync (H4): per-unit Booking.com import URL + export-token rotation.
+export async function setRoomChannelConfig(id: string, bookingIcalUrl: string | null): Promise<Room> {
+  const { data } = await api.patch<Room>(`/rooms/${id}/channel`, { booking_ical_url: bookingIcalUrl });
+  return data;
+}
+
+export async function rotateRoomIcalToken(id: string): Promise<Room> {
+  const { data } = await api.post<Room>(`/rooms/${id}/channel/rotate-token`, {});
+  return data;
+}
+
 export async function setRoomMaintenance(id: string): Promise<Room> {
   const { data } = await api.post<Room>(`/rooms/${id}/maintenance`, {});
   return data;

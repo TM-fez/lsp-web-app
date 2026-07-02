@@ -8,7 +8,7 @@ import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
-import { CreateRoomSchema, UpdateRoomSchema } from './rooms.types.js';
+import { CreateRoomSchema, UpdateRoomSchema, UpdateChannelConfigSchema } from './rooms.types.js';
 import type { Request, Response, NextFunction } from 'express';
 
 export function createRoomsRouter(dbInstance = db): Router {
@@ -40,6 +40,10 @@ export function createRoomsRouter(dbInstance = db): Router {
   // Every by-id route is scoped to the active property.
   router.get('/:id', authorize('rooms.read'), requireActiveProperty, inActiveProperty, controller.getRoomById);
   router.patch('/:id', authorize('rooms.update'), requireActiveProperty, inActiveProperty, validateBody(UpdateRoomSchema), controller.updateRoom);
+  // Channel sync (H4): per-unit Booking.com import URL + export-token rotation.
+  router.patch('/:id/channel', authorize('rooms.update'), requireActiveProperty, inActiveProperty, validateBody(UpdateChannelConfigSchema), controller.setChannelConfig);
+  router.post('/:id/channel/rotate-token', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.rotateIcalToken);
+
   router.post('/:id/maintenance',    authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setMaintenance);
   router.post('/:id/out-of-service', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setOutOfService);
   router.post('/:id/restore',        authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.restoreRoom);

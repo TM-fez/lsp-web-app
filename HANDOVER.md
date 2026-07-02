@@ -115,16 +115,18 @@ Hotelier, never connect Booking.com directly" plan is void.)
 - **Tests:** the export filter (a BOOKING_COM block must never appear in the feed) is proven in the live-DB CI
   suite; the parser, the collision→alert path, the throttle, and the alert fan-out are unit-tested.
 
-**Go-live checklist (owner-run, in order):**
-1. **Back up** Render Postgres (snapshot / `pg_dump`).
-2. Run migrations **off-peak**: `045 → 046 → 047` (the `046` constraint rebuild takes a brief
-   ACCESS EXCLUSIVE lock on `reservations`).
-3. Paste each unit's export URL into the Booking.com extranet; paste each unit's Booking.com `.ics` into its
-   `rooms.booking_ical_url`.
-4. Set `CHANNEL_ALERT_EMAIL` (and later the `WHATSAPP_*` vars when the template clears).
-5. **Only then** wire the cron: mount `GET /cron/channel-sync` (handler ready in `channel.cron.ts`,
-   secret-guarded by `CRON_SECRET`) and add a 15-min trigger (Render Cron Job / GitHub Action). It stays
-   **inert/unmounted** until the steps above are done — wiring it earlier just errors every 15 minutes.
+**Go-live checklist (owner-run, in order — updated for H4, 2026-07-02):**
+1. **Render → paid plan** (Booking.com's calendar fetcher times out on a sleeping free service).
+2. **Back up** Render Postgres (or rely on the H4-era nightly backup workflow once its secrets are set).
+3. Migrations 045–047 are already applied on live (they run on every deploy) — just verify `/health`.
+4. Per unit, in the **unit drawer's "Channel sync" section** (no SQL needed since H4): copy our export
+   URL → paste into the Booking.com extranet (Rates & Availability → Sync calendars); copy Booking.com's
+   `.ics` link → paste into the drawer's import field (validated: https + booking.com only).
+5. Set `CHANNEL_ALERT_EMAIL` + `CRON_SECRET` on Render (and later `WHATSAPP_*` when the template clears).
+6. Add the 15-min trigger (Render Cron Job / GitHub Action): GET `/api/v1/cron/channel-sync` with header
+   `Authorization: Bearer <CRON_SECRET>`. The route is already mounted and refuses everyone without the
+   secret — the schedule is the on-switch. Hardened in H4: advisory lock, empty-feed/mass-cancel guards,
+   and the "claim this booking" flow that turns anonymous OTA blocks into check-in-able guests.
 
 **New env vars:** `CHANNEL_ALERT_EMAIL`, `WHATSAPP_TOKEN`, `WHATSAPP_FROM`, `WHATSAPP_TO`, `WHATSAPP_LIVE`.
 
