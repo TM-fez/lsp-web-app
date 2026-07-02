@@ -18,7 +18,7 @@ export class InvoicesController {
       const kind = req.query.kind ? InvoiceKindEnum.parse(req.query.kind) : undefined;
       const quote_id = req.query.quote_id as string | undefined;
       const hold_id = req.query.hold_id as string | undefined;
-      res.json(await this.service.listInvoices({ status, kind, quote_id, hold_id }, { page, limit }));
+      res.json(await this.service.listInvoices({ status, kind, quote_id, hold_id , property_id: req.activePropertyId }, { page, limit }));
     } catch (err) {
       next(err);
     }

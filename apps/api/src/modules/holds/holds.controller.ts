@@ -16,7 +16,7 @@ export class HoldsController {
       const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
       const status = req.query.status ? HoldStatusEnum.parse(req.query.status) : undefined;
       const quote_id = req.query.quote_id as string | undefined;
-      res.json(await this.service.listHolds({ status, quote_id }, { page, limit }));
+      res.json(await this.service.listHolds({ status, quote_id, property_id: req.activePropertyId }, { page, limit }));
     } catch (err) {
       next(err);
     }

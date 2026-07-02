@@ -5,6 +5,8 @@ import { CheckinsRepository } from './checkins.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
+import { requireInActiveProperty, requireBodyRefInActiveProperty, propertyOfOccupancy, propertyOfReservation } from '../../core/scope/propertyOf.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { CreateCheckInSchema, CheckOutSchema } from './checkins.types.js';
 
@@ -16,13 +18,17 @@ export function createCheckinsRouter(dbInstance = db): Router {
 
   router.use(authenticate);
 
-  router.get('/active', authorize('checkins.read'), controller.listActive);
-  router.get('/', authorize('checkins.read'), controller.listOccupancy);
-  router.get('/:id', authorize('checkins.read'), controller.getOccupancyById);
+  // H5 property scoping: occupancy is per-room, so it scopes cleanly.
+  const inProperty = requireInActiveProperty(dbInstance, propertyOfOccupancy, 'Occupancy');
+  const reservationRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'reservation_id', propertyOfReservation, 'Reservation');
 
-  router.post('/', authorize('checkins.create'), validateBody(CreateCheckInSchema), controller.checkIn);
+  router.get('/active', authorize('checkins.read'), requireActiveProperty, controller.listActive);
+  router.get('/', authorize('checkins.read'), requireActiveProperty, controller.listOccupancy);
+  router.get('/:id', authorize('checkins.read'), requireActiveProperty, inProperty, controller.getOccupancyById);
 
-  router.post('/:id/checkout', authorize('checkins.update'), validateBody(CheckOutSchema), controller.checkOut);
+  router.post('/', authorize('checkins.create'), requireActiveProperty, reservationRefInProperty, validateBody(CreateCheckInSchema), controller.checkIn);
+
+  router.post('/:id/checkout', authorize('checkins.update'), requireActiveProperty, inProperty, validateBody(CheckOutSchema), controller.checkOut);
 
   return router;
 }

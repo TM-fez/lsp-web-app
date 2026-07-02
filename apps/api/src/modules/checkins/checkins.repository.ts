@@ -52,14 +52,19 @@ export class CheckinsRepository {
   }
 
   // Currently checked-in occupancy records.
-  async findActive(): Promise<OccupancyRow[]> {
-    return this.db
+  async findActive(propertyId?: string): Promise<OccupancyRow[]> {
+    let query = this.db
       .selectFrom('occupancy')
       .selectAll()
       .where('deleted_at', 'is', null)
-      .where('status', '=', 'CHECKED_IN')
-      .orderBy('checked_in_at', 'desc')
-      .execute();
+      .where('status', '=', 'CHECKED_IN');
+    if (propertyId) {
+      query = query.where(sql<boolean>`exists (
+        select 1 from rooms r join buildings b on b.id = r.building_id
+        where r.id = occupancy.room_id and b.property_id = ${propertyId}
+      )`);
+    }
+    return query.orderBy('checked_in_at', 'desc').execute();
   }
 
   async findPaginated(
@@ -87,6 +92,14 @@ export class CheckinsRepository {
     if (filters.reservation_id) {
       query = query.where('reservation_id', '=', filters.reservation_id);
       countQuery = countQuery.where('reservation_id', '=', filters.reservation_id);
+    }
+    if (filters.property_id) {
+      const inProperty = sql<boolean>`exists (
+        select 1 from rooms r join buildings b on b.id = r.building_id
+        where r.id = occupancy.room_id and b.property_id = ${filters.property_id}
+      )`;
+      query = query.where(inProperty);
+      countQuery = countQuery.where(inProperty);
     }
 
     const offset = (pagination.page - 1) * pagination.limit;

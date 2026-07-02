@@ -14,7 +14,7 @@ export class FilesRepository {
         .values({
           ...fileData,
           created_by: meta.userId,
-        } as any)
+        })
         .returningAll()
         .executeTakeFirstOrThrow();
 

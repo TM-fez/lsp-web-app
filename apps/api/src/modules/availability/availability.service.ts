@@ -34,9 +34,9 @@ export class AvailabilityService {
     return 'AVAILABLE';
   }
 
-  async getRoomAvailability(query: AvailabilityQueryDTO): Promise<AvailabilityResult> {
+  async getRoomAvailability(query: AvailabilityQueryDTO, propertyId?: string): Promise<AvailabilityResult> {
     const minCapacity = Math.max(query.guests || 0, query.capacity || 0);
-    const filters = { roomType: query.room_type, minCapacity };
+    const filters = { roomType: query.room_type, minCapacity, propertyId };
     const range = { checkIn: query.check_in, checkOut: query.check_out };
     
     const signals = await this.repository.findRoomSignals(
@@ -74,9 +74,9 @@ export class AvailabilityService {
     };
   }
 
-  async getAvailableRooms(query: AvailabilityQueryDTO): Promise<AvailableRoomsResult> {
+  async getAvailableRooms(query: AvailabilityQueryDTO, propertyId?: string): Promise<AvailableRoomsResult> {
     const minCapacity = Math.max(query.guests || 0, query.capacity || 0);
-    const filters = { roomType: query.room_type, minCapacity };
+    const filters = { roomType: query.room_type, minCapacity, propertyId };
     const range = { checkIn: query.check_in, checkOut: query.check_out };
     
     const signals = await this.repository.findRoomSignals(
@@ -107,9 +107,9 @@ export class AvailabilityService {
     };
   }
 
-  async getQuote(query: AvailabilityQuoteDTO): Promise<QuoteResult> {
+  async getQuote(query: AvailabilityQuoteDTO, propertyId?: string): Promise<QuoteResult> {
     const minCapacity = Math.max(query.guests || 0, query.capacity || 0);
-    const filters = { roomType: query.room_type, minCapacity };
+    const filters = { roomType: query.room_type, minCapacity, propertyId };
     const range = { checkIn: query.check_in, checkOut: query.check_out };
     
     const counts = await this.repository.getSummaryCounts(range, filters);
@@ -136,9 +136,9 @@ export class AvailabilityService {
     };
   }
 
-  async getCalendar(query: AvailabilityCalendarDTO): Promise<CalendarDay[]> {
+  async getCalendar(query: AvailabilityCalendarDTO, propertyId?: string): Promise<CalendarDay[]> {
     const minCapacity = query.capacity || 0;
-    const filters = { roomType: query.room_type, minCapacity };
+    const filters = { roomType: query.room_type, minCapacity, propertyId };
     const range = { checkIn: query.check_in, checkOut: query.check_out };
     
     const dayRows = await this.repository.getCalendar(range, filters);

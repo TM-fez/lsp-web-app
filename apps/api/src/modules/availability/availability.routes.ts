@@ -5,6 +5,7 @@ import { AvailabilityRepository } from './availability.repository.js';
 import { db } from '../../config/db.js'; 
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 
 export function createAvailabilityRouter(dbInstance = db): Router {
   const router = Router();
@@ -15,10 +16,10 @@ export function createAvailabilityRouter(dbInstance = db): Router {
   router.use(authenticate);
 
   // permission migration: ensure proper scopes are used
-  router.get('/', authorize('availability.read'), controller.getRoomAvailability);
-  router.get('/rooms', authorize('availability.read'), controller.getAvailableRooms);
-  router.get('/calendar', authorize('availability.read'), controller.getCalendar);
-  router.post('/quote', authorize('availability.read'), controller.getQuote);
+  router.get('/', authorize('availability.read'), requireActiveProperty, controller.getRoomAvailability);
+  router.get('/rooms', authorize('availability.read'), requireActiveProperty, controller.getAvailableRooms);
+  router.get('/calendar', authorize('availability.read'), requireActiveProperty, controller.getCalendar);
+  router.post('/quote', authorize('availability.read'), requireActiveProperty, controller.getQuote);
 
   return router;
 }

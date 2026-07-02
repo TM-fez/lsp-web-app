@@ -17,6 +17,8 @@ export type CreateHoldDTO = z.infer<typeof CreateHoldSchema>;
 export type ReleaseHoldDTO = z.infer<typeof ReleaseHoldSchema>;
 
 export interface HoldFilters {
+  // H5: restrict to one property via the entity's room -> building chain.
+  property_id?: string;
   status?: HoldStatus;
   quote_id?: string;
 }

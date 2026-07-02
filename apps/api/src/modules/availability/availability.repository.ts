@@ -32,6 +32,7 @@ export class AvailabilityRepository {
   ): Promise<RoomSignalRow[]> {
     const offset = (pagination.page - 1) * pagination.limit;
     const roomType = filters.roomType ?? null;
+    const propertyId = filters.propertyId ?? null;
 
     const result = await sql<RoomSignalRow>`
       SELECT r.id, r.name, r.code, r.type, r.status, r.capacity,
@@ -56,6 +57,7 @@ export class AvailabilityRepository {
       WHERE r.deleted_at IS NULL
         AND (${roomType}::text IS NULL OR r.type = ${roomType}::room_type)
         AND r.capacity >= ${filters.minCapacity}
+        AND (${propertyId}::uuid IS NULL OR r.building_id IN (SELECT id FROM buildings WHERE property_id = ${propertyId}::uuid))
         AND (NOT ${availableOnly} OR (r.status = 'AVAILABLE' AND coalesce(res.cnt, 0) = 0 AND coalesce(occ.cnt, 0) = 0))
       ORDER BY r.code
       LIMIT ${pagination.limit} OFFSET ${offset}
@@ -67,6 +69,7 @@ export class AvailabilityRepository {
   // Property-wide counts for a date range in one aggregated query (for quotes).
   async getSummaryCounts(range: DateRange, filters: AvailabilityFilters): Promise<SummaryCountsRow> {
     const roomType = filters.roomType ?? null;
+    const propertyId = filters.propertyId ?? null;
 
     const result = await sql<SummaryCountsRow>`
       SELECT
@@ -94,6 +97,7 @@ export class AvailabilityRepository {
       WHERE r.deleted_at IS NULL
         AND (${roomType}::text IS NULL OR r.type = ${roomType}::room_type)
         AND r.capacity >= ${filters.minCapacity}
+        AND (${propertyId}::uuid IS NULL OR r.building_id IN (SELECT id FROM buildings WHERE property_id = ${propertyId}::uuid))
     `.execute(this.db);
 
     return result.rows[0]!;
@@ -103,6 +107,7 @@ export class AvailabilityRepository {
   // Structural/occupancy blocks apply to the whole range; reservations are per-day.
   async getCalendar(range: DateRange, filters: AvailabilityFilters): Promise<CalendarDayRow[]> {
     const roomType = filters.roomType ?? null;
+    const propertyId = filters.propertyId ?? null;
 
     const result = await sql<CalendarDayRow>`
       WITH days AS (
@@ -128,6 +133,7 @@ export class AvailabilityRepository {
       WHERE r.deleted_at IS NULL
         AND (${roomType}::text IS NULL OR r.type = ${roomType}::room_type)
         AND r.capacity >= ${filters.minCapacity}
+        AND (${propertyId}::uuid IS NULL OR r.building_id IN (SELECT id FROM buildings WHERE property_id = ${propertyId}::uuid))
       GROUP BY d.day
       ORDER BY d.day
     `.execute(this.db);
