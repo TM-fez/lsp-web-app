@@ -31,8 +31,30 @@ export interface ConflictRow {
   check_out_date: Date;
 }
 
+// Rows the feed reconciliation must know about: unclaimed blocks plus claimed
+// (contact-attached) OTA bookings whose lifecycle staff now own.
+export interface ActiveOtaRow {
+  external_uid: string;
+  status: string;
+}
+
 export class ChannelRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  // ── Concurrency guard ─────────────────────────────────────────────────────────
+  // One import at a time, cluster-wide: a cron tick overlapping a manual trigger
+  // would race on the same UIDs. Session-scoped Postgres advisory lock; the key is
+  // a fixed hash of 'lsp-channel-sync'.
+  async tryAdvisoryLock(): Promise<boolean> {
+    const row = await sql<{ locked: boolean }>`
+      select pg_try_advisory_lock(hashtext('lsp-channel-sync')) as locked
+    `.execute(this.db);
+    return Boolean(row.rows[0]?.locked);
+  }
+
+  async releaseAdvisoryLock(): Promise<void> {
+    await sql`select pg_advisory_unlock(hashtext('lsp-channel-sync'))`.execute(this.db);
+  }
 
   // Resolve a unit by its public iCal token. Soft-deleted units have no live feed.
   async findRoomByIcalToken(token: string): Promise<RoomRow | undefined> {
@@ -86,8 +108,16 @@ export class ChannelRepository {
   }
 
   // Insert a fresh OTA block. May raise 23P01 (reservations_no_overlap) if the night is
-  // already direct-sold — the caller catches that and alerts.
-  async insertImportedBlock(b: { roomId: string; externalUid: string; checkIn: Date; checkOut: Date }): Promise<string> {
+  // already direct-sold — the caller catches that and alerts. Whatever the feed said
+  // about the night (SUMMARY/DESCRIPTION) is kept on notes — it is all the guest
+  // context an iCal feed will ever carry (Tier 0 of the OTA contact-info plan).
+  async insertImportedBlock(b: {
+    roomId: string;
+    externalUid: string;
+    checkIn: Date;
+    checkOut: Date;
+    notes: string | null;
+  }): Promise<string> {
     const row = await this.db
       .insertInto('reservations')
       .values({
@@ -98,6 +128,7 @@ export class ChannelRepository {
         status: IMPORT_STATUS,
         source: IMPORT_SOURCE,
         external_uid: b.externalUid,
+        notes: b.notes,
         created_by: SYSTEM_USER_ID,
         updated_by: SYSTEM_USER_ID,
       })
@@ -106,23 +137,63 @@ export class ChannelRepository {
     return row.id;
   }
 
-  // Update an existing block to match the feed (and revive it if it was cancelled). May
-  // also raise 23P01 if the new dates now collide with a direct sale.
-  async updateBlock(id: string, b: { roomId: string; checkIn: Date; checkOut: Date }): Promise<void> {
-    await this.db
+  // Refresh an UNCLAIMED block to match the feed (and revive it if it was cancelled).
+  // The WHERE makes it a no-op when nothing differs — a 15-min poll must not rewrite
+  // every row every tick (dead WAL/update churn). Returns true when a row was written.
+  // May raise 23P01 if the new dates now collide with a direct sale.
+  async updateBlock(
+    id: string,
+    b: { roomId: string; checkIn: Date; checkOut: Date; notes: string | null },
+  ): Promise<boolean> {
+    const res = await this.db
       .updateTable('reservations')
       .set({
         room_id: b.roomId,
         check_in_date: b.checkIn,
         check_out_date: b.checkOut,
         status: IMPORT_STATUS,
+        notes: b.notes,
         deleted_at: null,
         deleted_by: null,
         updated_by: SYSTEM_USER_ID,
         updated_at: new Date(),
       })
       .where('id', '=', id)
-      .execute();
+      .where((eb) =>
+        eb.not(
+          eb.and([
+            eb('room_id', '=', b.roomId),
+            eb('check_in_date', '=', b.checkIn),
+            eb('check_out_date', '=', b.checkOut),
+            eb('status', '=', IMPORT_STATUS),
+            eb('deleted_at', 'is', null),
+            sql<boolean>`notes is not distinct from ${b.notes}`,
+          ]),
+        ),
+      )
+      .executeTakeFirst();
+    return Number(res.numUpdatedRows ?? 0) > 0;
+  }
+
+  // A claimed OTA booking (real contact attached, staff own the lifecycle): the feed
+  // may still move its DATES, but status/contact/notes stay untouched. No-op when the
+  // dates already match. Returns true when a row was written.
+  async updateClaimedDates(id: string, b: { checkIn: Date; checkOut: Date }): Promise<boolean> {
+    const res = await this.db
+      .updateTable('reservations')
+      .set({
+        check_in_date: b.checkIn,
+        check_out_date: b.checkOut,
+        updated_by: SYSTEM_USER_ID,
+        updated_at: new Date(),
+      })
+      .where('id', '=', id)
+      .where('deleted_at', 'is', null)
+      .where((eb) =>
+        eb.not(eb.and([eb('check_in_date', '=', b.checkIn), eb('check_out_date', '=', b.checkOut)])),
+      )
+      .executeTakeFirst();
+    return Number(res.numUpdatedRows ?? 0) > 0;
   }
 
   // End a block (event cancelled or vanished from the feed) — CANCELLED frees the night
@@ -135,19 +206,21 @@ export class ChannelRepository {
       .execute();
   }
 
-  // UIDs of this unit's currently-active OTA blocks — used to detect events that have
-  // disappeared from the feed.
-  async listActiveBlockUids(roomId: string): Promise<string[]> {
+  // This unit's currently-active OTA rows (unclaimed BLOCKED + claimed
+  // CONFIRMED/CHECKED_IN) — used to detect events that have disappeared from the feed.
+  async listActiveOtaRows(roomId: string): Promise<ActiveOtaRow[]> {
     const rows = await this.db
       .selectFrom('reservations')
-      .select('external_uid')
+      .select(['external_uid', 'status'])
       .where('room_id', '=', roomId)
       .where('source', '=', IMPORT_SOURCE)
-      .where('status', '=', IMPORT_STATUS)
+      .where('status', 'in', [IMPORT_STATUS, 'CONFIRMED', 'CHECKED_IN'])
       .where('deleted_at', 'is', null)
       .where('external_uid', 'is not', null)
       .execute();
-    return rows.map((r) => r.external_uid!).filter(Boolean);
+    return rows
+      .filter((r) => Boolean(r.external_uid))
+      .map((r) => ({ external_uid: r.external_uid!, status: r.status }));
   }
 
   // The DIRECT/WEBSITE stays an OTA night collides with: same unit, overlapping dates,

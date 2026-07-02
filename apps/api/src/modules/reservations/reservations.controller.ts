@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
 import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema } from './reservations.types.js';
-import type { CreateReservationDTO, UpdateReservationDTO } from './reservations.types.js';
+import type { CreateReservationDTO, UpdateReservationDTO, ClaimOtaBookingDTO } from './reservations.types.js';
 
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
@@ -94,6 +94,16 @@ export class ReservationsController {
   getPricing = async (req: Request, res: Response, next: NextFunction) => {
     try {
       res.json(await this.service.priceReservation(req.params.id as string, req.activePropertyId));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  claimOtaBooking = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = req.body as ClaimOtaBookingDTO;
+      const meta = this.getRequestMeta(req);
+      res.json(await this.service.claimOtaBooking(req.params.id as string, dto, meta, req.activePropertyId));
     } catch (err) {
       next(err);
     }

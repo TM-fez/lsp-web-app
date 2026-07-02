@@ -60,6 +60,12 @@ export const UpdateReservationSchema = z.object({
   path: ['status'],
 });
 
+// Tier 1 of the OTA contact-info plan: staff copy the guest's details from the
+// Booking.com extranet/Pulse app into a real contact, then claim the block with it.
+export const ClaimOtaBookingSchema = z.object({
+  contact_id: z.string().uuid(),
+});
+
 export const DiscountTypeEnum = z.enum(['PERCENT', 'FIXED']);
 
 export const SetDiscountSchema = z
@@ -76,6 +82,7 @@ export const SetDiscountSchema = z
 export type CreateReservationDTO = z.infer<typeof CreateReservationSchema>;
 export type UpdateReservationDTO = z.infer<typeof UpdateReservationSchema>;
 export type SetDiscountDTO = z.infer<typeof SetDiscountSchema>;
+export type ClaimOtaBookingDTO = z.infer<typeof ClaimOtaBookingSchema>;
 
 // List rows are enriched with guest + room display fields via LEFT JOINs, so the
 // UI never shows bare UUIDs and can search by guest name / room code.

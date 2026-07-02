@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { useCreateRoom, useUpdateRoom, useDeleteRoom } from './hooks';
+import { toast } from '@/store/toast';
+import { useCreateRoom, useUpdateRoom, useDeleteRoom, useRoom, useSetChannelConfig, useRotateIcalToken } from './hooks';
 import { useProperties } from '@/features/properties/hooks';
 import type { Room, RoomCreateStatus, UnitType } from '@/types';
 
@@ -207,6 +208,8 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
             </Button>
           </div>
 
+          {isEdit && <ChannelSyncSection roomId={room!.id} />}
+
           {isEdit && canDelete && (
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
               <Label className="text-rose-600">Danger zone</Label>
@@ -232,5 +235,103 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Channel sync (H4) — the two halves of the Booking.com handshake for one unit:
+ *  export: OUR availability feed URL to paste INTO the extranet (copy button);
+ *  import: THEIR calendar URL to pull FROM (validated server-side: https + booking.com).
+ * The rotate action mints a new export URL, killing the old one instantly.
+ */
+function ChannelSyncSection({ roomId }: { roomId: string }) {
+  const { data: full } = useRoom(roomId);
+  const setConfig = useSetChannelConfig();
+  const rotate = useRotateIcalToken();
+
+  const [importUrl, setImportUrl] = useState('');
+  const [confirmRotate, setConfirmRotate] = useState(false);
+
+  useEffect(() => {
+    setImportUrl(full?.booking_ical_url ?? '');
+    setConfirmRotate(false);
+  }, [full?.booking_ical_url]);
+
+  if (!full?.ical_token) return null;
+
+  // The Vercel origin proxies /api/* to the engine, so this URL is stable for OTAs.
+  const exportUrl = `${window.location.origin}/api/v1/ical/units/${full.ical_token}.ics`;
+  const busy = setConfig.isPending || rotate.isPending;
+  const dirty = (importUrl.trim() || null) !== (full.booking_ical_url ?? null);
+
+  return (
+    <div className="mt-2 flex flex-col gap-3 border-t border-slate-100 pt-4">
+      <Label>Channel sync — Booking.com</Label>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500">
+          Our availability feed — paste this into the Booking.com extranet (Rates &amp; Availability → Sync calendars):
+        </span>
+        <div className="flex gap-2">
+          <Input readOnly value={exportUrl} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard.writeText(exportUrl).then(
+                () => toast.success('Export link copied'),
+                () => toast.error('Could not copy — select the text and copy manually'),
+              );
+            }}
+          >
+            Copy
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500">
+          Booking.com&apos;s calendar for this unit — their .ics export link (leave empty to unlink):
+        </span>
+        <div className="flex gap-2">
+          <Input
+            placeholder="https://ical.booking.com/v1/export?t=…"
+            value={importUrl}
+            onChange={(e) => setImportUrl(e.target.value)}
+            className="font-mono text-xs"
+          />
+          <Button
+            variant="outline"
+            disabled={busy || !dirty}
+            onClick={() => setConfig.mutate({ id: roomId, url: importUrl.trim() || null })}
+          >
+            {setConfig.isPending && <Spinner />} Save
+          </Button>
+        </div>
+      </div>
+
+      {!confirmRotate ? (
+        <button
+          type="button"
+          className="self-start text-xs text-slate-500 underline hover:text-slate-700"
+          onClick={() => setConfirmRotate(true)}
+        >
+          Rotate export link (if it leaked)
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <span className="text-sm text-amber-800">
+            Rotating kills the current link — Booking.com stops syncing until the new one is pasted into the extranet.
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setConfirmRotate(false)} disabled={busy}>
+              Keep
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => rotate.mutate(roomId)}>
+              {rotate.isPending && <Spinner />} Rotate
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

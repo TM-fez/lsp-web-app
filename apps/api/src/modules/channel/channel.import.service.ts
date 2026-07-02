@@ -1,11 +1,18 @@
 import { ChannelRepository } from './channel.repository.js';
-import { parseIcs } from './channel.ical-parse.js';
+import { parseIcs, type ParsedEvent } from './channel.ical-parse.js';
 import { dispatchCollisionAlert, type CollisionAlert, type AlertResult } from './channel.alerts.js';
+import { logger } from '../../core/logger.js';
 
 // Re-page the manager for the SAME OTA event at most once per this window. A genuinely new
 // collision (a different UID, or this same one again after the window lapses) still alerts.
 // The dashboard audit row is the ledger — see ChannelRepository.recentCollisionAlertExists.
 const COLLISION_ALERT_THROTTLE_HOURS = 6;
+
+// Mass-cancel guard: a poll may only end this share of a unit's active blocks (and at
+// least this many) before we assume the FEED is broken rather than the calendar empty —
+// a truncated/empty 200 from Booking.com must not reopen every night for direct sale.
+const PRUNE_GUARD_MIN = 3;
+const PRUNE_GUARD_FRACTION = 0.5;
 
 // Postgres exclusion_violation. The reservations_no_overlap EXCLUDE constraint raises this
 // when an imported OTA night overlaps an existing blocking stay — our collision signal.
@@ -16,6 +23,17 @@ function isNoOverlapViolation(err: unknown): boolean {
 
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// Tier 0 of the OTA contact-info plan: an iCal feed will never carry a phone or email,
+// but whatever it DOES say about the night (summary; Airbnb adds a reservation URL and
+// phone-last-4 in the description) is kept on the block instead of thrown away.
+export function feedNotes(ev: Pick<ParsedEvent, 'summary' | 'description'>): string | null {
+  const parts = [ev.summary, ev.description].filter(
+    (s): s is string => Boolean(s && s.trim().length > 0),
+  );
+  if (parts.length === 0) return null;
+  return `OTA feed: ${parts.join(' — ')}`.slice(0, 1000);
 }
 
 // Default fetcher: Node 20 global fetch with a hard timeout so one slow OTA feed can't
@@ -38,17 +56,21 @@ async function defaultFetchIcs(url: string): Promise<string> {
 export interface RoomImportResult {
   roomId: string;
   code: string;
-  upserted: number; // OTA blocks inserted or updated
+  upserted: number; // OTA blocks inserted or updated (incl. claimed-date moves)
+  unchanged: number; // events already reflected — no write issued
   cancelled: number; // blocks ended (event cancelled, or vanished from the feed)
   collisions: number; // OTA nights that clashed with a direct sale (detected)
   alertsSuppressed: number; // collisions NOT paged — same UID already alerted within the window
-  warnings: number; // non-fatal anomalies (e.g. OTA-vs-OTA overlap, unexpected error)
+  pruneSkipped: boolean; // the empty-feed / mass-cancel guard held the prune back
+  warnings: number; // non-fatal anomalies (e.g. OTA-vs-OTA overlap, guarded prune)
   error: string | null; // fetch/parse failure for the whole unit
 }
 
 export interface ImportSummary {
+  ran: boolean; // false when another import already held the lock
   roomsProcessed: number;
   upserted: number;
+  unchanged: number;
   cancelled: number;
   collisions: number;
   alertsSuppressed: number;
@@ -61,6 +83,11 @@ export interface ImportDeps {
   dispatchAlert?: (alert: CollisionAlert) => Promise<AlertResult[]>;
 }
 
+// Claimed = a real guest contact was attached (Tier 1 claim flow) and the booking moved
+// into the normal reservation lifecycle. The feed still governs its dates, but never its
+// status, its contact, or its notes.
+const CLAIMED_ACTIVE = new Set(['CONFIRMED', 'CHECKED_IN']);
+
 export class ChannelImportService {
   private readonly fetchIcs: (url: string) => Promise<string>;
   private readonly dispatchAlert: (alert: CollisionAlert) => Promise<AlertResult[]>;
@@ -71,38 +98,67 @@ export class ChannelImportService {
   }
 
   // Pull every unit that has a Booking.com feed configured and reconcile it into LSP.
+  // Cluster-wide advisory lock: overlapping runs (cron tick + manual trigger) would race
+  // on the same UIDs, so a second caller simply reports ran:false and does nothing.
   async runImport(): Promise<ImportSummary> {
-    const rooms = await this.repo.listImportRooms();
-    const results: RoomImportResult[] = [];
-    for (const r of rooms) {
-      if (!r.booking_ical_url) continue;
-      results.push(await this.importRoom({ id: r.id, code: r.code, url: r.booking_ical_url }));
-    }
-    return {
-      roomsProcessed: results.length,
-      upserted: results.reduce((n, r) => n + r.upserted, 0),
-      cancelled: results.reduce((n, r) => n + r.cancelled, 0),
-      collisions: results.reduce((n, r) => n + r.collisions, 0),
-      alertsSuppressed: results.reduce((n, r) => n + r.alertsSuppressed, 0),
-      warnings: results.reduce((n, r) => n + r.warnings, 0),
-      rooms: results,
+    const empty: ImportSummary = {
+      ran: false,
+      roomsProcessed: 0,
+      upserted: 0,
+      unchanged: 0,
+      cancelled: 0,
+      collisions: 0,
+      alertsSuppressed: 0,
+      warnings: 0,
+      rooms: [],
     };
+
+    if (!(await this.repo.tryAdvisoryLock())) {
+      logger.warn('[channel-sync] import already running elsewhere — skipping this trigger');
+      return empty;
+    }
+
+    try {
+      const rooms = await this.repo.listImportRooms();
+      const results: RoomImportResult[] = [];
+      for (const r of rooms) {
+        if (!r.booking_ical_url) continue;
+        results.push(await this.importRoom({ id: r.id, code: r.code, url: r.booking_ical_url }));
+      }
+      return {
+        ran: true,
+        roomsProcessed: results.length,
+        upserted: results.reduce((n, r) => n + r.upserted, 0),
+        unchanged: results.reduce((n, r) => n + r.unchanged, 0),
+        cancelled: results.reduce((n, r) => n + r.cancelled, 0),
+        collisions: results.reduce((n, r) => n + r.collisions, 0),
+        alertsSuppressed: results.reduce((n, r) => n + r.alertsSuppressed, 0),
+        warnings: results.reduce((n, r) => n + r.warnings, 0),
+        rooms: results,
+      };
+    } finally {
+      await this.repo.releaseAdvisoryLock().catch(() => {});
+    }
   }
 
   // Reconcile one unit's Booking.com feed:
-  //   • each live event   → upsert a BLOCKED block (keyed by external_uid)
-  //   • a CANCELLED event → end that block
-  //   • an event that overlaps a DIRECT sale → the DB rejects it (23P01); we alert instead
-  //     of silently failing, and keep the direct booking
-  //   • a block whose event vanished from the feed → end it (the OTA freed the night)
+  //   • each live event      → upsert a BLOCKED block (keyed by external_uid); a CLAIMED
+  //     booking only follows the feed's dates — status/contact/notes are staff-owned
+  //   • a CANCELLED event    → end the block (never a checked-in/out stay)
+  //   • an event that overlaps a DIRECT sale → the DB rejects it (23P01); we alert
+  //     instead of silently failing, and keep the direct booking
+  //   • a block whose event vanished from the feed → end it (the OTA freed the night) —
+  //     UNLESS the guard says the feed itself looks broken (empty/truncated response)
   async importRoom(room: { id: string; code: string; url: string }): Promise<RoomImportResult> {
     const res: RoomImportResult = {
       roomId: room.id,
       code: room.code,
       upserted: 0,
+      unchanged: 0,
       cancelled: 0,
       collisions: 0,
       alertsSuppressed: 0,
+      pruneSkipped: false,
       warnings: 0,
       error: null,
     };
@@ -130,9 +186,19 @@ export class ChannelImportService {
 
       if (ev.cancelled) {
         const existing = await this.repo.findBlockByUid(ev.uid);
-        if (existing && existing.status === 'BLOCKED' && !existing.deleted_at) {
+        if (!existing || existing.deleted_at) continue;
+        if (existing.status === 'BLOCKED' || existing.status === 'CONFIRMED') {
+          // A claimed-but-not-arrived guest cancelling on Booking.com frees the night
+          // here too; staff see the reservation flip to CANCELLED in the list.
           await this.repo.cancelBlock(existing.id);
           res.cancelled++;
+        } else if (CLAIMED_ACTIVE.has(existing.status) || existing.status === 'CHECKED_OUT') {
+          // Never auto-cancel someone who is (or was) physically in the room.
+          logger.warn(
+            { unit: room.code, uid: ev.uid, status: existing.status },
+            '[channel-sync] OTA cancelled an in-house/checked-out stay — left untouched, review manually',
+          );
+          res.warnings++;
         }
         continue;
       }
@@ -140,12 +206,33 @@ export class ChannelImportService {
       seen.add(ev.uid);
       try {
         const existing = await this.repo.findBlockByUid(ev.uid);
-        if (existing) {
-          await this.repo.updateBlock(existing.id, { roomId: room.id, checkIn: ev.start, checkOut: ev.endExclusive });
+        if (existing && CLAIMED_ACTIVE.has(existing.status)) {
+          const wrote = await this.repo.updateClaimedDates(existing.id, {
+            checkIn: ev.start,
+            checkOut: ev.endExclusive,
+          });
+          wrote ? res.upserted++ : res.unchanged++;
+        } else if (existing && existing.status === 'CHECKED_OUT') {
+          // The stay already ended in LSP; nothing for the feed to govern anymore.
+          res.unchanged++;
+        } else if (existing) {
+          const wrote = await this.repo.updateBlock(existing.id, {
+            roomId: room.id,
+            checkIn: ev.start,
+            checkOut: ev.endExclusive,
+            notes: feedNotes(ev),
+          });
+          wrote ? res.upserted++ : res.unchanged++;
         } else {
-          await this.repo.insertImportedBlock({ roomId: room.id, externalUid: ev.uid, checkIn: ev.start, checkOut: ev.endExclusive });
+          await this.repo.insertImportedBlock({
+            roomId: room.id,
+            externalUid: ev.uid,
+            checkIn: ev.start,
+            checkOut: ev.endExclusive,
+            notes: feedNotes(ev),
+          });
+          res.upserted++;
         }
-        res.upserted++;
       } catch (err) {
         if (isNoOverlapViolation(err)) {
           const conflicts = await this.repo.findConflicts(room.id, ev.start, ev.endExclusive);
@@ -175,22 +262,60 @@ export class ChannelImportService {
           } else {
             // 23P01 but nothing direct conflicts → an OTA-vs-OTA overlap or feed anomaly.
             // Not a guest double-booking, so don't page the manager.
-            console.warn(`[channel-sync] overlap with no direct conflict on ${room.code} uid=${ev.uid}`);
+            logger.warn(
+              { unit: room.code, uid: ev.uid },
+              '[channel-sync] overlap with no direct conflict',
+            );
             res.warnings++;
           }
         } else {
-          console.error(`[channel-sync] block upsert failed on ${room.code} uid=${ev.uid}:`, msg(err));
+          logger.error(
+            { unit: room.code, uid: ev.uid, err: msg(err) },
+            '[channel-sync] block upsert failed',
+          );
           res.warnings++;
         }
       }
     }
 
     // Prune: any block still active in LSP whose event is no longer in the feed has been
-    // freed on Booking.com — end it so the night reopens for direct sale.
-    const active = await this.repo.listActiveBlockUids(room.id);
-    for (const uid of active) {
-      if (seen.has(uid)) continue;
-      const existing = await this.repo.findBlockByUid(uid);
+    // freed on Booking.com — end it so the night reopens for direct sale. Guarded: a feed
+    // that suddenly says "nothing at all" (or would end most of the calendar in one poll)
+    // is far more likely broken than truly empty, and reopening those nights invites a
+    // real double-booking. Skip the prune, warn, and let a healthy later poll reconcile.
+    const active = await this.repo.listActiveOtaRows(room.id);
+    const activeBlocked = active.filter((r) => r.status === 'BLOCKED');
+    const vanishedBlocked = activeBlocked.filter((r) => !seen.has(r.external_uid));
+    const vanishedClaimed = active.filter(
+      (r) => r.status !== 'BLOCKED' && !seen.has(r.external_uid),
+    );
+
+    // Claimed bookings are staff-owned — never auto-cancelled by absence, only surfaced.
+    for (const row of vanishedClaimed) {
+      logger.warn(
+        { unit: room.code, uid: row.external_uid, status: row.status },
+        '[channel-sync] claimed OTA booking vanished from the feed — review manually',
+      );
+      res.warnings++;
+    }
+
+    const feedLooksBroken =
+      (events.length === 0 && activeBlocked.length > 0) ||
+      (vanishedBlocked.length >= PRUNE_GUARD_MIN &&
+        vanishedBlocked.length > activeBlocked.length * PRUNE_GUARD_FRACTION);
+
+    if (feedLooksBroken) {
+      res.pruneSkipped = true;
+      res.warnings++;
+      logger.warn(
+        { unit: room.code, events: events.length, active: activeBlocked.length, vanished: vanishedBlocked.length },
+        '[channel-sync] prune guard tripped — feed looks broken/truncated, keeping existing blocks',
+      );
+      return res;
+    }
+
+    for (const row of vanishedBlocked) {
+      const existing = await this.repo.findBlockByUid(row.external_uid);
       if (existing) {
         await this.repo.cancelBlock(existing.id);
         res.cancelled++;

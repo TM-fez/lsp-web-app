@@ -44,6 +44,13 @@ export async function updateReservation(id: string, input: UpdateReservationInpu
 
 // DELETE = cancel (sets status CANCELLED); the server rejects this for
 // CHECKED_IN / CHECKED_OUT / already-CANCELLED reservations.
+// Tier 1 of the OTA contact-info plan: attach a real guest contact to an imported
+// Booking.com block; the server promotes it to CONFIRMED (check-in-able, invoiceable).
+export async function claimOtaBooking(id: string, contactId: string): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/claim`, { contact_id: contactId });
+  return data;
+}
+
 export async function cancelReservation(id: string): Promise<Reservation> {
   const { data } = await api.delete<Reservation>(`/reservations/${id}`);
   return data;

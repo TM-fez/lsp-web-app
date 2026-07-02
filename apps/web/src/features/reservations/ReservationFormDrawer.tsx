@@ -17,6 +17,7 @@ import {
   useApproveDiscount,
   useRemoveDiscount,
   useReservationPricing,
+  useClaimOtaBooking,
 } from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
@@ -187,6 +188,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             </Row>
             {r.notes && <Row label="Notes">{r.notes}</Row>}
           </div>
+          {r.status === 'BLOCKED' && r.source === 'BOOKING_COM' && canUpdate && (
+            <ClaimBookingSection reservationId={r.id} onClaimed={() => onOpenChange(false)} />
+          )}
           {r.status === 'CANCELLED' && canCancel && (
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
               <Label className="text-rose-600">Danger zone</Label>
@@ -482,6 +486,44 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="flex gap-3">
       <span className="w-20 shrink-0 text-slate-400">{label}</span>
       <span className="font-medium text-slate-800">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Tier 1 of the OTA contact-info plan. An imported Booking.com block has no real
+ * guest attached — staff copy the guest's name/phone/email from the Booking.com
+ * extranet or Pulse app into a contact (create one from Guests if new), pick it
+ * here, and claim. The booking becomes CONFIRMED: it appears in today's arrivals,
+ * can be checked in and invoiced, and the guest joins the CRM.
+ */
+function ClaimBookingSection({ reservationId, onClaimed }: { reservationId: string; onClaimed: () => void }) {
+  const claim = useClaimOtaBooking();
+  const [guest, setGuest] = useState<PickedGuest | null>(null);
+
+  return (
+    <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
+      <Label>Claim this booking</Label>
+      <p className="text-xs text-slate-500">
+        Copy the guest&apos;s details from the Booking.com extranet/Pulse app into a contact (add one under
+        Guests if they&apos;re new), then attach it here. The booking becomes a normal confirmed stay —
+        arrivals, check-in, invoices, CRM.
+      </p>
+      <GuestPicker value={guest} onChange={setGuest} disabled={claim.isPending} />
+      <Button
+        variant="primary"
+        className="self-start"
+        disabled={!guest || claim.isPending}
+        onClick={() => {
+          if (!guest) return;
+          claim.mutate(
+            { id: reservationId, contactId: guest.id },
+            { onSuccess: onClaimed },
+          );
+        }}
+      >
+        {claim.isPending && <Spinner className="text-white" />} Claim booking
+      </Button>
     </div>
   );
 }

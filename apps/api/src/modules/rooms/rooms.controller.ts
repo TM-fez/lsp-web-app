@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { RoomsService } from './rooms.service.js';
 import { RoomStatusEnum, RoomTypeEnum } from './rooms.types.js';
-import type { CreateRoomDTO, UpdateRoomDTO } from './rooms.types.js';
+import type { CreateRoomDTO, UpdateRoomDTO, UpdateChannelConfigDTO } from './rooms.types.js';
 
 export class RoomsController {
   constructor(private readonly service: RoomsService) {}
@@ -72,6 +72,25 @@ export class RoomsController {
       const meta = this.getRequestMeta(req);
       const room = await this.service.updateRoom(req.params.id as string, dto, meta);
       res.json(room);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  setChannelConfig = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = req.body as UpdateChannelConfigDTO;
+      const meta = this.getRequestMeta(req);
+      res.json(await this.service.setChannelConfig(req.params.id as string, dto, meta));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  rotateIcalToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      res.json(await this.service.rotateIcalToken(req.params.id as string, meta));
     } catch (err) {
       next(err);
     }

@@ -9,6 +9,7 @@ import type {
   RoomListRow,
   CreateRoomDTO,
   UpdateRoomDTO,
+  UpdateChannelConfigDTO,
 } from './rooms.types.js';
 
 export class RoomsService {
@@ -46,6 +47,30 @@ export class RoomsService {
       updated_by: meta.userId,
     };
     return this.repository.create(newRoom, meta);
+  }
+
+  /**
+   * Channel sync config (H4): set/clear where this unit's Booking.com calendar is
+   * pulled from. The URL is validated (https + booking.com host) at the schema, so
+   * the server-side importer can never be pointed at an arbitrary endpoint.
+   */
+  async setChannelConfig(id: string, dto: UpdateChannelConfigDTO, meta: RoomRequestMeta): Promise<RoomRow> {
+    await this.getRoomById(id);
+    const updated = await this.repository.update(
+      id,
+      { booking_ical_url: dto.booking_ical_url, updated_by: meta.userId },
+      meta,
+    );
+    if (!updated) throw AppError.notFound(`Room with id ${id} not found`);
+    return updated;
+  }
+
+  /** Mint a fresh export-feed token; the old feed URL stops working immediately. */
+  async rotateIcalToken(id: string, meta: RoomRequestMeta): Promise<RoomRow> {
+    await this.getRoomById(id);
+    const updated = await this.repository.rotateIcalToken(id, meta);
+    if (!updated) throw AppError.notFound(`Room with id ${id} not found`);
+    return updated;
   }
 
   async updateRoom(id: string, dto: UpdateRoomDTO, meta: RoomRequestMeta): Promise<RoomRow> {

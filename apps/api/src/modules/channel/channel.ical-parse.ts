@@ -8,6 +8,7 @@ export interface ParsedEvent {
   start: Date; // DTSTART, as a UTC calendar date
   endExclusive: Date; // DTEND, exclusive (all-day convention); a single night if absent
   summary: string | null;
+  description: string | null; // Airbnb puts a reservation URL + phone-last-4 here
   cancelled: boolean; // STATUS:CANCELLED
 }
 
@@ -49,7 +50,12 @@ function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 24 * 60 * 60 * 1000);
 }
 
-type Draft = { uid?: string; start?: Date; end?: Date; summary?: string; status?: string };
+type Draft = { uid?: string; start?: Date; end?: Date; summary?: string; description?: string; status?: string };
+
+// RFC 5545 §3.3.11 — undo TEXT escaping (\\n, \, \; \\) for values we keep verbatim.
+function unescapeText(s: string): string {
+  return s.replace(/\\n/gi, '\n').replace(/\\([\\;,])/g, '$1');
+}
 
 export function parseIcs(text: string): ParsedEvent[] {
   const events: ParsedEvent[] = [];
@@ -69,6 +75,7 @@ export function parseIcs(text: string): ParsedEvent[] {
           start: cur.start,
           endExclusive: cur.end ?? addDays(cur.start, 1), // no DTEND → single night
           summary: cur.summary ?? null,
+          description: cur.description ?? null,
           cancelled: (cur.status ?? '').toUpperCase() === 'CANCELLED',
         });
       }
@@ -94,7 +101,10 @@ export function parseIcs(text: string): ParsedEvent[] {
         break;
       }
       case 'SUMMARY':
-        cur.summary = prop.value.trim();
+        cur.summary = unescapeText(prop.value.trim());
+        break;
+      case 'DESCRIPTION':
+        cur.description = unescapeText(prop.value.trim());
         break;
       case 'STATUS':
         cur.status = prop.value.trim();

@@ -184,6 +184,35 @@ export class RoomsRepository {
     });
   }
 
+  // New unguessable export-feed token. Rotating kills the old feed URL instantly —
+  // use when a URL leaked or a unit leaves Booking.com. The audit row deliberately
+  // records only THAT it rotated, never the token value.
+  async rotateIcalToken(id: string, meta: RoomRequestMeta): Promise<RoomRow | undefined> {
+    return this.db.transaction().execute(async (trx) => {
+      const updated = await trx
+        .updateTable('rooms')
+        .set({ ical_token: sql`gen_random_uuid()`, updated_by: meta.userId, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (updated) {
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'rooms',
+          entity_id: id,
+          diff: { ical_token: 'rotated' },
+          ip_address: meta.ip ?? null,
+        }).execute();
+      }
+
+      return updated;
+    });
+  }
+
   async softDelete(id: string, meta: RoomRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
       const deleted = await trx

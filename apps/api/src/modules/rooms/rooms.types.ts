@@ -46,8 +46,31 @@ export const UpdateRoomSchema = z.object({
   floor: z.coerce.number().int().min(0).max(200).nullable().optional(),
 });
 
+// Channel sync config: where the importer PULLS this unit's Booking.com calendar
+// from. https + a booking.com host only — the URL is fetched SERVER-SIDE on a
+// 15-min cron, so it must never be pointable at arbitrary or internal endpoints.
+export const UpdateChannelConfigSchema = z.object({
+  booking_ical_url: z
+    .string()
+    .trim()
+    .url()
+    .refine(
+      (u) => {
+        try {
+          const { protocol, hostname } = new URL(u);
+          return protocol === 'https:' && (hostname === 'booking.com' || hostname.endsWith('.booking.com'));
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Must be an https:// URL on a booking.com host' },
+    )
+    .nullable(),
+});
+
 export type CreateRoomDTO = z.infer<typeof CreateRoomSchema>;
 export type UpdateRoomDTO = z.infer<typeof UpdateRoomSchema>;
+export type UpdateChannelConfigDTO = z.infer<typeof UpdateChannelConfigSchema>;
 
 export interface RoomFilters {
   search?: string;

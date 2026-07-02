@@ -171,6 +171,17 @@ export class ReservationsRepository {
     });
   }
 
+  /** Whether a (non-deleted) contact exists — guards the claim flow's FK. */
+  async contactExists(contactId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('contacts')
+      .select('id')
+      .where('id', '=', contactId)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+    return Boolean(row);
+  }
+
   async update(id: string, update: UpdateReservation, meta: ReservationRequestMeta): Promise<ReservationRow | undefined> {
     return this.db.transaction().execute(async (trx) => {
       const updated = await trx

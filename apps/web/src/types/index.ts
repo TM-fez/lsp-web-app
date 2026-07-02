@@ -129,6 +129,10 @@ export interface Room {
   building_name?: string | null;
   property_id?: string | null;
   property_name?: string | null;
+  // Channel sync (present on the by-id endpoint, not the list): the unguessable
+  // export-feed token and the Booking.com calendar URL the importer pulls from.
+  ical_token?: string;
+  booking_ical_url?: string | null;
 }
 
 export type RoomCreateStatus = 'AVAILABLE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';

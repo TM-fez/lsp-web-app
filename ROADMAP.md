@@ -186,20 +186,32 @@ carte. **DPO is out of scope for this track** (parked, see above).
 - 🔒 Owner: uptime monitor on `https://lsp-api-p3zx.onrender.com/health` (UptimeRobot
   free, 5-min interval — side benefit: pings keep the free Render service awake).
 
-### Phase H4 — Channel-sync go-live package *(~1.5–2 weeks; needs H2's paid Render)*
-- 🆕 Channel admin UI: per-unit export URL (copy button), edit `booking_ical_url`, rotate
-  `ical_token` — today both are DB-only (go-live would mean 25 manual SQL updates).
-- 🆕 Import hardening: empty-feed mass-cancel guard, pg advisory lock against overlapping
-  runs, skip unchanged block writes, validate import URLs (https + booking.com host).
-- 🆕 OTA contact info, Tier 0: keep the feed's SUMMARY (parse DESCRIPTION too, for Airbnb
-  later) on the block instead of discarding it.
-- 🆕 OTA contact info, Tier 1 — **"Claim this booking"**: staff copy guest details from the
-  Booking.com extranet/Pulse app → real contact linked, block becomes check-in-able (needs
-  a deliberate status decision so the `settlePaid()`-only-CONFIRMED invariant survives).
-  Unblocks: arrivals rail, check-in, invoicing, CRM for OTA guests (all impossible today).
-- 🆕 Mount `/cron/channel-sync` + 15-min trigger, then the owner-run go-live checklist in
-  HANDOVER §5 (backup → verify migrations → **extranet URL exchange (owner has the
-  Booking.com login)** → `CHANNEL_ALERT_EMAIL` → enable trigger).
+### Phase H4 — Channel-sync go-live package *(needs H2's paid Render before the flip)*
+**Code DONE (2026-07-02)** — go-live is now purely the owner checklist below.
+- ✅ Channel admin UI — "Channel sync" section in the unit drawer: export URL + copy
+  button (served via the stable Vercel origin), Booking.com import-URL input (validated
+  server-side: https + booking.com host only — the importer can never be pointed at an
+  arbitrary endpoint), and a confirm-guarded "rotate export link" action.
+  API: `PATCH /rooms/:id/channel`, `POST /rooms/:id/channel/rotate-token` (rooms.update).
+- ✅ Import hardening — pg advisory lock (overlapping runs no-op with `ran:false`),
+  empty-feed + mass-cancel prune guards (≥3 AND >50% vanishing = broken feed, keep
+  blocks + warn), unchanged events skip the write entirely (no 15-min WAL churn).
+- ✅ OTA contact info Tier 0 — the feed's SUMMARY/DESCRIPTION (Airbnb puts a reservation
+  URL + phone-last-4 there) is kept on the block's notes instead of discarded.
+- ✅ OTA contact info Tier 1 — **"Claim this booking"** on a BLOCKED row: GuestPicker →
+  `POST /reservations/:id/claim` → real contact attached, status → CONFIRMED. This is
+  the documented SECOND sanctioned writer of CONFIRMED (OTA payment is already
+  guaranteed, nothing for LSP to collect). Source stays BOOKING_COM (no export
+  feedback loop). Importer respects claimed rows: feed moves their dates only; a
+  checked-in guest is NEVER auto-cancelled; vanished claimed bookings only warn.
+- ✅ `/cron/channel-sync` mounted (secret-guarded; refuses all callers until
+  `CRON_SECRET` is set — mounting is inert, the SCHEDULE is the switch).
+- 🔒 **Owner go-live checklist, in order:** (1) Render → paid (H2) — Booking.com's
+  fetcher times out on a sleeping free service; (2) back up the DB (or trust the H2
+  nightly); (3) per unit, in the unit drawer: copy our export URL → paste into the
+  extranet, copy their .ics URL → paste into the drawer; (4) set `CHANNEL_ALERT_EMAIL`
+  + `CRON_SECRET` on Render; (5) add the 15-min trigger (Render Cron Job / GH Action:
+  GET `/api/v1/cron/channel-sync`, header `Authorization: Bearer <CRON_SECRET>`).
 
 ### Phase H5 — Finish the security rollout *(~1 week; can ride alongside product Phase 3)*
 - 🆕 Property scoping extended to the money-loop first (quotes, holds, payments, invoices,

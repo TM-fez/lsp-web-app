@@ -3,6 +3,7 @@ import {
   listReservations,
   createReservation,
   updateReservation,
+  claimOtaBooking,
   cancelReservation,
   removeReservation,
   checkAvailability,
@@ -54,6 +55,18 @@ export function useUpdateReservation() {
     mutationFn: ({ id, input }: { id: string; input: UpdateReservationInput }) => updateReservation(id, input),
     onSuccess: () => {
       toast.success('Reservation updated');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useClaimOtaBooking() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, contactId }: { id: string; contactId: string }) => claimOtaBooking(id, contactId),
+    onSuccess: () => {
+      toast.success('Booking claimed — the guest is now on the arrivals list');
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),
