@@ -10,7 +10,10 @@
 export type NotifyTarget =
   | { userId: string }                       // one named recipient
   | { userIds: string[] }                    // several named recipients
-  | { propertyId: string };                  // every member of a property (+ admins)
+  // Every member of a property (+ admins). excludeUserIds drops specific people
+  // from the fan-out — typically the actor, who doesn't need an alert about
+  // something they just did themselves.
+  | { propertyId: string; excludeUserIds?: string[] };
 
 /** The content of a single notification (recipient-independent). */
 export interface NotifyPayload {

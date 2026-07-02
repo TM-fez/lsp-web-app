@@ -38,7 +38,9 @@ export class NotificationsService {
   private async resolveRecipients(target: NotifyTarget): Promise<string[]> {
     if ('userId' in target) return [target.userId];
     if ('userIds' in target) return [...new Set(target.userIds)];
-    return this.repo.userIdsForProperty(target.propertyId);
+    const members = await this.repo.userIdsForProperty(target.propertyId);
+    const excluded = new Set(target.excludeUserIds ?? []);
+    return members.filter((id) => !excluded.has(id));
   }
 
   async list(userId: string, opts: ListOptions = {}): Promise<NotificationItem[]> {
