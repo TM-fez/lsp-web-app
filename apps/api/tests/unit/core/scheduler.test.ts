@@ -7,12 +7,21 @@ describe('runSweep', () => {
     const quotes = { expireStaleQuotes: vi.fn().mockResolvedValue(3) };
     const website = vi.fn().mockResolvedValue(1);
 
-    const res = await runSweep(holds, quotes, website);
+    const retention = vi.fn().mockResolvedValue({ refreshTokensPruned: 4, auditLogsPruned: 0 });
 
-    expect(res).toEqual({ holdsReleased: 2, quotesExpired: 3, websiteBookingsExpired: 1 });
+    const res = await runSweep(holds, quotes, website, retention);
+
+    expect(res).toEqual({
+      holdsReleased: 2,
+      quotesExpired: 3,
+      websiteBookingsExpired: 1,
+      refreshTokensPruned: 4,
+      auditLogsPruned: 0,
+    });
     expect(holds.releaseExpired).toHaveBeenCalledOnce();
     expect(quotes.expireStaleQuotes).toHaveBeenCalledOnce();
     expect(website).toHaveBeenCalledOnce();
+    expect(retention).toHaveBeenCalledOnce();
   });
 
   it('isolates failures — one sweep throwing does not cancel the others', async () => {
@@ -21,9 +30,17 @@ describe('runSweep', () => {
     const quotes = { expireStaleQuotes: vi.fn().mockResolvedValue(5) };
     const website = vi.fn().mockRejectedValue(new Error('db blip'));
 
-    const res = await runSweep(holds, quotes, website);
+    const retention = vi.fn().mockRejectedValue(new Error('db blip'));
 
-    expect(res).toEqual({ holdsReleased: 0, quotesExpired: 5, websiteBookingsExpired: 0 });
+    const res = await runSweep(holds, quotes, website, retention);
+
+    expect(res).toEqual({
+      holdsReleased: 0,
+      quotesExpired: 5,
+      websiteBookingsExpired: 0,
+      refreshTokensPruned: 0,
+      auditLogsPruned: 0,
+    });
     expect(quotes.expireStaleQuotes).toHaveBeenCalledOnce();
   });
 });

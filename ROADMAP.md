@@ -148,12 +148,22 @@ carte. **DPO is out of scope for this track** (parked, see above).
   violet), in the reservations filter, and excluded from edit/cancel (`isOpen`).
 
 ### Phase H2 — Don't lose data *(~3–4 days + one client decision)*
-- 🆕 S3-compatible storage driver (Cloudflare R2 / Backblaze B2; adapter seam exists) —
-  uploads currently live on Render's ephemeral disk and vanish on redeploy; also make the
-  checksum-dedupe verify the binary exists before skipping the write.
-- 🆕 Nightly automated `pg_dump` backup (GitHub Action → bucket).
-- 🆕 Prune revoked/expired `refresh_tokens` + old `audit_logs` in the cron sweep.
-- 🔒 Render → paid plan (owner pays; service must stop sleeping before H4).
+**Code DONE (2026-07-02)** — the two 🔒 owner steps below remain.
+- ✅ S3-compatible storage driver — `files.storage.ts` (`S3StorageDriver` via
+  `@aws-sdk/client-s3`, works with R2/B2/AWS), `createStorageAdapter()` honours
+  `STORAGE_DRIVER` (the router previously hardcoded local `./uploads`); dedupe now
+  verifies the binary exists before skipping the write, and rows record the ACTIVE
+  driver/bucket. Downloads stream through the API in both drivers (bucket stays private).
+- ✅ Nightly `pg_dump` backup — `.github/workflows/db-backup.yml` (01:30 UTC + manual
+  trigger), compressed custom-format dump → S3-compatible bucket, INERT until the
+  `BACKUP_*` repo secrets are set; retention via bucket lifecycle rules (the job has no
+  delete permissions on purpose). Restore command documented in the workflow header.
+- ✅ Retention — `core/retention.ts`, 4th leg of the sweep, self-gated to once/day:
+  dead refresh tokens pruned after `REFRESH_TOKEN_RETENTION_DAYS` (default 30);
+  `audit_logs` pruning STRICTLY OPT-IN (`AUDIT_LOG_RETENTION_DAYS` default 0 = forever).
+- 🔒 Owner: create the R2/B2 bucket + set Render `STORAGE_*`/GitHub `BACKUP_*` secrets
+  (render.yaml + workflow both document the exact keys), then flip `STORAGE_DRIVER=s3`.
+- 🔒 Owner: Render → paid plan (service must stop sleeping before H4).
 
 ### Phase H3 — Eyes and guardrails *(~3–4 days)*
 - 🆕 Sentry on API + web; uptime monitor on `/health`.

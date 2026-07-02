@@ -19,8 +19,11 @@ describe('FilesService', () => {
     } as unknown as vi.Mocked<FilesRepository>;
 
     adapter = {
+      name: 'local',
+      bucket: null,
       save: vi.fn(),
       delete: vi.fn(),
+      exists: vi.fn().mockResolvedValue(true),
       getUrl: vi.fn(),
       getStream: vi.fn(),
     } as unknown as vi.Mocked<LocalStorageDriver>;
@@ -42,21 +45,55 @@ describe('FilesService', () => {
     });
 
     it('should prevent duplicate storage via checksum but create new row', async () => {
-      // Mock an existing file
+      // Mock an existing file whose binary is still present
       repository.findByChecksum.mockResolvedValue({ id: 'existing-id', path: 'old/path.pdf', stored_name: 'xyz.pdf', storage_driver: 'local', bucket: null } as any);
       repository.create.mockResolvedValue({ id: 'new-id' } as any);
-      
+
       const stream = new Readable({
         read() {
           this.push('dummy data');
           this.push(null);
         }
       });
-      
+
       const res = await service.upload(stream, 'test.pdf', 'application/pdf', 10, false, {} as any);
       expect(res.id).toBe('new-id');
       expect(repository.create).toHaveBeenCalled();
+      expect(adapter.exists).toHaveBeenCalledWith('old/path.pdf');
       expect(adapter.save).not.toHaveBeenCalled();
+    });
+
+    it('re-writes the binary when the dedupe row exists but the bytes are gone', async () => {
+      // The row survived a redeploy; the ephemeral disk did not.
+      repository.findByChecksum.mockResolvedValue({ id: 'existing-id', path: 'old/path.pdf', stored_name: 'xyz.pdf', storage_driver: 'local', bucket: null } as any);
+      repository.create.mockResolvedValue({ id: 'new-id' } as any);
+      (adapter.exists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+      const stream = new Readable({
+        read() {
+          this.push('dummy data');
+          this.push(null);
+        }
+      });
+
+      await service.upload(stream, 'test.pdf', 'application/pdf', 10, false, {} as any);
+      expect(adapter.save).toHaveBeenCalledWith(expect.anything(), 'old/path.pdf', expect.any(Number));
+    });
+
+    it('records the ACTIVE driver on the new row, not the original upload driver', async () => {
+      repository.findByChecksum.mockResolvedValue(null as any);
+      repository.create.mockImplementation(async (row: any) => row);
+
+      const stream = new Readable({
+        read() {
+          this.push('dummy data');
+          this.push(null);
+        }
+      });
+
+      const row: any = await service.upload(stream, 'test.pdf', 'application/pdf', 10, false, {} as any);
+      expect(row.storage_driver).toBe('local');
+      expect(adapter.save).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(Number));
     });
   });
 

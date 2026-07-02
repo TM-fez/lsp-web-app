@@ -41,6 +41,13 @@ const schema = z.object({
   // the sweep auto-cancels it and notifies the property. 0 disables the expiry.
   WEBSITE_PENDING_TTL_HOURS: z.coerce.number().default(24),
 
+  // Retention (core/retention.ts, runs at most daily inside the sweep).
+  // Dead refresh tokens (expired/revoked) are pruned after this many days; 0 disables.
+  REFRESH_TOKEN_RETENTION_DAYS: z.coerce.number().default(30),
+  // Audit history to KEEP, in days. 0 (default) = keep forever — pruning the audit
+  // trail is an owner decision, never a default.
+  AUDIT_LOG_RETENTION_DAYS: z.coerce.number().default(0),
+
   // Background auto-expiry sweep (expired holds + stale quotes).
   // Opt out anywhere with DISABLE_SCHEDULER=1; it is also always off under NODE_ENV=test.
   DISABLE_SCHEDULER: z
