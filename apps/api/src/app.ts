@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -6,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env.js';
 import { requestId } from './core/middleware/requestId.middleware.js';
+import { requestLog } from './core/middleware/requestLog.middleware.js';
 import { errorHandler } from './core/errors/errorHandler.middleware.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { router } from './router.js';
@@ -13,6 +15,15 @@ import { router } from './router.js';
 // The configured Express app, with NO `listen()` — so it can be imported both by the
 // long-running server (server.ts) and by a serverless handler (api/index.ts) without
 // binding a port. Starting the HTTP listener + the background scheduler lives in server.ts.
+// ── Sentry (errors only) — DARK until SENTRY_DSN is set ───────────────────────
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    environment: env.NODE_ENV,
+    // Deliberately no tracesSampleRate: error capture only, free-tier friendly.
+  });
+}
+
 const app = express();
 
 // ── Proxy awareness ───────────────────────────────────────────────────────────
@@ -50,6 +61,12 @@ app.use(cookieParser());
 // ── Request ID ────────────────────────────────────────────────────────────────
 app.use(requestId);
 
+// ── Request logging — one structured line per request, sharing the request id.
+// Off under tests: suites deliberately exercise 4xx paths and would drown the output.
+if (env.NODE_ENV !== 'test') {
+  app.use(requestLog);
+}
+
 // ── Health — mounted at root, no auth, accessible to infra probes ─────────────
 app.use('/health', healthRouter);
 
@@ -61,7 +78,16 @@ app.use((_req, res) => {
   res.status(404).json({ statusCode: 404, error: 'Not Found', message: 'Route not found' });
 });
 
-// ── Error handler (must be last) ──────────────────────────────────────────────
+// ── Error handlers (must be last; Sentry captures BEFORE ours responds) ───────
+if (env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app, {
+    // Expected 4xx AppErrors are responses, not incidents — only report real bugs.
+    shouldHandleError: (error) => {
+      const status = (error as { statusCode?: number }).statusCode;
+      return status === undefined || status >= 500;
+    },
+  });
+}
 app.use(errorHandler);
 
 export { app };

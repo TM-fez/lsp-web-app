@@ -12,9 +12,16 @@ interface AuthState {
 }
 
 /**
- * Access token lives in memory (persisted for reloads); the refresh token is an
- * httpOnly cookie the browser sends automatically. On a 401 the API client
- * silently refreshes — see lib/api/client.ts.
+ * The access token is PERSISTED (localStorage via zustand/persist) so reloads keep
+ * the session; the refresh token is an httpOnly cookie the browser sends
+ * automatically, and on a 401 the API client silently refreshes (lib/api/client.ts).
+ *
+ * DELIBERATE decision (H3 review): we keep localStorage rather than memory-only.
+ * An XSS that can read localStorage can equally well call /auth/refresh from the
+ * page (the cookie rides along same-origin) and mint itself a fresh token — so
+ * moving the token to memory buys ~nothing against the actual threat. The real
+ * defence is preventing script injection: the CSP in vercel.json (script-src
+ * 'self') plus React's escaping. Tokens expire in 15 minutes regardless.
  */
 export const useAuthStore = create<AuthState>()(
   persist(

@@ -48,6 +48,9 @@ services:
       #   sync: false
       # - key: STORAGE_S3_ENDPOINT
       #   sync: false   # R2: https://<account-id>.r2.cloudflarestorage.com
+      # Sentry error tracking — dark until the DSN is set in the dashboard.
+      - key: SENTRY_DSN
+        sync: false
       # Email (Brevo). API key is a secret → set its value in the Render dashboard.
       # The other two are not secret, so they apply automatically on deploy.
       - key: BREVO_API_KEY
