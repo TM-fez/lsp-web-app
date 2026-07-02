@@ -52,7 +52,10 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   (`housekeeping_task_checks`); **inspect is blocked (409) until every active item is ticked**;
   cleaners tick from a checklist dialog while the unit is CLEANING; avg DIRTY→READY turnaround
   (last 30 days) on the housekeeping dashboard via `GET /housekeeping/turnaround`
-- 🆕 Tablet view — live room status + tasks (responsive/PWA view, not a separate app)
+- ✅ Tablet view — `/housekeeping/board`: a chrome-less full-screen live board (polls 20s)
+  grouping every unit by stage with touch-sized, permission-gated action + checklist buttons;
+  installable via a web-app manifest (`start_url` = the board) so the housekeeping tablet
+  pins it to the home screen — a view of the same app, not a separate one
 
 ### A4. Reservations / CRM
 - 🆕 New fields: booking coordinator (corporate vs individual) + assigned billing/accounts contact
@@ -124,10 +127,10 @@ Unblocks the operations + AI features that follow.
 
 **Phase 2 COMPLETE** — notifications (#54) + LLM client (#55) both merged.
 
-### Phase 3 — Operations depth (rides on Phase 1 + 2) — IN PROGRESS
-- Maintenance (A2): ✅ COMPLETE — notifications + reminders (in-process daily sweep),
+### Phase 3 — Operations depth (rides on Phase 1 + 2) — ✅ COMPLETE
+- Maintenance (A2): notifications + reminders (in-process daily sweep),
   scoped contractor login, L&P-vs-landlord ownership mapping
-- Housekeeping (A3): ✅ three-stage flow, ✅ compliance checklists + turnaround; next: tablet view
+- Housekeeping (A3): three-stage flow, compliance checklists + turnaround, tablet board
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)
 - Reservations/CRM new fields (A4)

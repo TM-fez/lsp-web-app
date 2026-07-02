@@ -19,8 +19,8 @@ import type { Room } from '@/types';
 
 const ROOMS_KEY = ['rooms'] as const;
 
-export function useRooms() {
-  return useQuery<Room[]>({ queryKey: ROOMS_KEY, queryFn: () => listRooms() });
+export function useRooms(opts: { refetchInterval?: number } = {}) {
+  return useQuery<Room[]>({ queryKey: ROOMS_KEY, queryFn: () => listRooms(), ...opts });
 }
 
 function useInvalidate() {
