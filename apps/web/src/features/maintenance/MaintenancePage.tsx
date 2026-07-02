@@ -26,6 +26,8 @@ export function MaintenancePage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canCreate = hasPerm('maintenance.create');
   const canUpdate = hasPerm('maintenance.update');
+  // Contractors carry the narrower maintenance.work instead of maintenance.update.
+  const canStart = canUpdate || hasPerm('maintenance.work');
   const canComplete = hasPerm('maintenance.complete');
   const canApprove = hasPerm('maintenance.approve');
 
@@ -83,7 +85,7 @@ export function MaintenancePage() {
     if (action === 'start') start.mutate(order.id);
     else if (action === 'complete') complete.mutate({ id: order.id });
   }
-  const canDo = (action: 'start' | 'complete') => (action === 'complete' ? canComplete : canUpdate);
+  const canDo = (action: 'start' | 'complete') => (action === 'complete' ? canComplete : canStart);
 
   return (
     <div className="flex flex-col gap-6">

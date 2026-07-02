@@ -53,10 +53,10 @@ describe('Maintenance Integration', () => {
   });
 
   describe('Validation', () => {
-    it('returns 400 for invalid payload (missing room_id)', async () => {
+    it('returns 400 when no active property is selected (create is scope-gated)', async () => {
       mockState.user = { sub: 'u1', permissions: ['maintenance.create'] };
       const res = await request(app).post('/api/maintenance').set('Authorization', 'Bearer token').send({ title: 'Broken pipe' });
-      expect(res.status).toBe(500); // Zod error throws and maps to 500 without global handler in test
+      expect(res.status).toBe(400); // requireActiveProperty rejects before validation
     });
 
     it('returns 404/500 if room does not exist (DB dependent)', async () => {

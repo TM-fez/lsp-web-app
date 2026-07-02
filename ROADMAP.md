@@ -20,7 +20,12 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 
 ### A2. Maintenance
 - 🟡 Module + contractor costs/expenses + completion/approval accountability — exists (024/037/038)
-- 🆕 Scoped service-provider login (new contractor role; portal limited to their tickets)
+- ✅ Scoped service-provider login — `contractor` role (053) with the narrow
+  `maintenance.read`/`maintenance.work`/`maintenance.complete` + files (photos) set; list is
+  pinned to their own tickets server-side, foreign tickets 404 by id, staff-only mutations
+  (edit/assign/cost/cancel/approve) stay 403. Contractors are excluded from property-wide
+  notification fan-outs (direct alerts only). Create is now scope-gated (room must be in the
+  active property — the dormant check is armed).
 - ✅ In-app pop-up notifications (pending/unassigned) — `maintenance.opened` (property fan-out,
   actor excluded, unassigned flagged) + `maintenance.assigned` (direct to the assignee) emitted
   from the maintenance service; the web bell now also toasts newly arrived notifications
@@ -98,9 +103,9 @@ Unblocks the operations + AI features that follow.
   `notifications` table (052), `notifications` module with a reusable `notify()` emit helper
   (fan-out to a user / list / whole property), read-model API (list, unread-count, read,
   read-all), Topbar bell + dropdown, and a secret-guarded `GET /cron/reminders` sweep with
-  idempotent generators (checkouts-due, stale high-priority repairs). Follow-up: narrow
-  reminder targeting from "all property members" to the responsible department once Phase 3
-  role mapping lands.
+  idempotent generators (checkouts-due, stale high-priority repairs). Follow-up ✅ done in
+  Phase 3: stale-repair reminders now go straight to the assignee when there is one (property
+  fan-out only when ownerless).
 - ✅ Claude/LLM integration scaffolding (one client, used by A4/A5/A6) — `core/llm/llm.service.ts`
   via the official `@anthropic-ai/sdk` (default model `claude-opus-4-8`), `isLlmConfigured()` gate +
   `generateText()`. DARK until `ANTHROPIC_API_KEY` is set; no product code calls it yet (a seam for A4/A5/A6).
@@ -109,7 +114,7 @@ Unblocks the operations + AI features that follow.
 
 ### Phase 3 — Operations depth (rides on Phase 1 + 2) — IN PROGRESS
 - Maintenance (A2): ✅ notifications + reminders (in-process daily sweep);
-  next: scoped contractor login, L&P-vs-landlord mapping
+  ✅ scoped contractor login; next: L&P-vs-landlord mapping
 - Housekeeping (A3): three-stage flow, compliance checklists, tablet view
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)

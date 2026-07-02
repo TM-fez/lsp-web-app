@@ -35,12 +35,17 @@ export class NotificationsRepository {
    * holds no membership rows). Deduped.
    */
   async userIdsForProperty(propertyId: string): Promise<string[]> {
+    // Contractors hold property memberships (for the property picker) but are
+    // not staff — property-wide alerts skip them; they only get direct
+    // {userId} notifications about their own tickets.
     const members = await this.db
       .selectFrom('user_properties as up')
       .innerJoin('users as u', 'u.id', 'up.user_id')
+      .innerJoin('roles as r', 'r.id', 'u.role_id')
       .select('u.id')
       .where('up.property_id', '=', propertyId)
       .where('u.active', '=', true)
+      .where('r.name', '!=', 'contractor')
       .execute();
 
     const admins = await this.db
