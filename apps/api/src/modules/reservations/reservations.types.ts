@@ -42,6 +42,9 @@ export const CreateReservationSchema = z.object({
   notes: z.string().nullable().optional(),
   source: ReservationSourceEnum.default('WALK_IN'),
   status: UserInputReservationStatusEnum.default('PENDING'),
+  // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
+  booking_coordinator_id: z.string().uuid().nullable().optional(),
+  billing_contact_id: z.string().uuid().nullable().optional(),
 }).refine(data => data.check_in_date < data.check_out_date, {
   message: "Check-out date must be after check-in date",
   path: ["check_out_date"],
@@ -55,6 +58,8 @@ export const UpdateReservationSchema = z.object({
   notes: z.string().nullable().optional(),
   source: ReservationSourceEnum.optional(),
   status: ReservationStatusEnum.optional(), // Allow status updates explicitly
+  booking_coordinator_id: z.string().uuid().nullable().optional(),
+  billing_contact_id: z.string().uuid().nullable().optional(),
 }).refine((data) => data.status !== 'BLOCKED', {
   message: 'BLOCKED is managed by channel sync and cannot be set manually',
   path: ['status'],
@@ -92,6 +97,9 @@ export interface ReservationListRow extends ReservationRow {
   room_name: string | null;
   property_id: string | null;
   property_name: string | null;
+  // CRM display names for the two optional booking contacts (A4).
+  booking_coordinator_name: string | null;
+  billing_contact_name: string | null;
 }
 
 export interface ReservationFilters {

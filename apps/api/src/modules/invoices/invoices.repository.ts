@@ -15,18 +15,23 @@ export class InvoicesRepository {
       .executeTakeFirst();
   }
 
-  // Everything a printable invoice/receipt needs: the invoice + the guest + the stay.
+  // Everything a printable invoice/receipt needs: the invoice + the guest + the
+  // stay + the bill-to (A4: the reservation's billing/accounts contact when one
+  // is assigned, otherwise the guest themselves).
   async findDocumentData(id: string) {
     return this.db
       .selectFrom('invoices as i')
       .leftJoin('reservations as rsv', 'rsv.id', 'i.reservation_id')
       .leftJoin('contacts as c', 'c.id', 'rsv.contact_id')
+      .leftJoin('contacts as bc', 'bc.id', 'rsv.billing_contact_id')
       .leftJoin('rooms as rm', 'rm.id', 'rsv.room_id')
       .leftJoin('quotes as q', 'q.id', 'i.quote_id')
       .select([
         'i.id', 'i.number', 'i.kind', 'i.status', 'i.currency',
         'i.subtotal_amount', 'i.tax_rate_bps', 'i.tax_amount', 'i.total_amount', 'i.created_at',
         'c.name as guest_name', 'c.email as guest_email', 'c.phone as guest_phone',
+        sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
+        sql<string | null>`coalesce(bc.email, c.email)`.as('bill_to_email'),
         sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
         sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
         'rm.code as unit_code', 'rm.name as unit_name', 'q.nights', 'q.unit_type',

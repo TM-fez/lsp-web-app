@@ -110,7 +110,19 @@ export class ReservationsService {
     return this.repository.checkAvailability(roomId, checkIn, checkOut, excludeId);
   }
 
+  /** The optional CRM contacts (A4) must be real, non-deleted contacts — a bad id
+   *  becomes a clean 400 instead of an FK-violation 500. */
+  private async assertCrmContactsExist(dto: { booking_coordinator_id?: string | null; billing_contact_id?: string | null }): Promise<void> {
+    if (dto.booking_coordinator_id && !(await this.repository.contactExists(dto.booking_coordinator_id))) {
+      throw AppError.badRequest('Booking coordinator must be an existing contact');
+    }
+    if (dto.billing_contact_id && !(await this.repository.contactExists(dto.billing_contact_id))) {
+      throw AppError.badRequest('Billing contact must be an existing contact');
+    }
+  }
+
   async createReservation(dto: CreateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    await this.assertCrmContactsExist(dto);
     const checkIn = new Date(dto.check_in_date);
     const checkOut = new Date(dto.check_out_date);
 
@@ -153,6 +165,7 @@ export class ReservationsService {
   }
 
   async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    await this.assertCrmContactsExist(dto);
     const existing = await this.getReservationById(id, activePropertyId);
 
     // If the booking is being moved to a different unit, that unit must also be in

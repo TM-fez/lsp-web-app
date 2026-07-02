@@ -58,7 +58,10 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   pins it to the home screen — a view of the same app, not a separate one
 
 ### A4. Reservations / CRM
-- 🆕 New fields: booking coordinator (corporate vs individual) + assigned billing/accounts contact
+- ✅ New fields: booking coordinator + assigned billing/accounts contact — both real
+  contacts on the reservation (migration 057, so coordinators build booking history for the
+  AI segmentation), picked in the reservation drawer; **invoices now bill to the billing
+  contact when one is assigned** (email + printable document coalesce to it, guest fallback)
 - 🆕 AI target marketing — segment premium customers, auto-generate group campaigns (LLM)
 - 🔒 OTA guest details — Fahad decides: manual Extranet copy (no build) vs full Reservations API (separate approval)
 - ✅ Booking.com via iCal — already solved
@@ -132,8 +135,8 @@ Unblocks the operations + AI features that follow.
   scoped contractor login, L&P-vs-landlord ownership mapping
 - Housekeeping (A3): three-stage flow, compliance checklists + turnaround, tablet board
 
-### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2)
-- Reservations/CRM new fields (A4)
+### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2) — IN PROGRESS
+- ✅ Reservations/CRM new fields (A4): coordinator + billing contact
 - Dashboards: Financial + Operational Cockpit (A5)
 - AI target marketing + AI Strategy Engine (A4/A5)
 

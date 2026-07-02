@@ -115,6 +115,10 @@ export interface ReservationsTable {
   // external_uid is the Booking.com VEVENT UID kept for OTA-imported BLOCKED rows.
   source: Generated<'DIRECT' | 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'BOOKING_COM' | 'CORPORATE' | 'OTHER'>;
   external_uid: string | null;
+  // CRM fields (migration 057): who arranged the booking and who the invoice
+  // goes to — both real contacts, both optional (individual stays have neither).
+  booking_coordinator_id: string | null;
+  billing_contact_id: string | null;
   // Build 2b — per-booking discount + manager sign-off.
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;

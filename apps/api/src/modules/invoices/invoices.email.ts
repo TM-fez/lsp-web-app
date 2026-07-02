@@ -12,6 +12,8 @@ export interface InvoiceEmailData {
   total_amount: number;
   created_at: Date;
   guest_name: string | null;
+  // The bill-to (A4): the billing/accounts contact when assigned, else the guest.
+  bill_to_name: string | null;
   check_in_date: string | null;
   check_out_date: string | null;
   unit_code: string | null;
@@ -45,7 +47,9 @@ export function renderInvoiceEmail(d: InvoiceEmailData): { subject: string; html
   const stayLine = d.unit_code
     ? `${d.unit_name ?? d.unit_code}${d.check_in_date ? ` &nbsp;·&nbsp; ${fmtDate(d.check_in_date)} → ${fmtDate(d.check_out_date)}` : ''}`
     : '';
-  const greetName = d.guest_name ? d.guest_name.split(' ')[0] : 'there';
+  // Greet whoever actually receives the email — the bill-to, falling back to the guest.
+  const recipientName = d.bill_to_name ?? d.guest_name;
+  const greetName = recipientName ? recipientName.split(' ')[0] : 'there';
   const paid = d.status === 'PAID';
 
   const html = `<div style="background:#f2ede3;padding:24px 0;font-family:Arial,Helvetica,sans-serif;color:#1b1815;">

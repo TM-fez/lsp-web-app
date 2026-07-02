@@ -55,9 +55,10 @@ export function InvoiceDocumentPage() {
       <div className="no-print mx-auto mb-4 flex max-w-[760px] items-center justify-between px-4">
         <Button variant="outline" onClick={() => navigate('/invoices')}><ArrowLeft className="mr-1.5 h-4 w-4" />Back</Button>
         <div className="flex gap-2">
-          {hasPerm('invoices.update') && d.guest_email && (
+          {hasPerm('invoices.update') && d.bill_to_email && (
             <Button variant="outline" disabled={send.isPending} onClick={() => send.mutate(d.id)}>
-              <Mail className="mr-1.5 h-4 w-4" />{send.isPending ? 'Sending…' : 'Email to guest'}
+              <Mail className="mr-1.5 h-4 w-4" />
+              {send.isPending ? 'Sending…' : d.bill_to_email === d.guest_email ? 'Email to guest' : 'Email to billing contact'}
             </Button>
           )}
           <Button variant="primary" onClick={() => window.print()}><Printer className="mr-1.5 h-4 w-4" />Print / Save as PDF</Button>
@@ -82,9 +83,11 @@ export function InvoiceDocumentPage() {
         <section className="grid grid-cols-2 gap-6 py-6">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Billed to</div>
-            <div className="mt-1.5 text-sm text-slate-900">{d.guest_name ?? 'Guest'}</div>
-            {d.guest_email && <div className="text-sm text-slate-500">{d.guest_email}</div>}
-            {d.guest_phone && <div className="text-sm text-slate-500">{d.guest_phone}</div>}
+            <div className="mt-1.5 text-sm text-slate-900">{d.bill_to_name ?? d.guest_name ?? 'Guest'}</div>
+            {d.bill_to_email && <div className="text-sm text-slate-500">{d.bill_to_email}</div>}
+            {d.bill_to_name && d.guest_name && d.bill_to_name !== d.guest_name && (
+              <div className="mt-1 text-xs text-slate-400">Guest: {d.guest_name}</div>
+            )}
           </div>
           {(d.unit_code || d.check_in_date) && (
             <div>
