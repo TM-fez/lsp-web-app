@@ -129,6 +129,7 @@ describe('Operations Cockpit — end to end', () => {
     const hold = await request(app)
       .post('/api/v1/holds')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ quote_id: quoteId, room_id: roomId, reservation_id: reservationId });
     expect(hold.status).toBe(201);
     holdId = hold.body.id;
@@ -137,6 +138,7 @@ describe('Operations Cockpit — end to end', () => {
     const intent = await request(app)
       .post('/api/v1/payments')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ hold_id: holdId, method: 'CASH', purpose: 'DEPOSIT' });
     expect(intent.status).toBe(201);
     intentId = intent.body.id;
@@ -146,11 +148,12 @@ describe('Operations Cockpit — end to end', () => {
     const attempt = await request(app)
       .post(`/api/v1/payments/${intentId}/attempt`)
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ outcome: 'SUCCESS' });
     expect(attempt.status).toBe(200);
     expect(attempt.body.status).toBe('PAID');
 
-    const hold = await request(app).get(`/api/v1/holds/${holdId}`).set('Authorization', bearer());
+    const hold = await request(app).get(`/api/v1/holds/${holdId}`).set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(hold.body.status).toBe('CONFIRMED');
 
     const resv = await request(app)
@@ -164,6 +167,7 @@ describe('Operations Cockpit — end to end', () => {
     const res = await request(app)
       .post('/api/v1/checkins')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ reservation_id: reservationId, guest_count: 1 });
     expect(res.status).toBe(201);
     occupancyId = res.body.id;
@@ -176,6 +180,7 @@ describe('Operations Cockpit — end to end', () => {
     const res = await request(app)
       .post(`/api/v1/checkins/${occupancyId}/checkout`)
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({});
     expect(res.status).toBe(200);
 
@@ -211,14 +216,17 @@ describe('Operations Cockpit — end to end', () => {
     const hold2 = await request(app)
       .post('/api/v1/holds')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ quote_id: quote2.body.id, room_id: roomId, reservation_id: reservation2Id });
     const intent2 = await request(app)
       .post('/api/v1/payments')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ hold_id: hold2.body.id, method: 'CASH', purpose: 'DEPOSIT' });
     const paid2 = await request(app)
       .post(`/api/v1/payments/${intent2.body.id}/attempt`)
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ outcome: 'SUCCESS' });
     expect(paid2.body.status).toBe('PAID');
 
@@ -231,6 +239,7 @@ describe('Operations Cockpit — end to end', () => {
     const blocked = await request(app)
       .post('/api/v1/checkins')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ reservation_id: reservation2Id, guest_count: 1 });
     expect(blocked.status).toBe(409);
     expect(blocked.body.message ?? blocked.body.error).toMatch(/ready/i);
@@ -256,6 +265,7 @@ describe('Operations Cockpit — end to end', () => {
     const checkin = await request(app)
       .post('/api/v1/checkins')
       .set('Authorization', bearer())
+      .set('X-Property-Id', propertyId)
       .send({ reservation_id: reservation2Id, guest_count: 1 });
     expect(checkin.status).toBe(201);
   });
