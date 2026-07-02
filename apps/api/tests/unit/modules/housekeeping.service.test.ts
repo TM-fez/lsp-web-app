@@ -15,32 +15,32 @@ function setup(liveTask: any) {
 const meta = { userId: 'u1', requestId: 'r1' };
 
 describe('HousekeepingService turn workflow', () => {
-  it('start: OPEN -> CLEANING, marking the unit CLEANING', async () => {
+  it('start: OPEN -> CLEANING, marking the unit CLEANING and stamping the cleaner', async () => {
     const { svc, repo } = setup({ id: 't1', status: 'OPEN', assigned_to: null, notes: null });
     await svc.start('rm1', { assigned_to: 'hk1' } as any, meta);
     expect(repo.transition).toHaveBeenCalledWith(
       't1', 'rm1', 'OPEN',
-      expect.objectContaining({ status: 'CLEANING', assigned_to: 'hk1' }),
+      expect.objectContaining({ status: 'CLEANING', assigned_to: 'hk1', started_by: 'u1' }),
       'CLEANING', meta
     );
   });
 
-  it('inspect: CLEANING -> INSPECTED', async () => {
+  it('inspect: CLEANING -> INSPECTED, stamping the validating supervisor', async () => {
     const { svc, repo } = setup({ id: 't1', status: 'CLEANING', assigned_to: 'hk1', notes: null });
     await svc.inspect('rm1', {} as any, meta);
     expect(repo.transition).toHaveBeenCalledWith(
       't1', 'rm1', 'CLEANING',
-      expect.objectContaining({ status: 'INSPECTED' }),
+      expect.objectContaining({ status: 'INSPECTED', inspected_by: 'u1' }),
       'INSPECTED', meta
     );
   });
 
-  it('ready: INSPECTED -> DONE, marking the unit READY', async () => {
+  it('ready: INSPECTED -> DONE, marking the unit READY and stamping the sign-off', async () => {
     const { svc, repo } = setup({ id: 't1', status: 'INSPECTED', assigned_to: 'hk1', notes: null });
     await svc.ready('rm1', {} as any, meta);
     expect(repo.transition).toHaveBeenCalledWith(
       't1', 'rm1', 'INSPECTED',
-      expect.objectContaining({ status: 'DONE' }),
+      expect.objectContaining({ status: 'DONE', signed_off_by: 'u1' }),
       'READY', meta
     );
   });

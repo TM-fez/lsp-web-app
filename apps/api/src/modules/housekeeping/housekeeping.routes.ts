@@ -43,12 +43,13 @@ export function createHousekeepingRouter(): Router {
   router.get('/', authorize('housekeeping.read'), requireActiveProperty, controller.list);
   router.get('/:id', authorize('housekeeping.read'), requireActiveProperty, taskInActiveProperty, controller.get);
 
-  // Unit-keyed turn workflow: DIRTY -> CLEANING -> INSPECTED -> READY. Each is scoped
-  // to the active property. Inspection is the approval step: cleaners (base housekeeping
-  // role) start cleans and mark ready; only leads/supervisors carry housekeeping.inspect.
+  // Unit-keyed three-stage turn workflow (Phase 3), each scoped to the active property:
+  //   DIRTY -> CLEANING     Routine Checks — cleaners (housekeeping.update)
+  //   CLEANING -> INSPECTED Supervisor validation — leads/supervisors (housekeeping.inspect)
+  //   INSPECTED -> READY    Property Manager sign-off — managers (housekeeping.signoff)
   router.post('/rooms/:roomId/start', authorize('housekeeping.update'), requireActiveProperty, roomInActiveProperty, controller.start);
   router.post('/rooms/:roomId/inspect', authorize('housekeeping.update', 'housekeeping.inspect'), requireActiveProperty, roomInActiveProperty, controller.inspect);
-  router.post('/rooms/:roomId/ready', authorize('housekeeping.update'), requireActiveProperty, roomInActiveProperty, controller.ready);
+  router.post('/rooms/:roomId/ready', authorize('housekeeping.signoff'), requireActiveProperty, roomInActiveProperty, controller.ready);
 
   return router;
 }

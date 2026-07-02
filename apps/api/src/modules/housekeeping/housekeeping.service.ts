@@ -36,40 +36,47 @@ export class HousekeepingService {
     return task;
   }
 
-  // DIRTY (task OPEN) -> CLEANING
+  // Stage 1 — Routine Checks. DIRTY (task OPEN) -> CLEANING.
   async start(roomId: string, dto: StartCleaningDTO, meta: HousekeepingRequestMeta): Promise<HousekeepingTaskRow> {
     const task = await this.liveTask(roomId, 'OPEN');
     return this.repo.transition(
       task.id,
       roomId,
       'OPEN',
-      { status: 'CLEANING', assigned_to: dto.assigned_to ?? task.assigned_to, started_at: new Date(), notes: dto.notes ?? task.notes },
+      {
+        status: 'CLEANING',
+        assigned_to: dto.assigned_to ?? task.assigned_to,
+        started_at: new Date(),
+        started_by: meta.userId,
+        notes: dto.notes ?? task.notes,
+      },
       'CLEANING',
       meta
     );
   }
 
-  // CLEANING (task CLEANING) -> INSPECTED
+  // Stage 2 — Supervisor validation. CLEANING (task CLEANING) -> INSPECTED.
   async inspect(roomId: string, dto: InspectDTO, meta: HousekeepingRequestMeta): Promise<HousekeepingTaskRow> {
     const task = await this.liveTask(roomId, 'CLEANING');
     return this.repo.transition(
       task.id,
       roomId,
       'CLEANING',
-      { status: 'INSPECTED', inspected_at: new Date(), notes: dto.notes ?? task.notes },
+      { status: 'INSPECTED', inspected_at: new Date(), inspected_by: meta.userId, notes: dto.notes ?? task.notes },
       'INSPECTED',
       meta
     );
   }
 
-  // INSPECTED (task INSPECTED) -> READY (task DONE); unit is assignable again.
+  // Stage 3 — Property Manager sign-off. INSPECTED (task INSPECTED) -> READY
+  // (task DONE); the unit is assignable again.
   async ready(roomId: string, dto: ReadyDTO, meta: HousekeepingRequestMeta): Promise<HousekeepingTaskRow> {
     const task = await this.liveTask(roomId, 'INSPECTED');
     return this.repo.transition(
       task.id,
       roomId,
       'INSPECTED',
-      { status: 'DONE', completed_at: new Date(), notes: dto.notes ?? task.notes },
+      { status: 'DONE', completed_at: new Date(), signed_off_by: meta.userId, notes: dto.notes ?? task.notes },
       'READY',
       meta
     );

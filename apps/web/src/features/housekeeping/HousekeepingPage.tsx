@@ -10,14 +10,13 @@ import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
 import { housekeepingTone, roomStatusTone } from '@/features/cockpit/status';
 import { useTurn } from './hooks';
-import { nextAction, actionLabel, hkLabel } from './util';
+import { nextAction, actionLabel, canDoAction, hkLabel } from './util';
 import type { HousekeepingStatus, Room } from '@/types';
 
 const roomLabel = (s: string) => s.replace(/_/g, ' ').toLowerCase();
 
 export function HousekeepingPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
-  const canUpdate = hasPerm('housekeeping.update');
 
   const { data: rooms, isLoading, isError, refetch } = useRooms();
   const turn = useTurn();
@@ -159,7 +158,7 @@ export function HousekeepingPage() {
                         {pending && <Spinner className="h-4 w-4 text-slate-400" />}
                         {action == null ? (
                           <span className="text-xs text-emerald-600">Ready ✨</span>
-                        ) : canUpdate ? (
+                        ) : canDoAction(action, hasPerm) ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -169,7 +168,9 @@ export function HousekeepingPage() {
                             {actionLabel[action]}
                           </Button>
                         ) : (
-                          <span className="text-xs text-slate-400">View only</span>
+                          <span className="text-xs text-slate-400">
+                            {action === 'ready' ? 'Awaiting sign-off' : action === 'inspect' ? 'Awaiting inspection' : 'View only'}
+                          </span>
                         )}
                       </div>
                     </td>
