@@ -9,6 +9,7 @@ import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { HousekeepingDashboardPage } from '@/features/housekeeping/HousekeepingDashboardPage';
 import { HousekeepingPage } from '@/features/housekeeping/HousekeepingPage';
+import { HousekeepingBoardPage } from '@/features/housekeeping/HousekeepingBoardPage';
 import { MaintenanceDashboardPage } from '@/features/maintenance/MaintenanceDashboardPage';
 import { MaintenancePage } from '@/features/maintenance/MaintenancePage';
 import { RoomsPage } from '@/features/rooms/RoomsPage';
@@ -46,6 +47,9 @@ export const router = createBrowserRouter([
         // Requires an active property to be chosen before any scoped screen loads.
         element: <PropertyGate />,
         children: [
+          // Chrome-less full-screen tablet board (Phase 3) — no sidebar/topbar,
+          // meant to be pinned on a housekeeping tablet.
+          { path: '/housekeeping/board', element: <HousekeepingBoardPage /> },
           {
             element: <AppShell />,
             children: [

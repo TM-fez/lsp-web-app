@@ -83,9 +83,14 @@ export function HousekeepingDashboardPage() {
             </p>
           )}
         </div>
-        <Link to="/housekeeping/all" className={buttonVariants({ variant: 'outline' })}>
-          View full queue
-        </Link>
+        <div className="flex gap-2">
+          <Link to="/housekeeping/board" className={buttonVariants({ variant: 'outline' })}>
+            Tablet board
+          </Link>
+          <Link to="/housekeeping/all" className={buttonVariants({ variant: 'outline' })}>
+            View full queue
+          </Link>
+        </div>
       </div>
 
       {isError ? (
