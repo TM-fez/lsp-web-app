@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/store/toast';
 import { useCreateRoom, useUpdateRoom, useDeleteRoom, useRoom, useSetChannelConfig, useRotateIcalToken } from './hooks';
 import { useProperties } from '@/features/properties/hooks';
-import type { Room, RoomCreateStatus, UnitType } from '@/types';
+import type { Room, RoomCreateStatus, RoomOwnership, UnitType } from '@/types';
 
 const UNIT_TYPES: UnitType[] = ['STANDARD', 'DELUXE', 'SUITE', 'CONFERENCE', 'CUSTOM'];
 const CREATE_STATUSES: RoomCreateStatus[] = ['AVAILABLE', 'MAINTENANCE', 'OUT_OF_SERVICE'];
@@ -35,6 +35,9 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
   const [notes, setNotes] = useState('');
   const [buildingId, setBuildingId] = useState('');
   const [floor, setFloor] = useState('');
+  const [ownership, setOwnership] = useState<RoomOwnership>('LIFESTYLE');
+  const [landlordName, setLandlordName] = useState('');
+  const [landlordPhone, setLandlordPhone] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data: properties } = useProperties();
@@ -49,6 +52,9 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
     setNotes(room?.notes ?? '');
     setBuildingId(room?.building_id ?? '');
     setFloor(room?.floor != null ? String(room.floor) : '');
+    setOwnership(room?.ownership ?? 'LIFESTYLE');
+    setLandlordName(room?.landlord_name ?? '');
+    setLandlordPhone(room?.landlord_phone ?? '');
     setConfirmDelete(false);
   }, [open, room]);
 
@@ -60,11 +66,16 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
       building_id: buildingId || null,
       floor: floor.trim() === '' ? null : Number(floor),
     };
+    const owner = {
+      ownership,
+      landlord_name: ownership === 'LANDLORD' ? landlordName.trim() || null : null,
+      landlord_phone: ownership === 'LANDLORD' ? landlordPhone.trim() || null : null,
+    };
     try {
       if (room) {
         await update.mutateAsync({
           id: room.id,
-          input: { name: name.trim(), code: code.trim(), type, capacity, notes: notes.trim() || null, ...placement },
+          input: { name: name.trim(), code: code.trim(), type, capacity, notes: notes.trim() || null, ...placement, ...owner },
         });
       } else {
         await create.mutateAsync({
@@ -75,6 +86,7 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
           capacity,
           notes: notes.trim() || null,
           ...placement,
+          ...owner,
         });
       }
       onOpenChange(false);
@@ -186,6 +198,40 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
               />
             </div>
           </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="room-owner">Ownership</Label>
+            <Select id="room-owner" value={ownership} onChange={(e) => setOwnership(e.target.value as RoomOwnership)}>
+              <option value="LIFESTYLE">Lifestyle-owned</option>
+              <option value="LANDLORD">Third-party landlord</option>
+            </Select>
+            <span className="text-xs text-slate-500">
+              Repair costs on this unit are attributed to its owner in Expenses.
+            </span>
+          </div>
+
+          {ownership === 'LANDLORD' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="room-landlord">Landlord name</Label>
+                <Input
+                  id="room-landlord"
+                  placeholder="e.g. Kagiso Properties"
+                  value={landlordName}
+                  onChange={(e) => setLandlordName(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="room-landlord-phone">Landlord phone</Label>
+                <Input
+                  id="room-landlord-phone"
+                  placeholder="+267 …"
+                  value={landlordPhone}
+                  onChange={(e) => setLandlordPhone(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <Label htmlFor="room-notes">Notes (optional)</Label>

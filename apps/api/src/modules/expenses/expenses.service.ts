@@ -21,6 +21,8 @@ export class ExpensesService {
       contractor_name: r.contractor_name,
       cost_amount: r.cost_amount as number,
       status: statusOf(r),
+      room_ownership: r.room_ownership,
+      landlord_name: r.landlord_name,
       cost_approved_by_name: r.cost_approved_by_name,
       cost_approved_at: r.cost_approved_at,
       cost_reconciled_by_name: r.cost_reconciled_by_name,

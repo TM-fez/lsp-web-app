@@ -147,6 +147,12 @@ export interface RoomsTable {
   // Multi-property (migration 040): a unit belongs to a building; floor is an optional label.
   building_id: string | null;
   floor: number | null;
+  // Ownership (migration 054): whose unit this is — Lifestyle's own or a third-party
+  // landlord's — so repair costs map to the right owner. Landlord contact is free
+  // text, mirroring contractor_name/phone on work orders.
+  ownership: Generated<'LIFESTYLE' | 'LANDLORD'>;
+  landlord_name: string | null;
+  landlord_phone: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
