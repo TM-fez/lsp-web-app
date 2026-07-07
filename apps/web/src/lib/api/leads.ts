@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Lead, LeadStatus, LeadSource, Paginated } from '@/types';
+import type { Lead, LeadStatus, LeadSource, Paginated, Reservation } from '@/types';
 
 export interface LeadListParams {
   search?: string;
@@ -41,4 +41,19 @@ export async function updateLead(id: string, input: UpdateLeadInput): Promise<Le
 
 export async function deleteLead(id: string): Promise<void> {
   await api.delete(`/leads/${id}`);
+}
+
+// Convert an enquiry into a (PENDING) booking. The guest is the lead's linked
+// contact unless contact_id is provided here.
+export interface ConvertLeadInput {
+  contact_id?: string;
+  room_id: string;
+  check_in_date: string; // YYYY-MM-DD
+  check_out_date: string;
+  notes?: string | null;
+}
+
+export async function convertLead(id: string, input: ConvertLeadInput): Promise<{ reservation: Reservation; lead: Lead }> {
+  const { data } = await api.post<{ reservation: Reservation; lead: Lead }>(`/leads/${id}/convert`, input);
+  return data;
 }

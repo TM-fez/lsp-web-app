@@ -15,7 +15,10 @@ describe('LeadsService', () => {
       softDelete: vi.fn(),
     } as unknown as vi.Mocked<LeadsRepository>;
 
-    service = new LeadsService(repository);
+    // convertLead is the only method that touches reservations; a stub keeps these
+    // CRUD tests independent of it.
+    const reservations = { createReservation: vi.fn() } as unknown as import('../../../../src/modules/reservations/reservations.service').ReservationsService;
+    service = new LeadsService(repository, reservations);
   });
 
   describe('getLeadById', () => {

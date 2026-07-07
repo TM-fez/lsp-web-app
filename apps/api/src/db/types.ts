@@ -93,6 +93,8 @@ export interface LeadsTable {
   contact_id: string | null;
   source: string | null;
   phone: string | null;
+  // The booking this enquiry became (migration 060), set on convert-to-booking.
+  converted_reservation_id: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
