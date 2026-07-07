@@ -48,6 +48,24 @@ export interface PublicRequestMeta {
   requestId?: string;
 }
 
+// ── Public enquiry capture (Phase 5 CRM) ─────────────────────────────────────
+// A public "enquire / contact us" form that auto-files a lead (and a CRM contact
+// when an email is given), so a website/WhatsApp enquiry never slips through.
+export const PublicEnquirySourceEnum = z.enum(['WEBSITE', 'WHATSAPP', 'REFERRAL', 'OTHER']);
+
+export const CreateEnquirySchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(200).optional(),
+  phone: z.string().trim().min(3).max(40).optional(),
+  message: z.string().trim().min(1).max(500),
+  source: PublicEnquirySourceEnum.default('WEBSITE'),
+});
+export type CreateEnquiryDTO = z.infer<typeof CreateEnquirySchema>;
+
+export interface EnquiryConfirmation {
+  reference: string; // a short code the guest can quote when we follow up
+}
+
 // ── Guest self check-in (Phase 5 / A6) ───────────────────────────────────────
 // Keyed by the per-unit QR token. The GET is a read of stay context (no PII of the
 // existing guest); the POST captures the guest's own details into the CRM contact.

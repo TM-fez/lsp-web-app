@@ -16,12 +16,14 @@ import { RoomsRepository } from '../../../src/modules/rooms/rooms.repository.js'
 import { PricingService } from '../../../src/modules/pricing/pricing.service.js';
 import { PricingRepository } from '../../../src/modules/pricing/pricing.repository.js';
 import { ContactsRepository } from '../../../src/modules/crm/contacts/contacts.repository.js';
+import { LeadsRepository } from '../../../src/modules/crm/leads/leads.repository.js';
 
 const rooms = new RoomsRepository(db);
 const service = new PublicService(
   new PublicRepository(db),
   new ReservationsService(new ReservationsRepository(db), rooms, new PricingService(new PricingRepository(db))),
   new ContactsRepository(db),
+  new LeadsRepository(db),
 );
 
 const day0 = new Date();

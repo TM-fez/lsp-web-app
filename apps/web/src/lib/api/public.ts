@@ -99,3 +99,19 @@ export async function submitCheckin(input: SelfCheckinInput): Promise<{ property
   const { data } = await api.post<{ property_name: string; unit_name: string }>('/public/checkin', input);
   return data;
 }
+
+// ── Public enquiry capture (Phase 5 CRM) ─────────────────────────────────────
+export type EnquirySource = 'WEBSITE' | 'WHATSAPP' | 'REFERRAL' | 'OTHER';
+export interface EnquiryInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  message: string;
+  source?: EnquirySource;
+}
+
+/** File a public enquiry — becomes a NEW lead (and a CRM contact when emailed). */
+export async function submitEnquiry(input: EnquiryInput): Promise<{ reference: string }> {
+  const { data } = await api.post<{ reference: string }>('/public/enquiries', input);
+  return data;
+}

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { PublicService } from './public.service.js';
-import { CreateBookingSchema, LookupBookingSchema, GuestTokenSchema, SelfCheckinSchema } from './public.types.js';
+import { CreateBookingSchema, LookupBookingSchema, GuestTokenSchema, SelfCheckinSchema, CreateEnquirySchema } from './public.types.js';
 
 export class PublicController {
   constructor(private readonly service: PublicService) {}
@@ -47,6 +47,17 @@ export class PublicController {
     try {
       const dto = SelfCheckinSchema.parse(req.body);
       res.json(await this.service.submitSelfCheckin(dto, { ip: req.ip, requestId: (req as any).id }));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // POST /public/enquiries — file a lead from a public enquiry form.
+  createEnquiry = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const dto = CreateEnquirySchema.parse(req.body);
+      const result = await this.service.createEnquiry(dto, { ip: req.ip, requestId: (req as any).id });
+      res.status(201).json(result);
     } catch (err) {
       next(err);
     }

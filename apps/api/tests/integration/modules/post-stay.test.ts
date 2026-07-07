@@ -8,12 +8,14 @@
  * assertions are scoped to the self-created reservations by id.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { sql } from 'kysely';
 import { db } from '../../../src/config/db.js';
 import { sendPostStayFollowups, type PostStayEmailPort } from '../../../src/modules/notifications/reminders.js';
 
-const day0 = new Date();
-day0.setUTCHours(0, 0, 0, 0);
-const checkoutDaysAgo = (n: number) => new Date(day0.getTime() - n * 86_400_000);
+// Dates are relative to the DB's current_date (Africa/Gaborone) — the same reference
+// the sweep uses — so the window boundaries don't drift across the UTC/Gaborone
+// midnight gap the way JS UTC dates would.
+const daysAgoDate = (n: number) => sql<Date>`current_date - ${sql.lit(n)}`;
 
 let userId: string;
 let propId: string;
@@ -51,7 +53,7 @@ beforeAll(async () => {
     const r = await db.insertInto('reservations')
       .values({
         contact_id: contactId, room_id: roomId,
-        check_in_date: checkoutDaysAgo(daysAgo + 2), check_out_date: checkoutDaysAgo(daysAgo),
+        check_in_date: daysAgoDate(daysAgo + 2), check_out_date: daysAgoDate(daysAgo),
         status: 'CHECKED_OUT', created_by: userId, updated_by: userId,
       })
       .returning('id').executeTakeFirstOrThrow();

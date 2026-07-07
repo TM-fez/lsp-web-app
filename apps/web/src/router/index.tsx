@@ -31,6 +31,7 @@ import { FinanceCockpitPage } from '@/features/finance/FinanceCockpitPage';
 import { StayPage } from '@/features/stay/StayPage';
 import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
+import { EnquirePage } from '@/features/stay/EnquirePage';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
   { path: '/stay', element: <StayPage /> },
   { path: '/stay/manage', element: <ManageBookingPage /> },
   { path: '/stay/checkin', element: <GuestCheckinPage /> },
+  { path: '/enquire', element: <EnquirePage /> },
   {
     element: <ProtectedRoute />,
     children: [

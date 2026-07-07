@@ -106,8 +106,11 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   (migration 060 `leads.converted_reservation_id`) creates a PENDING booking for the
   enquiry's guest (source mapped from the lead's channel) and marks the lead CONVERTED
   + linked; "Convert to booking" dialog in the lead drawer (guest + unit + dates).
-  Remaining: WhatsApp → Leads auto-capture; retention/reviews (post-stay P5.2 covers the
-  first touch); lease-renewal workflow
+  ✅ **public enquiry → auto-lead capture** — `POST /public/enquiries` (no-auth,
+  rate-limited) files a NEW lead from a website/WhatsApp enquiry and find-or-creates a
+  CRM contact when an email is given; public `/enquire` form (`?src=whatsapp` tags the
+  channel). Remaining: retention/reviews (post-stay P5.2 covers the first touch);
+  lease-renewal workflow
 - 🧹 Wipe leftover demo contacts / reservations / leads before pilot
 - 🧹 Deactivate the now-empty "Main" building under CBD
 - 🧹 Rewrite `DEPLOY.md` (predates the Vercel-web + Render-API split)
