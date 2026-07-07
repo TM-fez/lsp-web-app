@@ -3,6 +3,7 @@ import { ReportsRepository, type RepoWindow } from './reports.repository.js';
 import type {
   ReportWindow, ReportsResponse, MonthlyPoint, PropertyPnl,
   OperationsWindow, OperationsResponse, OpsKpis, OpsDeltas, OpsMonthlyPoint, OpsPropertyRow,
+  OwnerStatementWindow, OwnersResponse, OwnerStatement, OwnerUnitLine,
 } from './reports.types.js';
 
 const DAY = 86_400_000;
@@ -10,6 +11,7 @@ const num = (v: string | number | null | undefined) => Number(v ?? 0);
 const round1 = (x: number) => Math.round(x * 10) / 10;
 const monthKey = (d: Date) => d.toISOString().slice(0, 7);
 const COMPANY_WIDE = 'Company-wide';
+const UNNAMED_LANDLORD = 'Unnamed landlord';
 
 function parseISO(s: string): Date {
   return new Date(`${s}T00:00:00Z`);
@@ -285,6 +287,86 @@ export class ReportsService {
       deltas,
       monthly,
       by_property,
+    };
+  }
+
+  /**
+   * Owner statements — a per-landlord payout for the window. Walks the same
+   * invoice→reservation→room and work-order→room joins as the P&L, but scoped to
+   * LANDLORD-owned units and keyed on the unit, then rolls units up by their
+   * free-text landlord_name. Net is revenue less the repair cost charged to that
+   * owner — i.e. what LSP owes the landlord.
+   */
+  async getOwnerStatements(req: OwnerStatementWindow): Promise<OwnersResponse> {
+    const w = normalize(req);
+
+    const [units, rev, occ, maint] = await Promise.all([
+      this.repo.ownedUnits(w.propertyId, w.accessiblePropertyIds),
+      this.repo.revenueByOwnedRoom(w),
+      this.repo.occupancyByOwnedRoom(w),
+      this.repo.maintenanceByOwnedRoom(w),
+    ]);
+
+    const days = daysBetween(w.from, w.toExcl);
+    const revByRoom = new Map(rev.map((r) => [r.room_id, num(r.amount)]));
+    const occByRoom = new Map(occ.map((r) => [r.room_id, num(r.nights)]));
+    const maintByRoom = new Map(maint.map((r) => [r.room_id, num(r.amount)]));
+
+    // Group owned units by landlord (unnamed units share one fallback bucket).
+    const groups = new Map<string, { phone: string | null; units: OwnerUnitLine[] }>();
+    for (const u of units) {
+      const key = u.landlord_name?.trim() || UNNAMED_LANDLORD;
+      const revenue = revByRoom.get(u.room_id) ?? 0;
+      const nights = occByRoom.get(u.room_id) ?? 0;
+      const maintenance_cost = maintByRoom.get(u.room_id) ?? 0;
+      const line: OwnerUnitLine = {
+        room_id: u.room_id,
+        room_code: u.room_code,
+        room_name: u.room_name,
+        property_id: u.property_id,
+        property_name: u.property_name ?? COMPANY_WIDE,
+        revenue,
+        nights,
+        occupancy_pct: days > 0 ? round1((nights / days) * 100) : 0,
+        maintenance_cost,
+        net: revenue - maintenance_cost,
+      };
+      const g = groups.get(key) ?? { phone: null, units: [] };
+      if (!g.phone && u.landlord_phone) g.phone = u.landlord_phone;
+      g.units.push(line);
+      groups.set(key, g);
+    }
+
+    const owners: OwnerStatement[] = [...groups.entries()].map(([landlord_name, g]) => {
+      const revenue = g.units.reduce((s, u) => s + u.revenue, 0);
+      const nights = g.units.reduce((s, u) => s + u.nights, 0);
+      const maintenance_cost = g.units.reduce((s, u) => s + u.maintenance_cost, 0);
+      const room_nights_available = g.units.length * days;
+      return {
+        landlord_name,
+        landlord_phone: g.phone,
+        unit_count: g.units.length,
+        revenue,
+        nights,
+        room_nights_available,
+        occupancy_pct: room_nights_available > 0 ? round1((nights / room_nights_available) * 100) : 0,
+        maintenance_cost,
+        net: revenue - maintenance_cost,
+        units: g.units,
+      };
+    }).sort((a, b) => b.net - a.net);
+
+    return {
+      from: w.from,
+      to: w.to,
+      owners,
+      totals: {
+        landlords: owners.length,
+        units: owners.reduce((s, o) => s + o.unit_count, 0),
+        revenue: owners.reduce((s, o) => s + o.revenue, 0),
+        maintenance_cost: owners.reduce((s, o) => s + o.maintenance_cost, 0),
+        net: owners.reduce((s, o) => s + o.net, 0),
+      },
     };
   }
 }

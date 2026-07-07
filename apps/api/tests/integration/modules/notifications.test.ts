@@ -6,6 +6,7 @@
  * index (idempotent reminder sweep), per-recipient read scoping, and the
  * property/admin recipient resolution join.
  */
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../src/config/db.js';
 import { NotificationsRepository } from '../../../src/modules/notifications/notifications.repository.js';
@@ -57,6 +58,17 @@ describe('NotificationsRepository (live DB)', () => {
   it('insertMany writes one row per recipient', async () => {
     const n = await repo.insertMany([row(userA), row(userB)]);
     expect(n).toBe(2);
+  });
+
+  it('insertMany drops a recipient that vanished mid-flight, without failing the batch', async () => {
+    // A recipient the fan-out resolved but who no longer exists at write time
+    // (deleted between resolution and insert). Left unguarded this is a user_id
+    // FK violation that aborts the whole batch — and, in the sweep, the whole run.
+    const ghost = randomUUID();
+    const n = await repo.insertMany([row(userA), row(ghost), row(userB)]);
+    expect(n).toBe(2); // the two live recipients still get their alert
+    const orphaned = await db.selectFrom('notifications').select('id').where('user_id', '=', ghost).execute();
+    expect(orphaned).toHaveLength(0); // the departed recipient's row was skipped, not inserted
   });
 
   it('dedup_key collides on the partial-unique index — the second run is a no-op', async () => {

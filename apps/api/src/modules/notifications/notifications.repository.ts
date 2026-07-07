@@ -14,19 +14,43 @@ export class NotificationsRepository {
    * makes the reminder sweep safe to run on a timer: the second run's rows collide
    * on the partial-unique index and are dropped. Returns how many were actually
    * inserted. Ad-hoc rows (NULL dedup_key) never collide.
+   *
+   * Recipients are resolved a moment before this write (see the service's
+   * fan-out), so a recipient can be deleted in between — a deactivated user, or a
+   * test tearing down its fixtures. Left alone, one vanished `user_id` fails the
+   * whole batch on the FK, crashing the whole sweep. So we lock the recipients
+   * FOR KEY SHARE (which blocks a concurrent DELETE and, in the same snapshot,
+   * omits anyone already gone) and drop rows for the departed. Survivors still get
+   * their alert; the sweep never throws on a recipient that stepped out.
    */
   async insertMany(rows: NewNotification[]): Promise<number> {
     if (rows.length === 0) return 0;
-    const inserted = await this.db
-      .insertInto('notifications')
-      .values(rows)
-      // The dedup index is PARTIAL (WHERE dedup_key IS NOT NULL), so the conflict
-      // target must repeat that predicate for Postgres to use it as the arbiter.
-      // NULL-key rows don't match the predicate, so they always insert.
-      .onConflict((oc) => oc.column('dedup_key').where('dedup_key', 'is not', null).doNothing())
-      .returning('id')
-      .execute();
-    return inserted.length;
+    return this.db.transaction().execute(async (trx) => {
+      const recipientIds = [...new Set(rows.map((r) => r.user_id))];
+      const alive = new Set(
+        (
+          await trx
+            .selectFrom('users')
+            .select('id')
+            .where('id', 'in', recipientIds)
+            .forKeyShare()
+            .execute()
+        ).map((r) => r.id),
+      );
+      const safe = rows.filter((r) => alive.has(r.user_id));
+      if (safe.length === 0) return 0;
+
+      const inserted = await trx
+        .insertInto('notifications')
+        .values(safe)
+        // The dedup index is PARTIAL (WHERE dedup_key IS NOT NULL), so the conflict
+        // target must repeat that predicate for Postgres to use it as the arbiter.
+        // NULL-key rows don't match the predicate, so they always insert.
+        .onConflict((oc) => oc.column('dedup_key').where('dedup_key', 'is not', null).doNothing())
+        .returning('id')
+        .execute();
+      return inserted.length;
+    });
   }
 
   /**

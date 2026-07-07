@@ -401,6 +401,47 @@ export interface OperationsResponse {
   by_property: OpsPropertyRow[];
 }
 
+// ── Finance → Owner statements — per third-party-landlord payout ──────────────
+// LSP manages units for outside landlords (rooms.ownership='LANDLORD'). For a
+// window this nets recognised revenue (PAID invoices) and occupancy per owned
+// unit against the repair cost charged to that owner. All amounts thebe.
+export interface OwnerUnitLine {
+  room_id: string;
+  room_code: string | null;
+  room_name: string;
+  property_id: string | null;
+  property_name: string;
+  revenue: number;
+  nights: number;
+  occupancy_pct: number;
+  maintenance_cost: number;
+  net: number;
+}
+export interface OwnerStatement {
+  landlord_name: string;
+  landlord_phone: string | null;
+  unit_count: number;
+  revenue: number;
+  nights: number;
+  room_nights_available: number;
+  occupancy_pct: number;
+  maintenance_cost: number;
+  net: number;                   // the payout owed to the landlord
+  units: OwnerUnitLine[];
+}
+export interface OwnersResponse {
+  from: string;
+  to: string;
+  owners: OwnerStatement[];
+  totals: {
+    landlords: number;
+    units: number;
+    revenue: number;
+    maintenance_cost: number;
+    net: number;
+  };
+}
+
 // ── AI marketing + strategy (P4.4) — LLM-backed, dark until keyed ─────────────
 export type SegmentKey = 'vip' | 'frequent' | 'recent' | 'lapsed' | 'prospect';
 export type CampaignChannel = 'email' | 'whatsapp' | 'sms';

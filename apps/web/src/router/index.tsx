@@ -18,6 +18,8 @@ import { PricingPage } from '@/features/pricing/PricingPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import { OwnerStatementsPage } from '@/features/owners/OwnerStatementsPage';
+import { OwnerStatementPrintPage } from '@/features/owners/OwnerStatementPrintPage';
 import { OperationalCockpitPage } from '@/features/operations/OperationalCockpitPage';
 import { MarketingPage } from '@/features/marketing/MarketingPage';
 import { InvoicesPage } from '@/features/invoices/InvoicesPage';
@@ -47,6 +49,7 @@ export const router = createBrowserRouter([
       // Chrome-less, authed — opens clean for printing / save-as-PDF.
       { path: '/invoices/:id/print', element: <InvoiceDocumentPage /> },
       { path: '/reports/print', element: <ReportStatementPage /> },
+      { path: '/owners/print', element: <OwnerStatementPrintPage /> },
       {
         // Requires an active property to be chosen before any scoped screen loads.
         element: <PropertyGate />,
@@ -71,6 +74,7 @@ export const router = createBrowserRouter([
           { path: '/users', element: <UsersPage /> },
           { path: '/expenses', element: <ExpensesPage /> },
           { path: '/reports', element: <ReportsPage /> },
+          { path: '/owners', element: <OwnerStatementsPage /> },
           { path: '/operations', element: <OperationalCockpitPage /> },
           { path: '/marketing', element: <MarketingPage /> },
           { path: '/invoices', element: <InvoicesPage /> },
