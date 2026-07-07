@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceForPath, landingRoute, WORKSPACE_PLACEHOLDER } from './nav';
+import { workspaceForPath, landingRoute } from './nav';
 
 describe('workspaceForPath', () => {
   it('maps built routes to their workspace', () => {
@@ -9,7 +9,7 @@ describe('workspaceForPath', () => {
     expect(workspaceForPath('/pricing')).toBe('ADMIN');
   });
 
-  it('keeps the Finance placeholder in the Finance workspace', () => {
+  it('maps the Finance Cockpit route to the Finance workspace', () => {
     expect(workspaceForPath('/finance')).toBe('FINANCE');
   });
 
@@ -40,10 +40,11 @@ describe('landingRoute', () => {
     expect(landingRoute('ADMIN', all)).toBe('/properties');
   });
 
-  it('lands on Finance’s first built screen (Invoices)', () => {
-    expect(landingRoute('FINANCE', all)).toBe('/invoices');
-    // the Finance placeholder still exists for the no-screens-built fallback path
-    expect(WORKSPACE_PLACEHOLDER.FINANCE).toBe('/finance');
+  it('lands on Finance’s first built screen (Cockpit)', () => {
+    expect(landingRoute('FINANCE', all)).toBe('/finance');
+    // A user without reports.read skips the Cockpit and lands on Invoices instead.
+    const noReports = (p: string) => p !== 'reports.read';
+    expect(landingRoute('FINANCE', noReports)).toBe('/invoices');
   });
 
   it('skips screens the user lacks permission for', () => {
