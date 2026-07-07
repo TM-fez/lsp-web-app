@@ -102,7 +102,12 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 - 🔒🆕 **Phase B — real DPO Pay gateway** (replace simulated confirm; blocked on client sandbox keys). `settlePaid()` is the sole CONFIRM writer; `/stay` bookings have no hold → must generalise to confirm hold-less reservations.
 - 🆕 Wire approved discount into the actual gateway charge (today only reduces displayed amount due)
 - 🆕 `reservations.source = WEBSITE` column + surface origin (today only inferred via system user + note)
-- 🆕 WhatsApp → Leads auto-capture; lead → reservation conversion; retention/reviews; lease-renewal workflow
+- 🟡 CRM automation: ✅ **lead → reservation conversion** — `POST /leads/:id/convert`
+  (migration 060 `leads.converted_reservation_id`) creates a PENDING booking for the
+  enquiry's guest (source mapped from the lead's channel) and marks the lead CONVERTED
+  + linked; "Convert to booking" dialog in the lead drawer (guest + unit + dates).
+  Remaining: WhatsApp → Leads auto-capture; retention/reviews (post-stay P5.2 covers the
+  first touch); lease-renewal workflow
 - 🧹 Wipe leftover demo contacts / reservations / leads before pilot
 - 🧹 Deactivate the now-empty "Main" building under CBD
 - 🧹 Rewrite `DEPLOY.md` (predates the Vercel-web + Render-API split)

@@ -4,9 +4,11 @@ import {
   createLead,
   updateLead,
   deleteLead,
+  convertLead,
   type LeadListParams,
   type CreateLeadInput,
   type UpdateLeadInput,
+  type ConvertLeadInput,
 } from '@/lib/api/leads';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
@@ -58,6 +60,19 @@ export function useDeleteLead() {
     onSuccess: () => {
       toast.success('Enquiry removed');
       invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useConvertLead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ConvertLeadInput }) => convertLead(id, input),
+    onSuccess: () => {
+      toast.success('Enquiry converted to a booking');
+      qc.invalidateQueries({ queryKey: LEADS_KEY });
+      qc.invalidateQueries({ queryKey: ['reservations'] });
     },
     onError: (e) => toast.error(errMessage(e)),
   });

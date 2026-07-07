@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { LeadsService } from './leads.service.js';
 import { LeadStatusEnum, LeadSourceEnum } from './leads.types.js';
-import type { CreateLeadDTO, UpdateLeadDTO } from './leads.types.js';
+import type { CreateLeadDTO, UpdateLeadDTO, ConvertLeadDTO } from './leads.types.js';
 
 export class LeadsController {
   constructor(private readonly service: LeadsService) {}
@@ -72,6 +72,22 @@ export class LeadsController {
       const meta = this.getRequestMeta(req);
       await this.service.deleteLead(req.params.id as string, meta);
       res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // POST /leads/:id/convert — turn the enquiry into a (PENDING) booking.
+  convertLead = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      const result = await this.service.convertLead(
+        req.params.id as string,
+        req.body as ConvertLeadDTO,
+        meta,
+        req.activePropertyId,
+      );
+      res.status(201).json(result);
     } catch (err) {
       next(err);
     }

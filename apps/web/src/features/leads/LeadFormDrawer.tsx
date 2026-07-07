@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { useCreateLead, useUpdateLead, useDeleteLead } from './hooks';
+import { ConvertLeadDialog } from './ConvertLeadDialog';
 import { USER_LEAD_STATUSES, LEAD_SOURCES, statusLabel, sourceLabel } from './util';
 import type { SettableLeadStatus } from '@/lib/api/leads';
 import type { Lead, LeadSource } from '@/types';
@@ -31,6 +32,7 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
   const [phone, setPhone] = useState('');
   const [description, setDescription] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -81,6 +83,7 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
@@ -178,6 +181,20 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
             </Button>
           </div>
 
+          {isEdit && lead && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
+              {lead.status === 'CONVERTED' ? (
+                <p className="text-sm text-emerald-700">✓ Converted to a booking.</p>
+              ) : lead.status === 'LOST' ? (
+                <p className="text-sm text-slate-500">Marked lost — reopen the stage to convert.</p>
+              ) : (
+                <Button variant="outline" onClick={() => setConvertOpen(true)} disabled={busy}>
+                  Convert to booking
+                </Button>
+              )}
+            </div>
+          )}
+
           {isEdit && canDelete && (
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
               <Label className="text-rose-600">Danger zone</Label>
@@ -203,5 +220,14 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    {lead && (
+      <ConvertLeadDialog
+        open={convertOpen}
+        onOpenChange={setConvertOpen}
+        lead={lead}
+        onConverted={() => onOpenChange(false)}
+      />
+    )}
+    </>
   );
 }

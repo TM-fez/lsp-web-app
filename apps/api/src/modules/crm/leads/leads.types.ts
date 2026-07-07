@@ -38,8 +38,25 @@ export const CreateLeadSchema = z.object({
 
 export const UpdateLeadSchema = CreateLeadSchema.partial();
 
+// Convert an enquiry into a booking. The guest is the lead's linked contact unless
+// one is picked here; the reservation is created PENDING (the commercial invariant),
+// and its source is derived from the lead's channel.
+export const ConvertLeadSchema = z
+  .object({
+    contact_id: z.string().uuid().optional(),
+    room_id: z.string().uuid(),
+    check_in_date: z.coerce.date(),
+    check_out_date: z.coerce.date(),
+    notes: z.string().nullable().optional(),
+  })
+  .refine((d) => d.check_in_date < d.check_out_date, {
+    message: 'check_out_date must be after check_in_date',
+    path: ['check_out_date'],
+  });
+
 export type CreateLeadDTO = z.infer<typeof CreateLeadSchema>;
 export type UpdateLeadDTO = z.infer<typeof UpdateLeadSchema>;
+export type ConvertLeadDTO = z.infer<typeof ConvertLeadSchema>;
 
 export interface LeadFilters {
   search?: string;

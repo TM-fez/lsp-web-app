@@ -218,6 +218,8 @@ export interface Lead {
   source: LeadSource | null;
   contact_id: string | null;
   phone: string | null;
+  // The booking this enquiry became, once converted (P5 CRM).
+  converted_reservation_id?: string | null;
   created_at: string;
 }
 
