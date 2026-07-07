@@ -109,8 +109,10 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   ✅ **public enquiry → auto-lead capture** — `POST /public/enquiries` (no-auth,
   rate-limited) files a NEW lead from a website/WhatsApp enquiry and find-or-creates a
   CRM contact when an email is given; public `/enquire` form (`?src=whatsapp` tags the
-  channel). Remaining: retention/reviews (post-stay P5.2 covers the first touch);
-  lease-renewal workflow
+  channel). ✅ **lease-renewal reminders** — a daily-sweep generator nudges the
+  property when a long stay (≥28 nights) is 7 days from checkout, so staff offer a
+  renewal in time (idempotent per-day dedup, in-app notification). Remaining:
+  retention/reviews beyond the P5.2 post-stay first touch.
 - 🧹 Wipe leftover demo contacts / reservations / leads before pilot
 - 🧹 Deactivate the now-empty "Main" building under CBD
 - 🧹 Rewrite `DEPLOY.md` (predates the Vercel-web + Render-API split)
