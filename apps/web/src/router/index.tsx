@@ -18,6 +18,7 @@ import { PricingPage } from '@/features/pricing/PricingPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import { MarketingPage } from '@/features/marketing/MarketingPage';
 import { InvoicesPage } from '@/features/invoices/InvoicesPage';
 import { InvoiceDocumentPage } from '@/features/invoices/InvoiceDocumentPage';
 import { ReportStatementPage } from '@/features/reports/ReportStatementPage';
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
           { path: '/users', element: <UsersPage /> },
           { path: '/expenses', element: <ExpensesPage /> },
           { path: '/reports', element: <ReportsPage /> },
+          { path: '/marketing', element: <MarketingPage /> },
           { path: '/invoices', element: <InvoicesPage /> },
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },

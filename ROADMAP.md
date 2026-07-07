@@ -62,7 +62,10 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   contacts on the reservation (migration 057, so coordinators build booking history for the
   AI segmentation), picked in the reservation drawer; **invoices now bill to the billing
   contact when one is assigned** (email + printable document coalesce to it, guest fallback)
-- 🆕 AI target marketing — segment premium customers, auto-generate group campaigns (LLM)
+- ✅ AI target marketing (P4.4) — deterministic guest segmentation (VIP/frequent/recent/
+  lapsed/prospect by spend + stays + recency) + LLM-drafted per-segment campaign copy.
+  DARK until ANTHROPIC_API_KEY: segments always work, generation returns `configured:false`
+  until keyed (no API call). `/marketing` in the Operations workspace.
 - 🔒 OTA guest details — Fahad decides: manual Extranet copy (no build) vs full Reservations API (separate approval)
 - ✅ Booking.com via iCal — already solved
 
@@ -70,7 +73,9 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 - 🟡 `reports` + `dashboard` modules — exist to build on
 - 🆕 Financial Cockpit — real-time outstanding ledger balances + receivables
 - 🆕 Operational Cockpit — occupancy %, monthly/annual comparative trends
-- 🆕 AI Strategy Engine — prompt AI on dashboard trends → auto-generate campaigns (shares A4's LLM)
+- ✅ AI Strategy Engine (P4.4) — `GET /marketing/strategy` feeds the P&L/occupancy
+  dashboard to the LLM → a prioritised strategy brief (shares A4's `core/llm` client).
+  Same dark-until-keyed gate.
 
 ### A6. OTA-to-direct conversion
 - 🟡 `/stay` public booking page + `checkins` module — exist
@@ -138,7 +143,7 @@ Unblocks the operations + AI features that follow.
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2) — IN PROGRESS
 - ✅ Reservations/CRM new fields (A4): coordinator + billing contact
 - Dashboards: Financial + Operational Cockpit (A5)
-- AI target marketing + AI Strategy Engine (A4/A5)
+- ✅ AI target marketing + AI Strategy Engine (P4.4, A4/A5) — dark until keyed
 
 ### Phase 5 — OTA-to-direct (rides on /stay + A4/A5)
 - In-apartment QR → check-in/checkout asks → post-stay follow-up → CRM + AI marketing

@@ -314,6 +314,44 @@ export interface ReportsResponse {
   by_property: PropertyPnl[];
 }
 
+// ── AI marketing + strategy (P4.4) — LLM-backed, dark until keyed ─────────────
+export type SegmentKey = 'vip' | 'frequent' | 'recent' | 'lapsed' | 'prospect';
+export type CampaignChannel = 'email' | 'whatsapp' | 'sms';
+
+export interface SegmentSummary {
+  key: SegmentKey;
+  label: string;
+  description: string;
+  count: number;
+  total_spend: number;   // thebe
+  avg_spend: number;     // thebe
+  sample_names: string[];
+}
+export interface SegmentsResponse {
+  configured: boolean;   // is the LLM keyed?
+  total_customers: number;
+  segments: SegmentSummary[];
+}
+export interface CampaignResponse {
+  configured: boolean;
+  segment: SegmentKey;
+  channel: CampaignChannel;
+  copy: string | null;
+}
+export interface StrategyResponse {
+  configured: boolean;
+  metrics: {
+    from: string;
+    to: string;
+    occupancy_pct: number;
+    revenue: number;
+    net: number;
+    margin_pct: number;
+    properties: Array<{ name: string; occupancy_pct: number | null; revenue: number }>;
+  };
+  recommendations: string | null;
+}
+
 // ── Finance → HR / Payroll ──────────────────────────────────────────────────
 export type PayFrequency = 'MONTHLY' | 'WEEKLY';
 export interface EmployeePay {
