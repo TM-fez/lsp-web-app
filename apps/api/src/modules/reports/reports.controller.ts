@@ -47,4 +47,18 @@ export class ReportsController {
       next(err);
     }
   };
+
+  // GET /reports/owners?from=YYYY-MM-DD&to=YYYY-MM-DD&property_id=… — per-landlord
+  // payout statements for units LSP manages on behalf of third-party owners.
+  owners = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const from = typeof req.query.from === 'string' && DATE.test(req.query.from) ? req.query.from : undefined;
+      const to = typeof req.query.to === 'string' && DATE.test(req.query.to) ? req.query.to : undefined;
+      const propertyId = (req.query.property_id as string) || undefined;
+      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      res.json(await this.service.getOwnerStatements({ from, to, propertyId, accessiblePropertyIds }));
+    } catch (err) {
+      next(err);
+    }
+  };
 }

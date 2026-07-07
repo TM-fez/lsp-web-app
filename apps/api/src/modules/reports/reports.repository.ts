@@ -243,4 +243,84 @@ export class ReportsRepository {
     `.execute(this.db);
     return r.rows;
   }
+
+  // ── Owner statements — third-party-landlord units (rooms.ownership='LANDLORD') ──
+  // The spine of a per-landlord payout statement: every LANDLORD-owned unit in
+  // scope, carrying its owner identity (migration 054). Revenue, nights and
+  // repair cost per unit come from the queries below, keyed on room id. Every
+  // owned unit is listed even with no activity in the window (a zero line still
+  // belongs on the owner's statement).
+  async ownedUnits(propertyId?: string, accessibleIds?: string[] | null): Promise<
+    Array<{ room_id: string; room_code: string | null; room_name: string; landlord_name: string | null; landlord_phone: string | null; property_id: string | null; property_name: string | null }>
+  > {
+    const r = await sql<{ room_id: string; room_code: string | null; room_name: string; landlord_name: string | null; landlord_phone: string | null; property_id: string | null; property_name: string | null }>`
+      SELECT rm.id AS room_id, rm.code AS room_code, rm.name AS room_name,
+             rm.landlord_name, rm.landlord_phone,
+             p.id AS property_id, p.name AS property_name
+      FROM rooms rm
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
+        ${byProp(propertyId, accessibleIds)}
+      ORDER BY rm.landlord_name, rm.code
+    `.execute(this.db);
+    return r.rows;
+  }
+
+  // Revenue per owned unit (PAID invoices, refunds negative; recognised at invoice date).
+  async revenueByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; amount: string | number | null }>> {
+    const r = await sql<{ room_id: string; amount: string | number | null }>`
+      SELECT rsv.room_id AS room_id,
+             SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
+      FROM invoices i
+      JOIN reservations rsv ON rsv.id = i.reservation_id
+      JOIN rooms rm ON rm.id = rsv.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
+        AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
+        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1
+    `.execute(this.db);
+    return r.rows;
+  }
+
+  // Booked room-nights + stay count per owned unit, clipped to the window.
+  async occupancyByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; nights: string | number | null; stays: string | number | null }>> {
+    const r = await sql<{ room_id: string; nights: string | number | null; stays: string | number | null }>`
+      SELECT rsv.room_id AS room_id,
+             COALESCE(SUM(GREATEST(0, LEAST(rsv.check_out_date, ${w.toExcl}::date) - GREATEST(rsv.check_in_date, ${w.from}::date))), 0) AS nights,
+             COUNT(*) AS stays
+      FROM reservations rsv
+      JOIN rooms rm ON rm.id = rsv.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE rsv.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT') AND rsv.deleted_at IS NULL
+        AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
+        AND rsv.check_in_date < ${w.toExcl}::date AND rsv.check_out_date > ${w.from}::date
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1
+    `.execute(this.db);
+    return r.rows;
+  }
+
+  // Approved repair/maintenance cost charged to each owned unit (by opened date).
+  async maintenanceByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; amount: string | number | null }>> {
+    const r = await sql<{ room_id: string; amount: string | number | null }>`
+      SELECT wo.room_id AS room_id, SUM(wo.cost_amount) AS amount
+      FROM maintenance_work_orders wo
+      JOIN rooms rm ON rm.id = wo.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
+        AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
+        AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1
+    `.execute(this.db);
+    return r.rows;
+  }
 }

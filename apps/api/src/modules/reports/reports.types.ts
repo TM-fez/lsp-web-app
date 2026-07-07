@@ -108,3 +108,57 @@ export interface OperationsResponse {
   monthly: OpsMonthlyPoint[];
   by_property: OpsPropertyRow[];
 }
+
+// ── Owner statements — per third-party-landlord monthly payout ────────────────
+// LSP manages units for outside landlords (rooms.ownership='LANDLORD', migration
+// 054). For a date window this composes the money we already track into a payout
+// statement per landlord: recognised revenue (PAID invoices) and booked
+// occupancy per owned unit, less the repair cost charged to that owner, netting
+// to what LSP owes them. Money is thebe; grouping key is the free-text
+// landlord_name (unnamed LANDLORD units bucket under a single fallback label).
+
+export interface OwnerStatementWindow {
+  from?: string;   // YYYY-MM-DD inclusive (defaults to the trailing 12 months)
+  to?: string;     // YYYY-MM-DD inclusive
+  propertyId?: string;
+  accessiblePropertyIds?: string[] | null;
+}
+
+export interface OwnerUnitLine {
+  room_id: string;
+  room_code: string | null;
+  room_name: string;
+  property_id: string | null;
+  property_name: string;         // 'Company-wide' when a unit has no property
+  revenue: number;               // thebe — recognised (PAID invoices)
+  nights: number;                // booked room-nights in the window
+  occupancy_pct: number;         // nights / days-in-window * 100 (1dp)
+  maintenance_cost: number;      // thebe — approved repair cost charged to owner
+  net: number;                   // revenue - maintenance_cost
+}
+
+export interface OwnerStatement {
+  landlord_name: string;
+  landlord_phone: string | null; // first known contact across the owner's units
+  unit_count: number;
+  revenue: number;
+  nights: number;
+  room_nights_available: number; // unit_count * days-in-window
+  occupancy_pct: number;         // nights / available * 100 (1dp)
+  maintenance_cost: number;
+  net: number;                   // the payout owed to the landlord
+  units: OwnerUnitLine[];
+}
+
+export interface OwnersResponse {
+  from: string;
+  to: string;
+  owners: OwnerStatement[];      // best net first
+  totals: {
+    landlords: number;
+    units: number;
+    revenue: number;
+    maintenance_cost: number;
+    net: number;
+  };
+}

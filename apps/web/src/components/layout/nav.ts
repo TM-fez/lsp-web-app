@@ -12,6 +12,7 @@ import {
   FileText,
   Banknote,
   BarChart3,
+  HandCoins,
   Gauge,
   Building2,
   BedDouble,
@@ -73,6 +74,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/operating-expenses', label: 'Operating costs', icon: Banknote, perm: 'opex.read', built: true },
       { to: '/payroll', label: 'Payroll', icon: Users, perm: 'payroll.read', built: true },
       { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.read', built: true },
+      { to: '/owners', label: 'Owner statements', icon: HandCoins, perm: 'reports.read', built: true },
     ],
   },
   {
