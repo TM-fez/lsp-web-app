@@ -397,7 +397,13 @@ function GuestCheckinSection({ roomId }: { roomId: string }) {
 
   if (!full?.guest_qr_token) return null;
 
-  const checkinUrl = `${window.location.origin}/stay/checkin?t=${full.guest_qr_token}`;
+  // Guests scan this into the public booking site (lsp-book), not the ops app.
+  // VITE_PUBLIC_WEB_URL points at it in production; fall back to this app's origin
+  // (local dev, or before the env var is configured) so the link is never broken.
+  const publicWebBase =
+    (import.meta.env.VITE_PUBLIC_WEB_URL as string | undefined)?.replace(/\/$/, '') ||
+    window.location.origin;
+  const checkinUrl = `${publicWebBase}/stay/checkin?t=${full.guest_qr_token}`;
 
   return (
     <div className="mt-2 flex flex-col gap-3 border-t border-slate-100 pt-4">
