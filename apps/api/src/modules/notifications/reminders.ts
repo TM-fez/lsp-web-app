@@ -23,6 +23,7 @@ export interface ReminderResult {
   maintenanceStale: number;
   maintenanceUnassigned: number;
   postStayEmails: number;
+  leaseRenewals: number;
 }
 
 export const NO_REMINDERS: ReminderResult = {
@@ -30,12 +31,17 @@ export const NO_REMINDERS: ReminderResult = {
   maintenanceStale: 0,
   maintenanceUnassigned: 0,
   postStayEmails: 0,
+  leaseRenewals: 0,
 };
 
 /** A stale work order is HIGH/CRITICAL, still open, and has sat untouched this long. */
 const MAINTENANCE_STALE_DAYS = 2;
 /** A pending work order is any-priority OPEN with nobody assigned for this long. */
 const MAINTENANCE_UNASSIGNED_DAYS = 1;
+/** A long stay worth proactively offering a renewal on (nights), and how many days
+ *  before its checkout to nudge staff. */
+const LEASE_MIN_NIGHTS = 28;
+const LEASE_RENEWAL_LEAD_DAYS = 7;
 
 export async function runReminders(
   db: Kysely<Database>,
@@ -43,14 +49,55 @@ export async function runReminders(
 ): Promise<ReminderResult> {
   const today = todayInPropertyTZ();
 
-  const [checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails] = await Promise.all([
+  const [checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails, leaseRenewals] = await Promise.all([
     remindCheckoutsDue(db, service, today),
     remindStaleMaintenance(db, service, today),
     remindUnassignedMaintenance(db, service, today),
     sendPostStayFollowups(db),
+    remindLeaseRenewals(db, service, today),
   ]);
 
-  return { checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails };
+  return { checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails, leaseRenewals };
+}
+
+/** Long-stay guests departing soon — nudge staff to offer a renewal before they go.
+ *  Exported so it can be exercised directly (without the whole sweep) in tests. */
+export async function remindLeaseRenewals(
+  db: Kysely<Database>,
+  service: NotificationsService = sharedNotifications,
+  today: string = todayInPropertyTZ(),
+): Promise<number> {
+  const rows = await db
+    .selectFrom('reservations as r')
+    .innerJoin('rooms as rm', 'rm.id', 'r.room_id')
+    .innerJoin('buildings as b', 'b.id', 'rm.building_id')
+    .innerJoin('contacts as c', 'c.id', 'r.contact_id')
+    .select(['r.id as reservation_id', 'rm.name as room_name', 'c.name as guest_name', 'b.property_id'])
+    .where('r.status', 'in', ['CONFIRMED', 'CHECKED_IN'])
+    .where('r.deleted_at', 'is', null)
+    // Fire once, exactly LEASE_RENEWAL_LEAD_DAYS out — dates in the DB's timezone
+    // (Africa/Gaborone), matching how the stay dates are stored.
+    .where(sql<boolean>`r.check_out_date = current_date + ${sql.lit(LEASE_RENEWAL_LEAD_DAYS)}`)
+    .where(sql<boolean>`(r.check_out_date - r.check_in_date) >= ${sql.lit(LEASE_MIN_NIGHTS)}`)
+    .execute();
+
+  let inserted = 0;
+  for (const row of rows) {
+    inserted += await service.notify(
+      { propertyId: row.property_id },
+      {
+        type: 'reminder.lease_renewal',
+        title: `Long-stay checkout soon — ${row.room_name}`,
+        body: `${row.guest_name} checks out of ${row.room_name} in ${LEASE_RENEWAL_LEAD_DAYS} days after a long stay — reach out about a renewal.`,
+        entityType: 'reservations',
+        entityId: row.reservation_id,
+        link: `/reservations/${row.reservation_id}`,
+        // Date in the key => one nudge (re-runs the same day are no-ops).
+        dedupKey: `reminder.lease_renewal:${row.reservation_id}:${today}`,
+      },
+    );
+  }
+  return inserted;
 }
 
 /** Guests departing today — a heads-up so reception/housekeeping can plan the turn. */
