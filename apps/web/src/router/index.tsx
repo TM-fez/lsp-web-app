@@ -23,7 +23,7 @@ import { InvoiceDocumentPage } from '@/features/invoices/InvoiceDocumentPage';
 import { ReportStatementPage } from '@/features/reports/ReportStatementPage';
 import { OperatingExpensesPage } from '@/features/operating-expenses/OperatingExpensesPage';
 import { PayrollPage } from '@/features/payroll/PayrollPage';
-import { ComingSoonPage } from '@/features/placeholder/ComingSoonPage';
+import { FinanceCockpitPage } from '@/features/finance/FinanceCockpitPage';
 import { StayPage } from '@/features/stay/StayPage';
 import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 
@@ -70,7 +70,7 @@ export const router = createBrowserRouter([
           { path: '/invoices', element: <InvoicesPage /> },
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },
-          { path: '/finance', element: <ComingSoonPage /> },
+          { path: '/finance', element: <FinanceCockpitPage /> },
             ],
           },
         ],
