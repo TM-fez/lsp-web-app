@@ -10,6 +10,7 @@ import {
   restoreRoom,
   setRoomChannelConfig,
   rotateRoomIcalToken,
+  rotateRoomGuestToken,
   type CreateRoomInput,
   type UpdateRoomInput,
 } from '@/lib/api/rooms';
@@ -91,6 +92,18 @@ export function useRotateIcalToken() {
     mutationFn: (id: string) => rotateRoomIcalToken(id),
     onSuccess: () => {
       toast.success('Export link rotated — update it in the Booking.com extranet');
+      qc.invalidateQueries({ queryKey: ROOMS_KEY });
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+export function useRotateGuestToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => rotateRoomGuestToken(id),
+    onSuccess: () => {
+      toast.success('Check-in code rotated — reprint the QR for this unit');
       qc.invalidateQueries({ queryKey: ROOMS_KEY });
     },
     onError: (e) => toast.error(errMessage(e)),

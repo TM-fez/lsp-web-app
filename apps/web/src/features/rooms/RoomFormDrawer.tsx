@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/store/toast';
-import { useCreateRoom, useUpdateRoom, useDeleteRoom, useRoom, useSetChannelConfig, useRotateIcalToken } from './hooks';
+import { useCreateRoom, useUpdateRoom, useDeleteRoom, useRoom, useSetChannelConfig, useRotateIcalToken, useRotateGuestToken } from './hooks';
 import { useProperties } from '@/features/properties/hooks';
 import type { Room, RoomCreateStatus, RoomOwnership, UnitType } from '@/types';
 
@@ -255,6 +255,7 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
           </div>
 
           {isEdit && <ChannelSyncSection roomId={room!.id} />}
+          {isEdit && <GuestCheckinSection roomId={room!.id} />}
 
           {isEdit && canDelete && (
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
@@ -373,6 +374,72 @@ function ChannelSyncSection({ roomId }: { roomId: string }) {
               Keep
             </Button>
             <Button variant="outline" disabled={busy} onClick={() => rotate.mutate(roomId)}>
+              {rotate.isPending && <Spinner />} Rotate
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Guest self check-in (P5.1) — the in-apartment QR. This is the link the printed
+ * QR sticker encodes; a guest who scans it lands on /stay/checkin and hands over
+ * their own details, capturing an OTA guest into the CRM. Rotating reprints.
+ */
+function GuestCheckinSection({ roomId }: { roomId: string }) {
+  const { data: full } = useRoom(roomId);
+  const rotate = useRotateGuestToken();
+  const [confirmRotate, setConfirmRotate] = useState(false);
+
+  useEffect(() => { setConfirmRotate(false); }, [full?.guest_qr_token]);
+
+  if (!full?.guest_qr_token) return null;
+
+  const checkinUrl = `${window.location.origin}/stay/checkin?t=${full.guest_qr_token}`;
+
+  return (
+    <div className="mt-2 flex flex-col gap-3 border-t border-slate-100 pt-4">
+      <Label>Guest check-in QR</Label>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500">
+          Turn this link into a QR sticker for the apartment — guests scan it to confirm their details:
+        </span>
+        <div className="flex gap-2">
+          <Input readOnly value={checkinUrl} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+          <Button
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard.writeText(checkinUrl).then(
+                () => toast.success('Check-in link copied'),
+                () => toast.error('Could not copy — select the text and copy manually'),
+              );
+            }}
+          >
+            Copy
+          </Button>
+        </div>
+      </div>
+
+      {!confirmRotate ? (
+        <button
+          type="button"
+          className="self-start text-xs text-slate-500 underline hover:text-slate-700"
+          onClick={() => setConfirmRotate(true)}
+        >
+          Rotate check-in code (if the QR was misused)
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <span className="text-sm text-amber-800">
+            Rotating invalidates the current QR — you’ll need to reprint the sticker for this unit.
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setConfirmRotate(false)} disabled={rotate.isPending}>
+              Keep
+            </Button>
+            <Button variant="outline" disabled={rotate.isPending} onClick={() => rotate.mutate(roomId)}>
               {rotate.isPending && <Spinner />} Rotate
             </Button>
           </div>

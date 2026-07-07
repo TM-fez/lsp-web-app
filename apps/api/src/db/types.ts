@@ -119,6 +119,9 @@ export interface ReservationsTable {
   // goes to — both real contacts, both optional (individual stays have neither).
   booking_coordinator_id: string | null;
   billing_contact_id: string | null;
+  // Guest self check-in (migration 058): when the guest confirmed their own contact
+  // details from the in-apartment QR (turns an anonymous OTA stay into a CRM contact).
+  self_checkin_at: Date | null;
   // Build 2b — per-booking discount + manager sign-off.
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;
@@ -148,6 +151,9 @@ export interface RoomsTable {
   // give Booking.com) and the Booking.com calendar URL we import this unit's OTA bookings from.
   ical_token: Generated<string>;
   booking_ical_url: string | null;
+  // Guest self check-in (migration 058): a separate per-unit secret embedded in the
+  // in-apartment QR sticker, so scanning it captures the guest's own contact details.
+  guest_qr_token: Generated<string>;
   // Multi-property (migration 040): a unit belongs to a building; floor is an optional label.
   building_id: string | null;
   floor: number | null;

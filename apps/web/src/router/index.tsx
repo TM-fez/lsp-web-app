@@ -28,6 +28,7 @@ import { PayrollPage } from '@/features/payroll/PayrollPage';
 import { FinanceCockpitPage } from '@/features/finance/FinanceCockpitPage';
 import { StayPage } from '@/features/stay/StayPage';
 import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
+import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/stay', element: <StayPage /> },
   { path: '/stay/manage', element: <ManageBookingPage /> },
+  { path: '/stay/checkin', element: <GuestCheckinPage /> },
   {
     element: <ProtectedRoute />,
     children: [

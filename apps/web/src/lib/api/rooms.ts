@@ -60,6 +60,12 @@ export async function rotateRoomIcalToken(id: string): Promise<Room> {
   return data;
 }
 
+// Guest self check-in (P5.1): rotate the per-unit in-apartment QR token.
+export async function rotateRoomGuestToken(id: string): Promise<Room> {
+  const { data } = await api.post<Room>(`/rooms/${id}/guest-qr/rotate-token`, {});
+  return data;
+}
+
 export async function setRoomMaintenance(id: string): Promise<Room> {
   const { data } = await api.post<Room>(`/rooms/${id}/maintenance`, {});
   return data;

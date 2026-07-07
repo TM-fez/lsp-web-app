@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow } from '../../db/types.js';
+import { propertyToday } from '../../core/time.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 import type { StayUnitOption } from './public.types.js';
 
@@ -77,6 +78,51 @@ export class PublicRepository {
       .where('res.deleted_at', 'is', null)
       .where(sql<boolean>`c.email ilike ${email}`)
       .executeTakeFirst();
+  }
+
+  /** Resolve an in-apartment QR token to its unit + property (no guest PII). */
+  async roomByGuestToken(token: string) {
+    return this.db
+      .selectFrom('rooms as r')
+      .innerJoin('buildings as b', 'b.id', 'r.building_id')
+      .innerJoin('properties as p', 'p.id', 'b.property_id')
+      .select(['r.id as room_id', 'r.name as unit_name', 'r.code as unit_code', 'p.name as property_name'])
+      .where('r.guest_qr_token', '=', token)
+      .where('r.deleted_at', 'is', null)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The stay to attach a self check-in to: the guest physically in this unit today.
+   * Prefer an in-house occupancy, else a reservation whose window covers today.
+   * BLOCKED is included so an un-claimed OTA guest can still hand over their details.
+   */
+  async currentStayForRoom(roomId: string) {
+    const today = propertyToday();
+    return this.db
+      .selectFrom('reservations as res')
+      .leftJoin('occupancy as o', (join) =>
+        join.onRef('o.reservation_id', '=', 'res.id').on('o.status', '=', 'CHECKED_IN').on('o.deleted_at', 'is', null),
+      )
+      .select(['res.id as reservation_id', 'res.contact_id', 'res.check_out_date', 'res.self_checkin_at'])
+      .where('res.room_id', '=', roomId)
+      .where('res.deleted_at', 'is', null)
+      .where('res.status', 'in', ['CONFIRMED', 'CHECKED_IN', 'BLOCKED'])
+      .where(sql<boolean>`res.check_in_date <= ${today}`)
+      .where(sql<boolean>`res.check_out_date >= ${today}`)
+      .orderBy(sql`(o.id is not null)`, 'desc') // checked-in first
+      .orderBy('res.check_in_date', 'desc')
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /** Stamp that the guest confirmed their details from the apartment. */
+  async stampSelfCheckin(reservationId: string, actorId: string): Promise<void> {
+    await this.db
+      .updateTable('reservations')
+      .set({ self_checkin_at: sql`now()`, updated_by: actorId, updated_at: sql`now()` })
+      .where('id', '=', reservationId)
+      .execute();
   }
 
   /** Active units of a type that could take a booking (excludes maintenance / out-of-service). */

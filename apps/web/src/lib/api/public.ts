@@ -71,3 +71,31 @@ export async function lookupBooking(code: string, email: string): Promise<Public
   });
   return data;
 }
+
+// ── In-apartment QR self check-in (Phase 5) ──────────────────────────────────
+export interface GuestCheckinInfo {
+  property_name: string;
+  unit_name: string;
+  unit_code: string;
+  has_stay: boolean;
+  check_out_date: string | null; // YYYY-MM-DD
+  already_checked_in: boolean;
+}
+export interface SelfCheckinInput {
+  token: string;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
+/** The unit context behind a QR token (no other guest's details). */
+export async function getCheckinInfo(token: string): Promise<GuestCheckinInfo> {
+  const { data } = await api.get<GuestCheckinInfo>('/public/checkin', { params: { token } });
+  return data;
+}
+
+/** The guest confirms their own details from the apartment. */
+export async function submitCheckin(input: SelfCheckinInput): Promise<{ property_name: string; unit_name: string }> {
+  const { data } = await api.post<{ property_name: string; unit_name: string }>('/public/checkin', input);
+  return data;
+}

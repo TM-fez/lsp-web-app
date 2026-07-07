@@ -141,6 +141,8 @@ export interface Room {
   // export-feed token and the Booking.com calendar URL the importer pulls from.
   ical_token?: string;
   booking_ical_url?: string | null;
+  // Guest self check-in (P5.1): the per-unit token embedded in the in-apartment QR.
+  guest_qr_token?: string;
 }
 
 export type RoomCreateStatus = 'AVAILABLE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';

@@ -5,7 +5,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../core/logger.js';
 import { sendEmail, isEmailConfigured } from '../../core/email/email.service.js';
-import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption } from './public.types.js';
+import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo } from './public.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 
 const unitLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -143,6 +143,49 @@ export class PublicService {
           : '') +
         `<p>Lifestyle Apartments, Gaborone</p>`,
     });
+  }
+
+  /**
+   * In-apartment QR (Phase 5): read the unit's context for the check-in page.
+   * Returns no PII of the current guest — only where they are and until when.
+   */
+  async getCheckinInfo(token: string): Promise<GuestCheckinInfo> {
+    const room = await this.repository.roomByGuestToken(token);
+    if (!room) throw AppError.notFound('That check-in code is not recognised.');
+    const stay = await this.repository.currentStayForRoom(room.room_id);
+    return {
+      property_name: room.property_name,
+      unit_name: room.unit_name,
+      unit_code: room.unit_code,
+      has_stay: Boolean(stay),
+      check_out_date: stay ? day(stay.check_out_date) : null,
+      already_checked_in: Boolean(stay?.self_checkin_at),
+    };
+  }
+
+  /**
+   * The guest hands over their own details from the apartment: enrich the stay's
+   * CRM contact (so an anonymous OTA guest becomes re-bookable) and stamp the stay.
+   * The trust boundary is physical access to the in-unit QR + a per-IP limit.
+   */
+  async submitSelfCheckin(dto: SelfCheckinDTO, meta: PublicRequestMeta): Promise<{ property_name: string; unit_name: string }> {
+    const room = await this.repository.roomByGuestToken(dto.token);
+    if (!room) throw AppError.notFound('That check-in code is not recognised.');
+    const stay = await this.repository.currentStayForRoom(room.room_id);
+    if (!stay) throw AppError.conflict('There is no active stay for this apartment right now.');
+
+    const actorId = await this.repository.systemActorId();
+    const actorMeta = { userId: actorId, ip: meta.ip, requestId: meta.requestId };
+
+    // Fill in the guest's self-declared details (audit-logged by contacts.update).
+    await this.contacts.update(
+      stay.contact_id,
+      { name: dto.name, email: dto.email, ...(dto.phone ? { phone: dto.phone } : {}), updated_by: actorId },
+      actorMeta,
+    );
+    await this.repository.stampSelfCheckin(stay.reservation_id, actorId);
+
+    return { property_name: room.property_name, unit_name: room.unit_name };
   }
 
   /** H6 — public manage-my-booking lookup (code + email must BOTH match). */
