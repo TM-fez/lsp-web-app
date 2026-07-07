@@ -72,7 +72,11 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   ageing buckets (by issue age), per-property debt and an oldest-first drill-down, all
   scoped to accessible properties (`reports.read`). Lives at `/finance`, the Finance
   workspace home. Invoice-driven, no migration.
-- 🆕 Operational Cockpit — occupancy %, monthly/annual comparative trends
+- ✅ Operational Cockpit (P4.3) — occupancy % + demand trends with a year-over-year
+  comparison: trailing completed-month occupancy series, ADR/RevPAR/reservations KPIs
+  with YoY deltas, per-property occupancy. Extends the `reports` module
+  (`GET /reports/operations`, `reports.read`, accessible-property scoped); no migration.
+  Web `/operations` ("Trends" in the Operations workspace).
 - 🆕 AI Strategy Engine — prompt AI on dashboard trends → auto-generate campaigns (shares A4's LLM)
 
 ### A6. OTA-to-direct conversion
@@ -140,7 +144,7 @@ Unblocks the operations + AI features that follow.
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2) — IN PROGRESS
 - ✅ Reservations/CRM new fields (A4): coordinator + billing contact
-- Dashboards: ✅ Financial Cockpit (P4.2) · Operational Cockpit (A5)
+- Dashboards: ✅ Financial Cockpit (P4.2) · ✅ Operational Cockpit (P4.3) (A5)
 - AI target marketing + AI Strategy Engine (A4/A5)
 
 ### Phase 5 — OTA-to-direct (rides on /stay + A4/A5)

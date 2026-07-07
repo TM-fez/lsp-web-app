@@ -204,6 +204,32 @@ export class ReportsRepository {
     return r.rows;
   }
 
+  // ── Occupancy by month — booked room-nights + active stays per calendar month ──
+  // A reservation spanning several months contributes its overlap nights to each
+  // month it touches (the month series cross-joins the bookings). Months with no
+  // bookings simply don't come back — the service fills them with zeros. `stays`
+  // counts a reservation once per month it is active in.
+  async occupancyByMonth(w: RepoWindow): Promise<Array<{ month: string; nights: string | number | null; stays: string | number | null }>> {
+    const r = await sql<{ month: string; nights: string | number | null; stays: string | number | null }>`
+      WITH months AS (
+        SELECT generate_series(${w.from}::date, (${w.toExcl}::date - interval '1 day'), interval '1 month')::date AS m
+      )
+      SELECT to_char(mo.m, 'YYYY-MM') AS month,
+             SUM(GREATEST(0, LEAST(rsv.check_out_date, (mo.m + interval '1 month')::date) - GREATEST(rsv.check_in_date, mo.m))) AS nights,
+             COUNT(DISTINCT rsv.id) AS stays
+      FROM months mo
+      JOIN reservations rsv
+        ON rsv.check_in_date < (mo.m + interval '1 month')::date AND rsv.check_out_date > mo.m
+      JOIN rooms rm ON rm.id = rsv.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE rsv.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT') AND rsv.deleted_at IS NULL
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1 ORDER BY 1
+    `.execute(this.db);
+    return r.rows;
+  }
+
   // Active room counts per property — the denominator for occupancy.
   async roomCountByProperty(propertyId?: string, accessibleIds?: string[] | null): Promise<Array<{ property_id: string | null; rooms: string | number }>> {
     const r = await sql<{ property_id: string | null; rooms: string | number }>`
