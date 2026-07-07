@@ -96,6 +96,15 @@ export class RoomsController {
     }
   };
 
+  rotateGuestToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      res.json(await this.service.rotateGuestToken(req.params.id as string, meta));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   setMaintenance = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);

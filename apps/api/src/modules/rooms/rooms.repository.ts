@@ -213,6 +213,34 @@ export class RoomsRepository {
     });
   }
 
+  // New in-apartment QR check-in token (Phase 5). Rotating invalidates the old
+  // sticker instantly — reprint after. Separate from ical_token by design.
+  async rotateGuestToken(id: string, meta: RoomRequestMeta): Promise<RoomRow | undefined> {
+    return this.db.transaction().execute(async (trx) => {
+      const updated = await trx
+        .updateTable('rooms')
+        .set({ guest_qr_token: sql`gen_random_uuid()`, updated_by: meta.userId, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (updated) {
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'rooms',
+          entity_id: id,
+          diff: { guest_qr_token: 'rotated' },
+          ip_address: meta.ip ?? null,
+        }).execute();
+      }
+
+      return updated;
+    });
+  }
+
   async softDelete(id: string, meta: RoomRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
       const deleted = await trx

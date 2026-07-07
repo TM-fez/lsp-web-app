@@ -48,5 +48,10 @@ export function createPublicRouter(dbInstance = db): Router {
   // Manage-my-booking: code + email must both match (never enumerable by code alone).
   router.get('/bookings/lookup', lookupLimiter, controller.lookupBooking);
 
+  // In-apartment QR self check-in (Phase 5): read the unit's stay context, then the
+  // guest submits their own contact details (per-IP limited; token is unguessable).
+  router.get('/checkin', lookupLimiter, controller.getCheckinInfo);
+  router.post('/checkin', bookingLimiter, controller.submitCheckin);
+
   return router;
 }

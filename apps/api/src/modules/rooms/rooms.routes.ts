@@ -43,6 +43,8 @@ export function createRoomsRouter(dbInstance = db): Router {
   // Channel sync (H4): per-unit Booking.com import URL + export-token rotation.
   router.patch('/:id/channel', authorize('rooms.update'), requireActiveProperty, inActiveProperty, validateBody(UpdateChannelConfigSchema), controller.setChannelConfig);
   router.post('/:id/channel/rotate-token', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.rotateIcalToken);
+  // Guest self check-in (Phase 5): rotate the in-apartment QR token (reprint after).
+  router.post('/:id/guest-qr/rotate-token', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.rotateGuestToken);
 
   router.post('/:id/maintenance',    authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setMaintenance);
   router.post('/:id/out-of-service', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setOutOfService);

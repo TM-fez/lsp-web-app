@@ -48,6 +48,30 @@ export interface PublicRequestMeta {
   requestId?: string;
 }
 
+// ── Guest self check-in (Phase 5 / A6) ───────────────────────────────────────
+// Keyed by the per-unit QR token. The GET is a read of stay context (no PII of the
+// existing guest); the POST captures the guest's own details into the CRM contact.
+export const GuestTokenSchema = z.object({ token: z.string().uuid('Invalid check-in code') });
+
+export const SelfCheckinSchema = z.object({
+  token: z.string().uuid('Invalid check-in code'),
+  name: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(200),
+  phone: z.string().trim().min(3).max(40).optional(),
+});
+export type SelfCheckinDTO = z.infer<typeof SelfCheckinSchema>;
+
+/** What the in-apartment check-in page may show — the unit's context, never the
+ * current guest's stored details (a random scanner must not read PII). */
+export interface GuestCheckinInfo {
+  property_name: string;
+  unit_name: string;
+  unit_code: string;
+  has_stay: boolean;              // is there an active/imminent stay for this unit?
+  check_out_date: string | null;  // YYYY-MM-DD, when has_stay
+  already_checked_in: boolean;    // has this stay's guest already confirmed their details?
+}
+
 /** One bookable layout shown on the public site (no PII, prices only). */
 export interface StayUnitOption {
   unit_type: string;

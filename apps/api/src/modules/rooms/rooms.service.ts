@@ -73,6 +73,13 @@ export class RoomsService {
     return updated;
   }
 
+  async rotateGuestToken(id: string, meta: RoomRequestMeta): Promise<RoomRow> {
+    await this.getRoomById(id);
+    const updated = await this.repository.rotateGuestToken(id, meta);
+    if (!updated) throw AppError.notFound(`Room with id ${id} not found`);
+    return updated;
+  }
+
   async updateRoom(id: string, dto: UpdateRoomDTO, meta: RoomRequestMeta): Promise<RoomRow> {
     const current = await this.getRoomById(id);
 

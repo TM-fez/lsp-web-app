@@ -86,8 +86,15 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 
 ### A6. OTA-to-direct conversion
 - 🟡 `/stay` public booking page + `checkins` module — exist
-- 🆕 In-apartment QR code → check-in / checkout asks → post-stay follow-up
-- 🆕 Feed captured guests into CRM + AI marketing (A4/A5)
+- 🟡 In-apartment QR code → guest self check-in — ✅ **P5.1**: a per-unit QR token
+  (migration 058, separate from ical_token) resolves to the guest in-house today; the
+  guest confirms their own name/email/phone at `/stay/checkin`, which **enriches the
+  stay's CRM contact** (an anonymous OTA guest becomes re-bookable) and stamps
+  `reservations.self_checkin_at`. Staff get the QR link + rotate in the unit drawer.
+  Remaining: checkout asks + post-stay follow-up (P5.2).
+- 🟡 Feed captured guests into CRM + AI marketing (A4/A5) — ✅ the P5.1 capture writes a
+  real CRM contact, so self-checked-in guests flow straight into the A4 segmentation;
+  the automated post-stay campaign is P5.2.
 
 ### B. Pre-existing unfinished work
 - 🔒🆕 **Phase B — real DPO Pay gateway** (replace simulated confirm; blocked on client sandbox keys). `settlePaid()` is the sole CONFIRM writer; `/stay` bookings have no hold → must generalise to confirm hold-less reservations.
@@ -153,7 +160,8 @@ Unblocks the operations + AI features that follow.
 - ✅ AI target marketing + AI Strategy Engine (P4.4, A4/A5) — dark until keyed
 
 ### Phase 5 — OTA-to-direct (rides on /stay + A4/A5)
-- In-apartment QR → check-in/checkout asks → post-stay follow-up → CRM + AI marketing
+- ✅ P5.1: In-apartment QR → guest self check-in → captured into CRM (feeds A4 marketing)
+- 🆕 P5.2: checkout asks + post-stay follow-up (thank-you / review / book-direct nudge)
 
 ### Parallel track — client-gated (slot in whenever unblocked)
 - 🔒 Phase B DPO payments + discount-into-charge — **PARKED by owner decision (2026-07-02)**;
