@@ -1,6 +1,9 @@
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { Database } from '../../db/types.js';
 import { todayInPropertyTZ, propertyToday } from '../../core/time.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../core/logger.js';
+import { isEmailConfigured, sendEmail } from '../../core/email/email.service.js';
 import type { NotificationsService } from './notifications.service.js';
 import { notifications as sharedNotifications } from './notifications.routes.js';
 
@@ -19,12 +22,14 @@ export interface ReminderResult {
   checkoutDue: number;
   maintenanceStale: number;
   maintenanceUnassigned: number;
+  postStayEmails: number;
 }
 
 export const NO_REMINDERS: ReminderResult = {
   checkoutDue: 0,
   maintenanceStale: 0,
   maintenanceUnassigned: 0,
+  postStayEmails: 0,
 };
 
 /** A stale work order is HIGH/CRITICAL, still open, and has sat untouched this long. */
@@ -38,13 +43,14 @@ export async function runReminders(
 ): Promise<ReminderResult> {
   const today = todayInPropertyTZ();
 
-  const [checkoutDue, maintenanceStale, maintenanceUnassigned] = await Promise.all([
+  const [checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails] = await Promise.all([
     remindCheckoutsDue(db, service, today),
     remindStaleMaintenance(db, service, today),
     remindUnassignedMaintenance(db, service, today),
+    sendPostStayFollowups(db),
   ]);
 
-  return { checkoutDue, maintenanceStale, maintenanceUnassigned };
+  return { checkoutDue, maintenanceStale, maintenanceUnassigned, postStayEmails };
 }
 
 /** Guests departing today — a heads-up so reception/housekeeping can plan the turn. */
@@ -158,6 +164,76 @@ async function remindUnassignedMaintenance(
     );
   }
   return inserted;
+}
+
+/** A completed stay becomes eligible a day after checkout and stays eligible for
+ *  this many days (so a transient email outage retries, then it drops out). */
+const POST_STAY_WINDOW_DAYS = 3;
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// The slice of the email client this step needs — injected so the send + stamp
+// path is testable without a live Brevo key (mirrors the marketing LLM port).
+export interface PostStayEmailPort {
+  isEmailConfigured: () => boolean;
+  sendEmail: (msg: { to: string; subject: string; html: string }) => Promise<unknown>;
+}
+const defaultEmailPort: PostStayEmailPort = { isEmailConfigured, sendEmail };
+
+/**
+ * Post-stay follow-up (P5.2): a day or so after checkout, thank the guest, invite
+ * feedback, and nudge them to book direct next time — which also keeps them warm in
+ * the CRM/marketing base. DARK until email is configured. Idempotent: each stay is
+ * stamped once sent, and only stays that departed within the window are considered.
+ */
+export async function sendPostStayFollowups(
+  db: Kysely<Database>,
+  email: PostStayEmailPort = defaultEmailPort,
+): Promise<number> {
+  if (!email.isEmailConfigured()) return 0;
+
+  const rows = await db
+    .selectFrom('reservations as r')
+    .innerJoin('contacts as c', 'c.id', 'r.contact_id')
+    .innerJoin('rooms as rm', 'rm.id', 'r.room_id')
+    .innerJoin('buildings as b', 'b.id', 'rm.building_id')
+    .innerJoin('properties as p', 'p.id', 'b.property_id')
+    .select(['r.id as reservation_id', 'c.name as guest_name', 'c.email as guest_email', 'rm.name as unit_name', 'p.name as property_name'])
+    .where('r.status', '=', 'CHECKED_OUT')
+    .where('r.post_stay_email_at', 'is', null)
+    .where('c.email', 'is not', null)
+    .where('r.deleted_at', 'is', null)
+    .where(sql<boolean>`r.check_out_date <= current_date - 1`) // at least a day after checkout
+    .where(sql<boolean>`r.check_out_date >= current_date - ${sql.lit(POST_STAY_WINDOW_DAYS)}`)
+    .execute();
+
+  const bookUrl = env.PUBLIC_WEB_URL ? `${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/stay` : null;
+
+  let sent = 0;
+  for (const row of rows) {
+    try {
+      await email.sendEmail({
+        to: row.guest_email!,
+        subject: `Thank you for staying with us — ${row.property_name}`,
+        html:
+          `<p>Dear ${escapeHtml(row.guest_name)},</p>` +
+          `<p>Thank you for staying at <b>${escapeHtml(row.property_name)}</b> — we hope you enjoyed ${escapeHtml(row.unit_name)}.</p>` +
+          `<p>We’d love to hear how it went — just reply to this email with any feedback.</p>` +
+          (bookUrl
+            ? `<p>Next time you’re in Gaborone, book directly with us for our best rate: <a href="${bookUrl}">${bookUrl}</a></p>`
+            : '') +
+          `<p>Warm regards,<br/>Lifestyle Apartments, Gaborone</p>`,
+      });
+      await db.updateTable('reservations').set({ post_stay_email_at: sql`now()` }).where('id', '=', row.reservation_id).execute();
+      sent += 1;
+    } catch (err) {
+      // Best-effort: a bad address doesn't block the others; it retries next sweep
+      // until it ages out of the window.
+      logger.warn({ err, reservationId: row.reservation_id }, 'post-stay follow-up email failed');
+    }
+  }
+  return sent;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -122,6 +122,9 @@ export interface ReservationsTable {
   // Guest self check-in (migration 058): when the guest confirmed their own contact
   // details from the in-apartment QR (turns an anonymous OTA stay into a CRM contact).
   self_checkin_at: Date | null;
+  // Post-stay follow-up (migration 059): when the automated thank-you / book-direct
+  // email went out — the daily sweep sends it once, then this row falls out of scope.
+  post_stay_email_at: Date | null;
   // Build 2b — per-booking discount + manager sign-off.
   discount_type: 'PERCENT' | 'FIXED' | null;
   discount_value: number | null;

@@ -91,10 +91,12 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   guest confirms their own name/email/phone at `/stay/checkin`, which **enriches the
   stay's CRM contact** (an anonymous OTA guest becomes re-bookable) and stamps
   `reservations.self_checkin_at`. Staff get the QR link + rotate in the unit drawer.
-  Remaining: checkout asks + post-stay follow-up (P5.2).
-- 🟡 Feed captured guests into CRM + AI marketing (A4/A5) — ✅ the P5.1 capture writes a
+  ✅ **P5.2** adds the automated post-stay follow-up (below).
+- ✅ Feed captured guests into CRM + AI marketing (A4/A5) — the P5.1 capture writes a
   real CRM contact, so self-checked-in guests flow straight into the A4 segmentation;
-  the automated post-stay campaign is P5.2.
+  **P5.2** then emails them a day after checkout (thank-you + feedback + book-direct)
+  via the daily reminder sweep — idempotent (`reservations.post_stay_email_at`, migration
+  059), DARK until email is configured, injectable email client for tests.
 
 ### B. Pre-existing unfinished work
 - 🔒🆕 **Phase B — real DPO Pay gateway** (replace simulated confirm; blocked on client sandbox keys). `settlePaid()` is the sole CONFIRM writer; `/stay` bookings have no hold → must generalise to confirm hold-less reservations.
@@ -161,7 +163,7 @@ Unblocks the operations + AI features that follow.
 
 ### Phase 5 — OTA-to-direct (rides on /stay + A4/A5)
 - ✅ P5.1: In-apartment QR → guest self check-in → captured into CRM (feeds A4 marketing)
-- 🆕 P5.2: checkout asks + post-stay follow-up (thank-you / review / book-direct nudge)
+- ✅ P5.2: post-stay follow-up email (thank-you / feedback / book-direct), daily sweep, dark until keyed
 
 ### Parallel track — client-gated (slot in whenever unblocked)
 - 🔒 Phase B DPO payments + discount-into-charge — **PARKED by owner decision (2026-07-02)**;
