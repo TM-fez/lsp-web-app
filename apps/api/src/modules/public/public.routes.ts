@@ -9,6 +9,7 @@ import { RoomsRepository } from '../rooms/rooms.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
 import { PricingRepository } from '../pricing/pricing.repository.js';
 import { ContactsRepository } from '../crm/contacts/contacts.repository.js';
+import { LeadsRepository } from '../crm/leads/leads.repository.js';
 import { db } from '../../config/db.js';
 
 /**
@@ -24,7 +25,8 @@ export function createPublicRouter(dbInstance = db): Router {
   const pricing = new PricingService(new PricingRepository(dbInstance));
   const reservations = new ReservationsService(new ReservationsRepository(dbInstance), rooms, pricing);
   const contacts = new ContactsRepository(dbInstance);
-  const service = new PublicService(new PublicRepository(dbInstance), reservations, contacts);
+  const leads = new LeadsRepository(dbInstance);
+  const service = new PublicService(new PublicRepository(dbInstance), reservations, contacts, leads);
   const controller = new PublicController(service);
 
   const bookingLimiter = rateLimit({
@@ -52,6 +54,9 @@ export function createPublicRouter(dbInstance = db): Router {
   // guest submits their own contact details (per-IP limited; token is unguessable).
   router.get('/checkin', lookupLimiter, controller.getCheckinInfo);
   router.post('/checkin', bookingLimiter, controller.submitCheckin);
+
+  // Public enquiry form → auto-filed lead (rate-limited like bookings).
+  router.post('/enquiries', bookingLimiter, controller.createEnquiry);
 
   return router;
 }

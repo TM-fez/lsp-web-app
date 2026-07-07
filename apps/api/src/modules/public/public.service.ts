@@ -1,11 +1,12 @@
 import { PublicRepository } from './public.repository.js';
 import { ReservationsService } from '../reservations/reservations.service.js';
 import { ContactsRepository } from '../crm/contacts/contacts.repository.js';
+import { LeadsRepository } from '../crm/leads/leads.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../core/logger.js';
 import { sendEmail, isEmailConfigured } from '../../core/email/email.service.js';
-import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo } from './public.types.js';
+import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo, CreateEnquiryDTO, EnquiryConfirmation } from './public.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 
 const unitLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -22,7 +23,58 @@ export class PublicService {
     private readonly repository: PublicRepository,
     private readonly reservations: ReservationsService,
     private readonly contacts: ContactsRepository,
+    private readonly leads: LeadsRepository,
   ) {}
+
+  /**
+   * Public enquiry capture: file a NEW lead so a website/WhatsApp enquiry is always
+   * tracked, and find-or-create a CRM contact when an email is given (so it can feed
+   * segmentation and a later convert-to-booking). Attributed to the system actor.
+   */
+  async createEnquiry(dto: CreateEnquiryDTO, meta: PublicRequestMeta): Promise<EnquiryConfirmation> {
+    const actorId = await this.repository.systemActorId();
+    const actorMeta = { userId: actorId, ip: meta.ip, requestId: meta.requestId };
+
+    // Link a contact only when we have an email to dedupe on (avoids a pile of
+    // near-duplicate contacts from anonymous enquiries).
+    let contactId: string | null = null;
+    if (dto.email) {
+      const existing = await this.repository.findContactByEmail(dto.email);
+      contactId = existing
+        ? existing.id
+        : (await this.contacts.create(
+            {
+              type: 'individual',
+              name: dto.name,
+              email: dto.email,
+              phone: dto.phone ?? null,
+              notes: 'Created from a website enquiry',
+              created_by: actorId,
+              updated_by: actorId,
+            },
+            actorMeta,
+          )).id;
+    }
+
+    const summary = dto.message.length > 180 ? `${dto.message.slice(0, 179)}…` : dto.message;
+    const who = [dto.name, dto.email, dto.phone].filter(Boolean).join(' · ');
+
+    const lead = await this.leads.create(
+      {
+        title: summary,
+        description: `${who}\n\n${dto.message}`,
+        status: 'NEW',
+        source: dto.source,
+        phone: dto.phone ?? null,
+        contact_id: contactId,
+        created_by: actorId,
+        updated_by: actorId,
+      },
+      actorMeta,
+    );
+
+    return { reference: `ENQ-${lead.id.replace(/-/g, '').slice(0, 6).toUpperCase()}` };
+  }
 
   /** Bookable layouts + from-prices for the public site. No PII, no availability. */
   async getStayInfo(): Promise<{ units: StayUnitOption[] }> {
