@@ -287,12 +287,11 @@ export class ReportsRepository {
     return r.rows;
   }
 
-  // Booked room-nights + stay count per owned unit, clipped to the window.
-  async occupancyByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; nights: string | number | null; stays: string | number | null }>> {
-    const r = await sql<{ room_id: string; nights: string | number | null; stays: string | number | null }>`
+  // Booked room-nights per owned unit, clipped to the window.
+  async occupancyByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; nights: string | number | null }>> {
+    const r = await sql<{ room_id: string; nights: string | number | null }>`
       SELECT rsv.room_id AS room_id,
-             COALESCE(SUM(GREATEST(0, LEAST(rsv.check_out_date, ${w.toExcl}::date) - GREATEST(rsv.check_in_date, ${w.from}::date))), 0) AS nights,
-             COUNT(*) AS stays
+             COALESCE(SUM(GREATEST(0, LEAST(rsv.check_out_date, ${w.toExcl}::date) - GREATEST(rsv.check_in_date, ${w.from}::date))), 0) AS nights
       FROM reservations rsv
       JOIN rooms rm ON rm.id = rsv.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
