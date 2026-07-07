@@ -314,6 +314,50 @@ export interface ReportsResponse {
   by_property: PropertyPnl[];
 }
 
+// ── Finance → Operational Cockpit (P4.3 — occupancy + YoY trends) ─────────────
+// The hospitality "big three": occupancy, ADR (revenue / booked nights), RevPAR
+// (revenue / available nights). Revenue is recognised (paid). Money is thebe.
+export interface OpsKpis {
+  occupancy_pct: number;
+  room_nights_booked: number;
+  room_nights_available: number;
+  reservations: number;
+  revenue: number;
+  adr: number;
+  revpar: number;
+}
+export interface OpsMonthlyPoint {
+  month: string;   // YYYY-MM
+  occupancy_pct: number;
+  room_nights_booked: number;
+  room_nights_available: number;
+  reservations: number;
+  revenue: number;
+  adr: number;
+}
+export interface OpsPropertyRow {
+  property_id: string | null;
+  property_name: string;
+  occupancy_pct: number | null;
+  room_nights_booked: number;
+  reservations: number;
+}
+export interface OpsDeltas {
+  occupancy_pts: number;
+  reservations_pct: number | null;
+  adr_pct: number | null;
+  revpar_pct: number | null;
+  revenue_pct: number | null;
+}
+export interface OperationsResponse {
+  window: { from: string; to: string; months: number };
+  summary: OpsKpis;
+  previous: OpsKpis & { from: string; to: string };
+  deltas: OpsDeltas;
+  monthly: OpsMonthlyPoint[];
+  by_property: OpsPropertyRow[];
+}
+
 // ── Finance → HR / Payroll ──────────────────────────────────────────────────
 export type PayFrequency = 'MONTHLY' | 'WEEKLY';
 export interface EmployeePay {

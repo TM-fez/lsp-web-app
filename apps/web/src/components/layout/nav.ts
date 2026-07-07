@@ -5,6 +5,7 @@ import {
   Users,
   Sparkles,
   Wrench,
+  TrendingUp,
   Wallet,
   Receipt,
   FileText,
@@ -55,6 +56,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/guests', label: 'Guests', icon: Users, perm: 'crm.contacts.read', built: true },
       { to: '/housekeeping', label: 'Housekeeping', icon: Sparkles, perm: 'housekeeping.read', built: true },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench, perm: 'maintenance.read', built: true },
+      { to: '/operations', label: 'Trends', icon: TrendingUp, perm: 'reports.read', built: true },
     ],
   },
   {

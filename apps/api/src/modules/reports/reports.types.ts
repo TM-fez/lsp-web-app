@@ -49,3 +49,62 @@ export interface ReportsResponse {
   monthly: MonthlyPoint[];
   by_property: PropertyPnl[];
 }
+
+// ── Operational Cockpit (P4.3) — occupancy + comparative trends ────────────────
+// Occupancy over completed calendar months only (the current partial month is
+// excluded so every point is well-defined). The "big three" hospitality metrics:
+// occupancy, ADR (revenue / booked nights) and RevPAR (revenue / available
+// nights). Revenue is recognised (PAID invoices), same basis as the P&L. Room
+// counts use the current active estate applied across the window (a simplification
+// the P&L already makes). All money is thebe.
+
+export interface OperationsWindow {
+  months?: number;   // trailing completed months (default 12, clamped 1..24)
+  propertyId?: string;
+  accessiblePropertyIds?: string[] | null;
+}
+
+export interface OpsKpis {
+  occupancy_pct: number;
+  room_nights_booked: number;
+  room_nights_available: number;
+  reservations: number;
+  revenue: number;   // thebe (recognised)
+  adr: number;       // thebe — revenue / booked nights
+  revpar: number;    // thebe — revenue / available nights
+}
+
+export interface OpsMonthlyPoint {
+  month: string;     // YYYY-MM
+  occupancy_pct: number;
+  room_nights_booked: number;
+  room_nights_available: number;
+  reservations: number;
+  revenue: number;   // thebe
+  adr: number;       // thebe
+}
+
+export interface OpsPropertyRow {
+  property_id: string | null;
+  property_name: string;
+  occupancy_pct: number | null;  // null where there are no rooms
+  room_nights_booked: number;
+  reservations: number;
+}
+
+export interface OpsDeltas {
+  occupancy_pts: number;             // percentage-point change vs prior year
+  reservations_pct: number | null;   // null when the prior period had none
+  adr_pct: number | null;
+  revpar_pct: number | null;
+  revenue_pct: number | null;
+}
+
+export interface OperationsResponse {
+  window: { from: string; to: string; months: number };
+  summary: OpsKpis;
+  previous: OpsKpis & { from: string; to: string };  // same months, prior year
+  deltas: OpsDeltas;
+  monthly: OpsMonthlyPoint[];
+  by_property: OpsPropertyRow[];
+}
