@@ -19,6 +19,7 @@ import { UsersPage } from '@/features/users/UsersPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { OperationalCockpitPage } from '@/features/operations/OperationalCockpitPage';
+import { MarketingPage } from '@/features/marketing/MarketingPage';
 import { InvoicesPage } from '@/features/invoices/InvoicesPage';
 import { InvoiceDocumentPage } from '@/features/invoices/InvoiceDocumentPage';
 import { ReportStatementPage } from '@/features/reports/ReportStatementPage';
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
           { path: '/expenses', element: <ExpensesPage /> },
           { path: '/reports', element: <ReportsPage /> },
           { path: '/operations', element: <OperationalCockpitPage /> },
+          { path: '/marketing', element: <MarketingPage /> },
           { path: '/invoices', element: <InvoicesPage /> },
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },

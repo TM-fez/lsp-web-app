@@ -21,6 +21,10 @@ describe('workspaceForPath', () => {
     expect(workspaceForPath('/operations')).toBe('OPERATIONS');
   });
 
+  it('maps the Marketing route to Operations', () => {
+    expect(workspaceForPath('/marketing')).toBe('OPERATIONS');
+  });
+
   it('does not let "/" swallow other routes', () => {
     // The root Cockpit route must match exactly, not as a prefix of everything.
     expect(workspaceForPath('/rooms')).toBe('ADMIN');

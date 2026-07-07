@@ -6,6 +6,7 @@ import {
   Sparkles,
   Wrench,
   TrendingUp,
+  Megaphone,
   Wallet,
   Receipt,
   FileText,
@@ -58,6 +59,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/housekeeping', label: 'Housekeeping', icon: Sparkles, perm: 'housekeeping.read', built: true },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench, perm: 'maintenance.read', built: true },
       { to: '/operations', label: 'Trends', icon: TrendingUp, perm: 'reports.read', built: true },
+      { to: '/marketing', label: 'Marketing', icon: Megaphone, perm: 'reports.read', built: true },
     ],
   },
   {
