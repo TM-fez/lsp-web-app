@@ -53,9 +53,9 @@ Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  
   At channel-sync go-live, add a 15-min Render Cron Job / GitHub Action pointing here
   (see `HANDOVER.md` §5 for the full owner checklist).
 
-> **Legacy:** `apps/api/vercel.json` is left over from an earlier attempt to run the API on
-> Vercel. The API lives on Render now — that file (and any abandoned Vercel "-api" project)
-> can be deleted.
+> **Legacy:** the API lives on Render now (`render.yaml`), never Vercel. The old
+> `apps/api/vercel.json` stub from an earlier API-on-Vercel attempt has been removed;
+> the abandoned Vercel "-api" project can be deleted from the Vercel dashboard.
 
 ---
 
