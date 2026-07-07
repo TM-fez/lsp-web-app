@@ -314,6 +314,47 @@ export interface ReportsResponse {
   by_property: PropertyPnl[];
 }
 
+// ── Finance → Financial Cockpit (P4.2 — real-time receivables) ──────────────
+// All amounts thebe. Receivable = open (ISSUED/PARTIALLY_PAID) DEPOSIT/BALANCE
+// invoice; ageing runs from the issue date; REFUND liabilities sit apart.
+export type AgingBucketKey = '0-30' | '31-60' | '61-90' | '90+';
+export interface AgingBucket {
+  bucket: AgingBucketKey;
+  amount: number;
+  count: number;
+}
+export interface PropertyReceivable {
+  property_id: string | null;
+  property_name: string;
+  amount: number;
+  count: number;
+}
+export interface OutstandingInvoice {
+  id: string;
+  number: string;
+  kind: 'DEPOSIT' | 'BALANCE';
+  status: 'ISSUED' | 'PARTIALLY_PAID';
+  total_amount: number;
+  currency: string;
+  bill_to_name: string | null;
+  property_id: string | null;
+  property_name: string | null;
+  created_at: string;
+  days_outstanding: number;
+}
+export interface FinanceCockpit {
+  as_of: string;
+  summary: {
+    total_receivable: number;
+    open_invoices: number;
+    oldest_days: number;
+    refunds_payable: number;
+  };
+  aging: AgingBucket[];
+  by_property: PropertyReceivable[];
+  invoices: OutstandingInvoice[];
+}
+
 // ── Finance → HR / Payroll ──────────────────────────────────────────────────
 export type PayFrequency = 'MONTHLY' | 'WEEKLY';
 export interface EmployeePay {

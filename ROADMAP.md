@@ -68,7 +68,10 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 
 ### A5. Dashboards
 - 🟡 `reports` + `dashboard` modules — exist to build on
-- 🆕 Financial Cockpit — real-time outstanding ledger balances + receivables
+- ✅ Financial Cockpit (P4.2) — real-time outstanding ledger + receivables: totals,
+  ageing buckets (by issue age), per-property debt and an oldest-first drill-down, all
+  scoped to accessible properties (`reports.read`). Lives at `/finance`, the Finance
+  workspace home. Invoice-driven, no migration.
 - 🆕 Operational Cockpit — occupancy %, monthly/annual comparative trends
 - 🆕 AI Strategy Engine — prompt AI on dashboard trends → auto-generate campaigns (shares A4's LLM)
 
@@ -137,7 +140,7 @@ Unblocks the operations + AI features that follow.
 
 ### Phase 4 — Revenue & intelligence (rides on Phase 1 + 2) — IN PROGRESS
 - ✅ Reservations/CRM new fields (A4): coordinator + billing contact
-- Dashboards: Financial + Operational Cockpit (A5)
+- Dashboards: ✅ Financial Cockpit (P4.2) · Operational Cockpit (A5)
 - AI target marketing + AI Strategy Engine (A4/A5)
 
 ### Phase 5 — OTA-to-direct (rides on /stay + A4/A5)
