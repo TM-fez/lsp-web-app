@@ -25,6 +25,7 @@ import { createExpensesRouter } from './modules/expenses/expenses.routes.js';
 import { createOperatingExpensesRouter } from './modules/operating-expenses/operating-expenses.routes.js';
 import { createPayrollRouter } from './modules/payroll/payroll.routes.js';
 import { createReportsRouter } from './modules/reports/reports.routes.js';
+import { createFinanceRouter } from './modules/finance/finance.routes.js';
 import { createMarketingRouter } from './modules/marketing/marketing.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
 import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
@@ -82,6 +83,9 @@ router.use('/expenses', createExpensesRouter());
 router.use('/operating-expenses', createOperatingExpensesRouter());
 router.use('/payroll', createPayrollRouter());
 router.use('/reports', createReportsRouter());
+
+// ── Phase 4 (P4.2) — Financial Cockpit: real-time receivables / outstanding ledger
+router.use('/finance', createFinanceRouter());
 
 // ── Phase 4 (P4.4) — AI target marketing + strategy engine (LLM-gated) ─────────
 router.use('/marketing', createMarketingRouter());

@@ -31,4 +31,20 @@ export class ReportsController {
       next(err);
     }
   };
+
+  // GET /reports/operations?months=12&property_id=… — occupancy trend + YoY comparison.
+  operations = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const months = typeof req.query.months === 'string' ? Number(req.query.months) : undefined;
+      const propertyId = (req.query.property_id as string) || undefined;
+      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      res.json(await this.service.getOperations({
+        months: Number.isFinite(months) ? months : undefined,
+        propertyId,
+        accessiblePropertyIds,
+      }));
+    } catch (err) {
+      next(err);
+    }
+  };
 }

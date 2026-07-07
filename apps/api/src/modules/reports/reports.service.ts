@@ -1,6 +1,9 @@
 import { buildNudges, type Nudge } from './reports.nudges.js';
 import { ReportsRepository, type RepoWindow } from './reports.repository.js';
-import type { ReportWindow, ReportsResponse, MonthlyPoint, PropertyPnl } from './reports.types.js';
+import type {
+  ReportWindow, ReportsResponse, MonthlyPoint, PropertyPnl,
+  OperationsWindow, OperationsResponse, OpsKpis, OpsDeltas, OpsMonthlyPoint, OpsPropertyRow,
+} from './reports.types.js';
 
 const DAY = 86_400_000;
 const num = (v: string | number | null | undefined) => Number(v ?? 0);
@@ -36,6 +39,59 @@ function monthsBetween(from: string, toExcl: string): string[] {
     cur.setUTCMonth(cur.getUTCMonth() + 1);
   }
   return out;
+}
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const daysBetween = (from: string, toExcl: string) =>
+  Math.max(1, Math.round((parseISO(toExcl).getTime() - parseISO(from).getTime()) / DAY));
+
+/** Trailing N *completed* months: [first-of-(N-months-ago), first-of-this-month). */
+function operationsWindow(monthsRaw: number): { from: string; toExcl: string; months: number } {
+  const months = Math.min(24, Math.max(1, Math.round(monthsRaw || 12)));
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1));
+  const toExcl = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return { from: iso(from), toExcl: iso(toExcl), months };
+}
+
+/** The same span one year earlier (the annual comparative). */
+function shiftBackYear(w: { from: string; toExcl: string }): { from: string; toExcl: string } {
+  const back = (s: string) => {
+    const d = parseISO(s);
+    return iso(new Date(Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate())));
+  };
+  return { from: back(w.from), toExcl: back(w.toExcl) };
+}
+
+/** Calendar days in a 'YYYY-MM' month. */
+function daysInMonthOf(ym: string): number {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(Date.UTC(y!, m!, 0)).getUTCDate(); // day 0 of next month = last of this
+}
+
+const pctChange = (prev: number, cur: number): number | null =>
+  prev > 0 ? round1(((cur - prev) / prev) * 100) : null;
+
+/** Occupancy / ADR / RevPAR for one window, from its per-property occupancy + revenue rows. */
+function buildKpis(
+  occProp: Array<{ nights: string | number | null; stays: string | number | null }>,
+  revMonth: Array<{ amount: string | number | null }>,
+  totalRooms: number,
+  days: number,
+): OpsKpis {
+  const nights = occProp.reduce((s, r) => s + num(r.nights), 0);
+  const reservations = occProp.reduce((s, r) => s + num(r.stays), 0);
+  const revenue = revMonth.reduce((s, r) => s + num(r.amount), 0);
+  const available = totalRooms * days;
+  return {
+    occupancy_pct: available > 0 ? round1((nights / available) * 100) : 0,
+    room_nights_booked: nights,
+    room_nights_available: available,
+    reservations,
+    revenue,
+    adr: nights > 0 ? Math.round(revenue / nights) : 0,
+    revpar: available > 0 ? Math.round(revenue / available) : 0,
+  };
 }
 
 export class ReportsService {
@@ -147,6 +203,86 @@ export class ReportsService {
         room_nights_available,
         occupancy_pct: room_nights_available > 0 ? round1((room_nights_booked / room_nights_available) * 100) : 0,
       },
+      monthly,
+      by_property,
+    };
+  }
+
+  /** P4.3 — Operational Cockpit: occupancy trend + year-over-year comparison. */
+  async getOperations(req: OperationsWindow): Promise<OperationsResponse> {
+    const cur = operationsWindow(req.months ?? 12);
+    const prev = shiftBackYear(cur);
+    const scope = { propertyId: req.propertyId, accessiblePropertyIds: req.accessiblePropertyIds };
+    const curW: RepoWindow = { from: cur.from, toExcl: cur.toExcl, ...scope };
+    const prevW: RepoWindow = { from: prev.from, toExcl: prev.toExcl, ...scope };
+
+    const [occMonth, revMonthCur, occPropCur, roomCounts, revMonthPrev, occPropPrev] = await Promise.all([
+      this.repo.occupancyByMonth(curW),
+      this.repo.revenueByMonth(curW),
+      this.repo.occupancyByProperty(curW),
+      this.repo.roomCountByProperty(req.propertyId, req.accessiblePropertyIds),
+      this.repo.revenueByMonth(prevW),
+      this.repo.occupancyByProperty(prevW),
+    ]);
+
+    // Current estate applied across both windows — the same simplification the P&L makes.
+    const totalRooms = roomCounts.reduce((s, r) => s + num(r.rooms), 0);
+    const curDays = daysBetween(cur.from, cur.toExcl);
+    const prevDays = daysBetween(prev.from, prev.toExcl);
+
+    const summary = buildKpis(occPropCur, revMonthCur, totalRooms, curDays);
+    const previous = {
+      ...buildKpis(occPropPrev, revMonthPrev, totalRooms, prevDays),
+      from: prev.from,
+      to: iso(new Date(parseISO(prev.toExcl).getTime() - DAY)),
+    };
+
+    const deltas: OpsDeltas = {
+      occupancy_pts: round1(summary.occupancy_pct - previous.occupancy_pct),
+      reservations_pct: pctChange(previous.reservations, summary.reservations),
+      adr_pct: pctChange(previous.adr, summary.adr),
+      revpar_pct: pctChange(previous.revpar, summary.revpar),
+      revenue_pct: pctChange(previous.revenue, summary.revenue),
+    };
+
+    // ── Monthly trend — every month in the window, zero-filled ────────────────────
+    const revByM = new Map(revMonthCur.map((r) => [r.month, num(r.amount)]));
+    const occByM = new Map(occMonth.map((r) => [r.month, r]));
+    const monthly: OpsMonthlyPoint[] = monthsBetween(cur.from, cur.toExcl).map((month) => {
+      const o = occByM.get(month);
+      const nights = num(o?.nights);
+      const available = totalRooms * daysInMonthOf(month);
+      const revenue = revByM.get(month) ?? 0;
+      return {
+        month,
+        occupancy_pct: available > 0 ? round1((nights / available) * 100) : 0,
+        room_nights_booked: nights,
+        room_nights_available: available,
+        reservations: num(o?.stays),
+        revenue,
+        adr: nights > 0 ? Math.round(revenue / nights) : 0,
+      };
+    });
+
+    // ── Per-property occupancy over the window (best first) ───────────────────────
+    const roomsByP = new Map(roomCounts.map((r) => [r.property_id, num(r.rooms)]));
+    const by_property: OpsPropertyRow[] = occPropCur.map((r) => {
+      const rooms = roomsByP.get(r.property_id) ?? 0;
+      const nights = num(r.nights);
+      return {
+        property_id: r.property_id,
+        property_name: r.property_name ?? COMPANY_WIDE,
+        occupancy_pct: rooms > 0 ? round1((nights / (rooms * curDays)) * 100) : null,
+        room_nights_booked: nights,
+        reservations: num(r.stays),
+      };
+    }).sort((a, b) => (b.occupancy_pct ?? -1) - (a.occupancy_pct ?? -1));
+
+    return {
+      window: { from: cur.from, to: iso(new Date(parseISO(cur.toExcl).getTime() - DAY)), months: cur.months },
+      summary,
+      previous,
+      deltas,
       monthly,
       by_property,
     };

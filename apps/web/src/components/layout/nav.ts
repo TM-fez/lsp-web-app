@@ -5,12 +5,14 @@ import {
   Users,
   Sparkles,
   Wrench,
+  TrendingUp,
   Megaphone,
   Wallet,
   Receipt,
   FileText,
   Banknote,
   BarChart3,
+  Gauge,
   Building2,
   BedDouble,
   Tags,
@@ -56,6 +58,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/guests', label: 'Guests', icon: Users, perm: 'crm.contacts.read', built: true },
       { to: '/housekeeping', label: 'Housekeeping', icon: Sparkles, perm: 'housekeeping.read', built: true },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench, perm: 'maintenance.read', built: true },
+      { to: '/operations', label: 'Trends', icon: TrendingUp, perm: 'reports.read', built: true },
       { to: '/marketing', label: 'Marketing', icon: Megaphone, perm: 'reports.read', built: true },
     ],
   },
@@ -64,6 +67,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Finance',
     icon: Wallet,
     items: [
+      { to: '/finance', label: 'Cockpit', icon: Gauge, perm: 'reports.read', built: true },
       { to: '/invoices', label: 'Invoices', icon: FileText, perm: 'invoices.read', built: true },
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },
       { to: '/operating-expenses', label: 'Operating costs', icon: Banknote, perm: 'opex.read', built: true },
@@ -90,11 +94,11 @@ export const DEFAULT_WORKSPACE: WorkspaceId = 'OPERATIONS';
 
 /**
  * Route that renders a workspace's "coming soon" placeholder, for workspaces with
- * nothing built yet. Only Finance qualifies today.
+ * nothing built yet. Every workspace now has at least one built screen (Finance
+ * landed its Cockpit in P4.2), so this is empty — kept as the seam for any future
+ * workspace that ships before its first screen.
  */
-export const WORKSPACE_PLACEHOLDER: Partial<Record<WorkspaceId, string>> = {
-  FINANCE: '/finance',
-};
+export const WORKSPACE_PLACEHOLDER: Partial<Record<WorkspaceId, string>> = {};
 
 export function getWorkspace(id: WorkspaceId): WorkspaceDef {
   return WORKSPACES.find((w) => w.id === id) ?? WORKSPACES[0];
