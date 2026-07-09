@@ -4,6 +4,9 @@ This file is the single source of truth for picking the project up on a new mach
 (or in a fresh Claude session). The code lives on GitHub; the working context does not —
 so everything you need to continue is captured here.
 
+**Last updated: 2026-07-09.** Companion docs: `ROADMAP.md` (full backlog + status),
+`GO-LIVE-FAHAD.md` (plain-English owner go-live checklist), `DEPLOY.md` (deploy/env reference).
+
 ---
 
 ## 1. What this is
@@ -19,7 +22,7 @@ It is a **Turborepo monorepo** with two apps:
 It covers: auth/RBAC, CRM (guests + leads), reservations, the operations **Cockpit**, housekeeping,
 maintenance, pricing, the commercial money-loop (quote → hold → payment → confirm), expenses, an
 activity feed, multi-property (Property → Building → Unit), a **public guest booking page** (`/stay`),
-and **direct Booking.com channel sync** over iCal (replacing Little Hotelier — see §5).
+**AI marketing + strategy**, and **direct Booking.com channel sync** over iCal (replacing Little Hotelier — see §5).
 
 ---
 
@@ -29,8 +32,8 @@ and **direct Booking.com channel sync** over iCal (replacing Little Hotelier —
 - **Live web:** https://lsp-web-app-web.vercel.app (Vercel)
 - **Live API:** https://lsp-api-p3zx.onrender.com (Render web service) + **Render Postgres**
 - **Architecture:** Web on Vercel proxies `/api/*` + `/health` to the Render API (so the browser stays
-  same-origin → first-party refresh cookie). See `DEPLOY.md` (note: DEPLOY.md is partly outdated — it
-  predates the Vercel-web + Render-API split; treat this section as the truth).
+  same-origin → first-party refresh cookie). See `DEPLOY.md` (rewritten for the Vercel-web + Render-API
+  split; current).
 - **Admin login:** `admin@lsp.local` (password was changed by the owner on the live site — not stored anywhere).
 
 ---
@@ -67,6 +70,12 @@ npm run dev              # API on :3000, web on :5173
 
 Open http://localhost:5173 and log in with `admin@lsp.local` / `Admin@123!`.
 
+**What is NOT in the repo (per-machine, gitignored — recreate locally):**
+- `apps/api/.env` (copy from `.env.example`) and `apps/web/.env` if used.
+- `apps/api/keys/` — the RS256 JWT keypair (step 4 above).
+- Any real secrets (`ANTHROPIC_API_KEY`, `BREVO_API_KEY`, `STORAGE_*`, Sentry DSNs). These live on
+  Render/Vercel dashboards for production, and only in a local `.env` if you want to exercise them here.
+
 **Important gotchas**
 - The API entry point is **`apps/api/src/server.ts`** (started by `npm run dev`), **not** `app.ts`
   (`app.ts` is import-only so it can also run serverless — it does **not** call `listen()`).
@@ -75,98 +84,76 @@ Open http://localhost:5173 and log in with `admin@lsp.local` / `Admin@123!`.
 
 ---
 
-## 4. Where the project stands (done + merged to `main`)
+## 4. Where the project stands (all builds done + merged to `main`)
 
-Built and shipped: full RBAC + Users & Roles, CRM (Guests, Leads), Reservations, Cockpit (unit board +
-arrivals/in-house/departures + assign drawer), Housekeeping, Maintenance (+ contractor costs/expenses +
-accountability), Pricing, the commercial money-loop, an editorial UI overhaul, the **activity feed**,
-**per-booking discounts** wired into the amount due, **multi-property** (Property → Building → Unit with a
-Properties admin screen + cockpit/reservations property filters), the **public booking page (Phase A —
-pay-on-arrival)**, and a dead-code cleanup.
+As of **2026-07-09, development is complete.** Every product phase (0–5) and the hardening track
+(H1–H6) is built, tested, and merged to `main` (live on Vercel + Render). What remains is **not
+coding** — it's client/owner setup (keys, paid hosting) and a few chores (see §5). The full backlog
+with per-item status is in **`ROADMAP.md`**; the owner-facing switch-on checklist is in **`GO-LIVE-FAHAD.md`**.
 
-**Live data is real:** the demo units were removed; the live site has **25 real apartments** organised into
-**Village blocks B / D / G / I / J / T**. The owner has changed the admin password. The **budget is approved.**
+Shipped and live:
+- Auth/RBAC, Users & Roles, CRM (Guests + Leads), Reservations, the operations Cockpit, Pricing, the
+  commercial money-loop, Expenses, the activity feed, per-booking discounts.
+- **Multi-property keystone (A1) — done:** `user_properties` (migration 048); a single server-side
+  enforcement point (`core/scope/activeProperty.ts` — validates the `X-Property-Id` header against
+  membership, admin = wildcard); post-login property picker (`PropertyGate` / `PropertySwitcher`);
+  per-building unit naming (migration 051).
+- **Operations depth (Phase 3):** maintenance notifications + interval reminders + scoped contractor
+  login + landlord-vs-LP ownership mapping; housekeeping three-stage sign-off + compliance checklists
+  + turnaround tracking + tablet board.
+- **Revenue & intelligence (Phase 4):** Financial Cockpit, Operational Cockpit, and **AI target
+  marketing + AI strategy brief** (both dark until `ANTHROPIC_API_KEY` is set).
+- **OTA-to-direct (Phase 5):** in-apartment QR self-check-in → CRM capture; automated post-stay
+  follow-up email; public enquiry → auto-lead; lead → reservation conversion; lease-renewal reminders.
+- **Hardening (H1–H6):** rate-limit/proxy fixes; S3-compatible storage driver + nightly `pg_dump`
+  backup; Sentry + structured logging + security headers; the Booking.com channel-sync go-live package
+  (H4); property scoping on the money-loop (H5); booking-source badges, `/stay` confirmation emails,
+  and occupancy nudges (H6).
+
+**Live data is real:** 25 real apartments (Village blocks B / D / G / I / J / T). The owner has changed
+the admin password. The **budget is approved.** Schema is at **migration 060**.
 
 ---
 
-## 5. What's next (the roadmap)
+## 5. What's left before launch (no more building — a switch-on + launch checklist)
 
-### Channel sync — Booking.com, direct iCal (replaces Little Hotelier) — IN PROGRESS
-**Decision (supersedes the old plan):** Little Hotelier is dropped. **LSP is the channel manager** and talks
-to Booking.com directly over iCal. The one master calendar is LSP's database. (The earlier "keep Little
-Hotelier, never connect Booking.com directly" plan is void.)
+Development is done; what remains is client/owner setup and chores. The plain-English, owner-facing
+version of all this is **`GO-LIVE-FAHAD.md`** (parts A–D). Summary:
 
-**Built (code complete; NOT yet run on live):**
-- **Hard floor:** migration `035` already makes Postgres physically refuse a double-booking; `046` extends
-  it so imported OTA nights participate too.
-- **Schema:** `045` adds the `BLOCKED` reservation status (set only by the importer, never by a user); `046`
-  adds `rooms.ical_token`, `rooms.booking_ical_url`, `reservations.source` (DIRECT/WEBSITE/BOOKING_COM) +
-  `external_uid`, and rebuilds `reservations_no_overlap` to include `BLOCKED`; `047` seeds the system actors
-  imported blocks hang off of (reservations' contact/created_by are NOT NULL).
-- **Export (LSP → Booking.com):** public, token-guarded feed `GET /api/v1/ical/units/{ical_token}.ics` — live
-  per-unit availability, DIRECT/WEBSITE confirmed+checked-in nights only. Never re-exports an imported OTA
-  block (no feedback loop) and never leaks guest PII. Paste each unit's URL into the Booking.com extranet.
-- **Import (Booking.com → LSP):** `ChannelImportService.runImport()` pulls each unit's `booking_ical_url`,
-  upserts OTA bookings as `BLOCKED` (idempotent by `external_uid`), ends blocks that vanish from the feed,
-  and on a `23P01` overlap with a direct sale fires a **multi-channel alert** instead of failing silently.
-- **Alerts:** dashboard (activity-feed entry, live) + email (Brevo, live once `CHANNEL_ALERT_EMAIL` is set) +
-  WhatsApp (seam built, **dark** until a template is approved and `WHATSAPP_LIVE=1`). Repeat pages for the
-  same OTA event are throttled to once per 6 hours.
-- **Tests:** the export filter (a BOOKING_COM block must never appear in the feed) is proven in the live-DB CI
-  suite; the parser, the collision→alert path, the throttle, and the alert fan-out are unit-tested.
+**Client/owner setup — flips "dark" features on (env vars on the dashboards, not code):**
+- `ANTHROPIC_API_KEY` on Render → AI marketing + strategy brief. Slot is documented in `render.yaml`.
+  Feature verified green (26 Part-B tests pass). Segments work without it; only generation is gated.
+- `BREVO_API_KEY` + `EMAIL_FROM` on Render → guest emails (booking confirmations, manage-my-booking,
+  post-stay follow-up).
+- Cloudflare R2 bucket + `STORAGE_*` on Render + flip `STORAGE_DRIVER=s3`; GitHub `BACKUP_*` secrets →
+  real file storage + nightly DB backups.
+- Sentry `SENTRY_DSN` (Render) + `VITE_SENTRY_DSN` (Vercel); UptimeRobot pointed at `/health`.
 
-**Go-live checklist (owner-run, in order — updated for H4, 2026-07-02):**
-1. **Render → paid plan** (Booking.com's calendar fetcher times out on a sleeping free service).
-2. **Back up** Render Postgres (or rely on the H4-era nightly backup workflow once its secrets are set).
-3. Migrations 045–047 are already applied on live (they run on every deploy) — just verify `/health`.
-4. Per unit, in the **unit drawer's "Channel sync" section** (no SQL needed since H4): copy our export
-   URL → paste into the Booking.com extranet (Rates & Availability → Sync calendars); copy Booking.com's
-   `.ics` link → paste into the drawer's import field (validated: https + booking.com only).
-5. Set `CHANNEL_ALERT_EMAIL` + `CRON_SECRET` on Render (and later `WHATSAPP_*` when the template clears).
-6. Add the 15-min trigger (Render Cron Job / GitHub Action): GET `/api/v1/cron/channel-sync` with header
-   `Authorization: Bearer <CRON_SECRET>`. The route is already mounted and refuses everyone without the
-   secret — the schedule is the on-switch. Hardened in H4: advisory lock, empty-feed/mass-cancel guards,
-   and the "claim this booking" flow that turns anonymous OTA blocks into check-in-able guests.
+**The one deadline — Render → paid plan.** Free Postgres expires **~Sep 2026**; the free web service
+sleeps when idle. Also a hard prerequisite for Booking.com go-live (its fetcher times out on a sleeping
+service).
 
-**New env vars:** `CHANNEL_ALERT_EMAIL`, `WHATSAPP_TOKEN`, `WHATSAPP_FROM`, `WHATSAPP_TO`, `WHATSAPP_LIVE`.
+**Booking.com channel sync (H4) — code complete, owner go-live steps** (see `GO-LIVE-FAHAD.md` Part C
+and `ROADMAP.md` H4): per unit, in the unit drawer's "Channel sync" box, paste our export URL into the
+Booking.com extranet and paste their `.ics` back; set `CHANNEL_ALERT_EMAIL` + `CRON_SECRET`; add the
+15-minute cron trigger (`GET /api/v1/cron/channel-sync` with `Authorization: Bearer <CRON_SECRET>`).
+The route is mounted and refuses everyone without the secret — the schedule is the on-switch.
 
-### Blocked on the client
-- **DPO merchant signup** (in progress) → they hand over **sandbox API keys** → unblocks Phase B payments.
+**Parked client decisions:**
+- **DPO Pay (Phase B)** — **parked by owner on 2026-07-02** (registration deliberately stopped).
+  `settlePaid()` (`apps/api/src/modules/payments/payments.repository.ts`) is the sole writer of a
+  reservation to CONFIRMED. Resuming means: generalise it to confirm hold-less `/stay` bookings, wire
+  the approved discount into the real gateway charge, and reuse the cron secret-guarded-endpoint pattern
+  for the DPO callback.
+- **OTA guest details** — Fahad decides: manual extranet copy vs full Booking.com Reservations API. The
+  H6 Tier-2 auto-enrich (parse the "new booking" notification email) is blocked until a real sample email
+  is forwarded.
 
-### Phase B — DPO online payments (the next big build)
-Replace the *simulated* payment outcome with the real **DPO Pay** gateway. DPO is the chosen gateway
-(settles locally in BWP via FNB/Stanbic; card + mobile money; best long-term fit). Flutterwave is the backup.
+**Chores:** wipe leftover demo contacts / reservations / leads before the pilot (**parked** — needs a
+deliberate DB target + owner eyeball before firing); deactivate the now-empty "Main" building; clean up
+the abandoned Vercel "-api" projects.
 
-Flow: `create deposit payment → DPO hosted checkout → return + server callback → verify with DPO →
-existing settlePaid() flips reservation PENDING → CONFIRMED`.
-
-Key code facts:
-- `settlePaid()` in `apps/api/src/modules/payments/payments.repository.ts` is the **sole** writer of a
-  reservation to CONFIRMED; it threads via `hold → reservation_id`.
-- Public `/stay` bookings create a reservation **directly (no hold)** → Phase B must generalise the payment
-  intent / `settlePaid` to confirm a reservation that has no hold (or route web bookings through a hold).
-- Reuse the cron secret-guarded-endpoint pattern (`modules/cron/cron.routes.ts`) for the DPO callback.
-- Also: wire the approved discount into the **actual** gateway charge (today it only reduces the *displayed* amount due).
-
-### Remaining go-live cleanup
-- Wipe leftover demo **contacts / reservations / leads** (from seed-live) before the real pilot.
-- Optionally deactivate the now-empty "Main" building under Village.
-
-### Smaller feature gaps (from the client's process map)
-- Surface reservation **origin** in cockpit/reservations. The `source` column now exists (migration 046:
-  DIRECT / WEBSITE / BOOKING_COM), but `/stay` bookings still write DIRECT and the UI doesn't show it yet.
-- Reports / Performance dashboard (occupancy, conversion, revenue, direct vs OTA).
-- WhatsApp → Leads auto-capture; lead → reservation conversion; retention/reviews; lease-renewal workflow.
-
-### Tech debt / ops
-- `DEPLOY.md` is outdated (rewrite for Vercel-web + Render-API split).
-- Render **free Postgres expires ~Sep 2026** → move to paid before real daily use; free web service sleeps when idle.
-- Clean up abandoned Vercel "-api" projects.
-
-### Later / strategic
-- Channel sync is no longer "later" — it moved up and is the **direct Booking.com iCal** build above
-  (Little Hotelier dropped). Future hardening: a real-time API instead of polling, and more OTAs.
-- **Fez Education** skills/e-learning platform — a **separate** project (own accounts, own repo), not started.
+**Separate project (not started):** Fez Education skills/e-learning platform — its own accounts and repo.
 
 ---
 
@@ -178,14 +165,29 @@ Key code facts:
 - Money is stored in **thebe** (integer minor units; 100 = 1 Pula). Enter in Pula in the UI, store thebe.
 - New web feature = `features/<x>/` with TanStack Query hooks + a Radix dialog drawer; gate UI with `useAuthStore.hasPerm`.
 - "Today" is **Africa/Gaborone** — use `core/time.ts` (API) and `lib/utils/date.ts` (web), never raw `new Date()` for the property day.
-- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 047).
+- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 060).
+- Property-scoped routes go through `requireActiveProperty` (`core/scope/activeProperty.ts`); scoped queries filter by `req.activePropertyId`.
 - Commercial invariant: only `settlePaid()` confirms a reservation; create/edit can never set CONFIRMED.
 
 ---
 
-## 7. Note on continuity
+## 7. Note on continuity (read this on the other PC)
 
-Past sessions used Claude Code **memory files** that live on the original machine and **do not travel with the
-repo**. This `HANDOVER.md` is the portable replacement — it captures the state and plan. On the new machine,
-just point Claude at this file. (If you have the old machine, the memory folder is at
-`~/.claude/projects/-Users-macbookair-Desktop-lsp-web-app/memory/` — optional to copy over.)
+**The repo is portable; the working context is not.** Everything the code needs is on GitHub `main` —
+so on the other machine, `git clone` (or `git checkout main && git pull`) gets you fully current,
+including this file, `ROADMAP.md`, and `GO-LIVE-FAHAD.md`.
+
+Two things do **not** travel with the repo:
+- **Claude Code memory files** — they live under `~/.claude/projects/<project-slug>/memory/` on whichever
+  machine wrote them, not in git. A fresh Claude session on the other PC won't have them. This `HANDOVER.md`
+  is the portable replacement: on the new machine, point Claude at this file first. (Optional: copy the
+  memory folder across manually if you have both machines.)
+- **Local secrets** — `apps/api/.env`, `apps/api/keys/`, and any API keys. Recreate them per §3.
+
+To get the other PC current right now:
+```bash
+git clone https://github.com/TM-fez/lsp-web-app.git   # first time
+# or, if it already has the repo:
+git checkout main && git pull
+```
+Then read `HANDOVER.md` → `ROADMAP.md` → `GO-LIVE-FAHAD.md`, and recreate the local `.env` + JWT keys (§3).
