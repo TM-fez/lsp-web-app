@@ -62,6 +62,12 @@ services:
         value: info@fezeducation.co.bw
       - key: EMAIL_FROM_NAME
         value: Lifestyle Apartments
+      # AI marketing & strategy (Claude). Dark until the key is set in the dashboard —
+      # isLlmConfigured() is false without it, so guest segments still work and campaign/
+      # strategy generation returns configured:false with no API call. Set the value
+      # (a secret) in the Render dashboard.
+      - key: ANTHROPIC_API_KEY
+        sync: false
 
 databases:
   - name: lsp-db

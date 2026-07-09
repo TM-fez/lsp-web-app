@@ -9,14 +9,24 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
 
 ## Part 1 — Full backlog
 
-### A1. Multi-property access / property picker  *(the keystone)*
-- 🟡 Property → Building → Unit structure — exists (migration 040; Village + CBD seeded)
-- 🟡 Property filter on cockpit/reservations — exists but **UI-only; server trusts the client**
-- 🆕 `user_properties` permissions table (user → property mapping)
-- 🆕 Server-side scoping enforced on **every** query (shared middleware + helper, rolled module-by-module)
-- 🆕 Property picker as a post-login step (authority users) + auto-scope (single-property users, no picker)
-- 🆕 Active-property carried server-side (JWT claim vs validated header — **decision pending**)
-- 🆕 Per-property apartment naming (room `code` is globally unique today → scope uniqueness per building/property)
+### A1. Multi-property access / property picker  *(the keystone)* — ✅ COMPLETE
+- ✅ Property → Building → Unit structure — migration 040 (Village + CBD seeded)
+- ✅ Property filter on cockpit/reservations — **now server-enforced** (was UI-only / server
+  trusted the client); the filter rides on the enforcement point below
+- ✅ `user_properties` permissions table (user → property mapping) — migration 048
+- ✅ Server-side scoping via a single enforcement point — `core/scope/activeProperty.ts`:
+  `requireActiveProperty` validates the `X-Property-Id` header against `user_properties`
+  membership (admin = wildcard) and attaches `req.activePropertyId`, so a forged header can
+  never cross properties. Rolled out module-by-module (H5 money-loop: holds/payments/
+  invoices/checkins/availability; Phase 3: maintenance/housekeeping). Deliberate exceptions
+  documented in H5 — expenses/payroll/activity stay org-wide, quotes unscoped until they
+  become a hold.
+- ✅ Property picker as a post-login step + auto-scope — web `PropertyGate.tsx` /
+  `PropertySwitcher.tsx`, fed by `accessiblePropertiesForUser` through `/auth/me`
+- ✅ Active-property carried server-side — **decision resolved: validated `X-Property-Id`
+  header** (not a JWT claim), re-checked against membership on every scoped request
+- ✅ Per-property apartment naming — migration 051 scopes unit `code` uniqueness to the
+  building, so two blocks/properties can each have a "101"
 
 ### A2. Maintenance
 - 🟡 Module + contractor costs/expenses + completion/approval accountability — exists (024/037/038)
