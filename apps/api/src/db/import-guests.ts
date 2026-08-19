@@ -47,6 +47,10 @@ const IMPORT_USER_ID = '00000000-0000-4000-a000-000000000003';
 // truncated rather than rejected: losing the tail of an address beats losing the guest.
 const LIMITS = { name: 255, email: 255, phone: 50, company: 255, address: 1000 } as const;
 
+// Contacts per INSERT. 500 × 9 placeholders is well inside Postgres' 65,535-parameter ceiling,
+// and keeps each statement small enough to stay responsive over a slow link.
+const BATCH_SIZE = 500;
+
 interface CsvContact {
   line: number;
   type: 'individual' | 'company';
@@ -173,6 +177,13 @@ function readContacts(path: string): ParseResult {
   return { contacts, rejected };
 }
 
+// ── Batching ───────────────────────────────────────────────────────────────
+export function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 // ── Identity ────────────────────────────────────────────────────────────────
 // Same rules the cleaning pass used, so "already imported" means the same thing on both
 // sides: last 8 digits of the phone (one guest is stored as +267 76 255 071, 26776255071
@@ -231,6 +242,9 @@ async function main(): Promise<void> {
   const client = new Client({
     connectionString: CONNECTION,
     ssl: isLocal ? undefined : { rejectUnauthorized: false },
+    // Render sits behind a proxy that drops quiet connections; the import holds one open for
+    // the length of a transaction, so keep the socket warm.
+    keepAlive: true,
   });
   await client.connect();
 
@@ -307,21 +321,46 @@ async function main(): Promise<void> {
 
   try {
     await client.query('BEGIN');
-    for (const c of toInsert) {
-      const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO contacts (type, name, email, phone, company, address, notes, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-         RETURNING id`,
-        [c.type, c.name, c.email, c.phone, c.company, c.address, c.notes, IMPORT_USER_ID]
-      );
-      const id = rows[0]!.id;
+    // Batched, not row-by-row. Row-by-row meant two round trips per contact — 2,682 of them
+    // for this list — and against Render's free tier from Botswana that ran for ten minutes
+    // before the TLS connection dropped mid-transaction (ETIMEDOUT) and the whole import
+    // rolled back. Batching turns it into six round trips. Ids are generated here rather than
+    // read back from RETURNING so the audit rows can reference them without depending on
+    // multi-row RETURNING coming back in VALUES order.
+    for (const [batchIndex, batch] of chunk(toInsert, BATCH_SIZE).entries()) {
+      const withIds = batch.map((c) => ({ ...c, id: randomUUID() }));
 
+      const contactParams: unknown[] = [];
+      const contactRows = withIds.map((c) => {
+        const n = contactParams.length;
+        contactParams.push(c.id, c.type, c.name, c.email, c.phone, c.company, c.address, c.notes,
+                           IMPORT_USER_ID);
+        // created_by and updated_by are the same actor, so $n+9 is reused for both.
+        return `($${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, ` +
+               `$${n + 8}, $${n + 9}, $${n + 9})`;
+      });
+      await client.query(
+        `INSERT INTO contacts (id, type, name, email, phone, company, address, notes,
+                               created_by, updated_by)
+         VALUES ${contactRows.join(', ')}`,
+        contactParams
+      );
+
+      // $1 and $2 are the same for every row of the run, so they are bound once and reused.
+      const auditParams: unknown[] = [requestId, IMPORT_USER_ID];
+      const auditRows = withIds.map((c) => {
+        const n = auditParams.length;
+        auditParams.push(c.id, JSON.stringify({ source: 'little-hotelier-export', ...c }));
+        return `($1, $2, 'CREATE', 'contacts', $${n + 1}, $${n + 2}, NULL)`;
+      });
       await client.query(
         `INSERT INTO audit_logs (request_id, user_id, action, entity, entity_id, diff, ip_address)
-         VALUES ($1, $2, 'CREATE', 'contacts', $3, $4, NULL)`,
-        [requestId, IMPORT_USER_ID, id, JSON.stringify({ source: 'little-hotelier-export', ...c })]
+         VALUES ${auditRows.join(', ')}`,
+        auditParams
       );
-      created++;
+
+      created += batch.length;
+      console.log(`    batch ${batchIndex + 1}: ${created}/${toInsert.length} written`);
     }
     await client.query('COMMIT');
     console.log(`  ✓ Committed — ${created} contacts created.`);

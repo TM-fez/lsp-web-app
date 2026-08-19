@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, phoneKey, keysOf } from '../../../src/db/import-guests';
+import { parseCsv, phoneKey, keysOf, chunk } from '../../../src/db/import-guests';
 
 // The guest importer parses its own CSV (no dependency added for it) and decides who is
 // "already in the CRM" on a re-run. Both are pure, and both have already been wrong once:
@@ -66,5 +66,28 @@ describe('keysOf', () => {
     const one = { name: 'John Smith', phone: '+267 71 111 111', email: null };
     const two = { name: 'John Smith', phone: '+267 72 222 222', email: null };
     expect(keysOf(one).some((k) => keysOf(two).includes(k))).toBe(false);
+  });
+});
+
+describe('chunk', () => {
+  // The importer batches its inserts because one round trip per contact took ten minutes over
+  // a slow link and dropped mid-transaction. A silently short last batch would lose guests.
+  it('splits evenly and keeps the remainder', () => {
+    expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+
+  it('keeps every item exactly once', () => {
+    const items = Array.from({ length: 1341 }, (_, i) => i);
+    const batches = chunk(items, 500);
+    expect(batches.length).toBe(3);
+    expect(batches.flat()).toEqual(items);
+  });
+
+  it('returns one batch when the list is smaller than the batch size', () => {
+    expect(chunk([1, 2], 500)).toEqual([[1, 2]]);
+  });
+
+  it('returns nothing for an empty list', () => {
+    expect(chunk([], 500)).toEqual([]);
   });
 });
