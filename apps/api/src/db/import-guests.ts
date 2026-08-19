@@ -8,9 +8,12 @@
  * rows, and this tool's only job is to put those exact rows in the database, verifiably.
  *
  * CSV contract (header row required, extra columns ignored):
- *   Type, Name, Email, Phone, Company, Address, Notes
+ *   Type, Name, Email, Phone, Company, Address, Notes, [Stays]
  *   • Type must be `individual` or `company` (anything else → row rejected).
  *   • Name is required; everything else may be blank.
+ *   • Stays is optional — the number of times they stayed in the old system. It lands in
+ *     contacts.previous_stays (migration 062) so a 100-booking account does not read as a
+ *     cold prospect. Re-running fills this in for guests imported before that column existed.
  *
  * Safety, mirroring `purge-test-data.ts` since this also runs against the LIVE database:
  *   • Dry run unless told otherwise. The dry run reports exactly what a real run would do.
@@ -53,6 +56,7 @@ const BATCH_SIZE = 500;
 
 interface CsvContact {
   line: number;
+  stays: number;
   type: 'individual' | 'company';
   name: string;
   email: string | null;
@@ -121,6 +125,14 @@ function blankToNull(value: string | undefined, max: number): string | null {
   return v === '' ? null : trunc(v, max);
 }
 
+interface ExistingContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  previous_stays: number;
+}
+
 interface ParseResult {
   contacts: CsvContact[];
   rejected: { line: number; reason: string }[];
@@ -144,6 +156,7 @@ function readContacts(path: string): ParseResult {
   for (const [key, at] of Object.entries(idx)) {
     if (at === -1) throw new Error(`${path} has no "${key}" column (found: ${header.join(', ')})`);
   }
+  const staysAt = col('stays'); // optional
 
   const contacts: CsvContact[] = [];
   const rejected: { line: number; reason: string }[] = [];
@@ -164,6 +177,7 @@ function readContacts(path: string): ParseResult {
 
     contacts.push({
       line,
+      stays: staysAt === -1 ? 0 : Math.max(0, parseInt(raw[staysAt] ?? '', 10) || 0),
       type,
       name: trunc(name, LIMITS.name),
       email: blankToNull(raw[idx.email], LIMITS.email),
@@ -263,29 +277,42 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Everyone already in the CRM, so a re-run is a no-op rather than a duplicate.
-  const { rows: existing } = await client.query<{ name: string; email: string | null; phone: string | null }>(
-    'SELECT name, email, phone FROM contacts WHERE deleted_at IS NULL'
+  // Everyone already in the CRM, so a re-run is a no-op rather than a duplicate. Ids and the
+  // current previous_stays come along so a re-run can also FILL IN history for guests that
+  // were imported before migration 062 added the column.
+  const { rows: existing } = await client.query<ExistingContact>(
+    'SELECT id, name, email, phone, previous_stays FROM contacts WHERE deleted_at IS NULL'
   );
-  const seen = new Set<string>();
-  for (const row of existing) for (const k of keysOf(row)) seen.add(k);
+  const seen = new Map<string, { id: string | null; previous_stays: number }>();
+  for (const row of existing) {
+    for (const k of keysOf(row)) seen.set(k, { id: row.id, previous_stays: row.previous_stays });
+  }
 
   const toInsert: CsvContact[] = [];
+  const toBackfill: { id: string; stays: number; name: string; line: number }[] = [];
   const skipped: { line: number; name: string }[] = [];
   for (const c of wanted) {
     const keys = keysOf(c);
-    if (keys.some((k) => seen.has(k))) {
-      skipped.push({ line: c.line, name: c.name });
+    const hit = keys.map((k) => seen.get(k)).find((v) => v !== undefined);
+    if (hit) {
+      // Only ever fills a gap: an existing count is left alone, so a re-run cannot overwrite
+      // history someone has since corrected by hand.
+      if (hit.id && c.stays > 0 && hit.previous_stays === 0) {
+        toBackfill.push({ id: hit.id, stays: c.stays, name: c.name, line: c.line });
+      } else {
+        skipped.push({ line: c.line, name: c.name });
+      }
       continue;
     }
     // Guard the file against itself, too: two rows for one person insert once.
-    for (const k of keys) seen.add(k);
+    for (const k of keys) seen.set(k, { id: null, previous_stays: c.stays });
     toInsert.push(c);
   }
 
   console.log(`  Rows in file:        ${contacts.length + rejected.length}`);
   console.log(`  Unusable rows:       ${rejected.length}`);
   console.log(`  Already in the CRM:  ${skipped.length}`);
+  console.log(`  Stay history to add: ${toBackfill.length}`);
   console.log(`  To create:           ${toInsert.length}`);
   console.log(`    individuals ${toInsert.filter((c) => c.type === 'individual').length}, ` +
               `companies ${toInsert.filter((c) => c.type === 'company').length}`);
@@ -300,14 +327,15 @@ async function main(): Promise<void> {
   if (!APPLY) {
     console.log('  Sample of what would be created:');
     for (const c of toInsert.slice(0, 5)) {
-      console.log(`    ${c.type.padEnd(10)} ${c.name.slice(0, 30).padEnd(32)} ${(c.phone ?? '—').padEnd(18)} ${c.email ?? ''}`);
+      console.log(`    ${c.type.padEnd(10)} ${c.name.slice(0, 30).padEnd(32)} ` +
+                  `${(c.phone ?? '—').padEnd(18)} ${String(c.stays).padStart(3)} stays  ${c.email ?? ''}`);
     }
     console.log('\n  Dry run complete — nothing changed. Re-run with `--yes` to apply.\n');
     await client.end();
     return;
   }
 
-  if (toInsert.length === 0) {
+  if (toInsert.length === 0 && toBackfill.length === 0) {
     console.log('  Nothing to do — every row is already in the CRM.\n');
     await client.end();
     return;
@@ -318,6 +346,7 @@ async function main(): Promise<void> {
   // marker lives in diff.source instead.
   const requestId = randomUUID();
   let created = 0;
+  let backfilled = 0;
 
   try {
     await client.query('BEGIN');
@@ -334,14 +363,14 @@ async function main(): Promise<void> {
       const contactRows = withIds.map((c) => {
         const n = contactParams.length;
         contactParams.push(c.id, c.type, c.name, c.email, c.phone, c.company, c.address, c.notes,
-                           IMPORT_USER_ID);
-        // created_by and updated_by are the same actor, so $n+9 is reused for both.
+                           c.stays, IMPORT_USER_ID);
+        // created_by and updated_by are the same actor, so $n+10 is reused for both.
         return `($${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, ` +
-               `$${n + 8}, $${n + 9}, $${n + 9})`;
+               `$${n + 8}, $${n + 9}, $${n + 10}, $${n + 10})`;
       });
       await client.query(
         `INSERT INTO contacts (id, type, name, email, phone, company, address, notes,
-                               created_by, updated_by)
+                               previous_stays, created_by, updated_by)
          VALUES ${contactRows.join(', ')}`,
         contactParams
       );
@@ -362,8 +391,42 @@ async function main(): Promise<void> {
       created += batch.length;
       console.log(`    batch ${batchIndex + 1}: ${created}/${toInsert.length} written`);
     }
+
+    // Guests imported before migration 062 exist but carry previous_stays = 0. One UPDATE …
+    // FROM (VALUES …) per batch fills them in, again as few round trips as possible.
+    for (const batch of chunk(toBackfill, BATCH_SIZE)) {
+      const params: unknown[] = [IMPORT_USER_ID];
+      const values = batch.map((b) => {
+        const n = params.length;
+        params.push(b.id, b.stays);
+        return `($${n + 1}::uuid, $${n + 2}::int)`;
+      });
+      await client.query(
+        `UPDATE contacts AS c
+            SET previous_stays = v.stays, updated_by = $1, updated_at = now()
+           FROM (VALUES ${values.join(', ')}) AS v(id, stays)
+          WHERE c.id = v.id`,
+        params
+      );
+
+      const auditParams: unknown[] = [requestId, IMPORT_USER_ID];
+      const auditRows = batch.map((b) => {
+        const n = auditParams.length;
+        auditParams.push(b.id, JSON.stringify({ source: 'little-hotelier-export', previous_stays: b.stays }));
+        return `($1, $2, 'UPDATE', 'contacts', $${n + 1}, $${n + 2}, NULL)`;
+      });
+      await client.query(
+        `INSERT INTO audit_logs (request_id, user_id, action, entity, entity_id, diff, ip_address)
+         VALUES ${auditRows.join(', ')}`,
+        auditParams
+      );
+
+      backfilled += batch.length;
+      console.log(`    stay history: ${backfilled}/${toBackfill.length} filled in`);
+    }
     await client.query('COMMIT');
-    console.log(`  ✓ Committed — ${created} contacts created.`);
+    console.log(`  ✓ Committed — ${created} contacts created` +
+                (backfilled ? `, ${backfilled} given their stay history.` : '.'));
     console.log(`    Audit trail: SELECT * FROM audit_logs WHERE request_id = '${requestId}';\n`);
   } catch (err) {
     await client.query('ROLLBACK');

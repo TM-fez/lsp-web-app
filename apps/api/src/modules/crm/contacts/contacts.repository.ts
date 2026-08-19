@@ -54,7 +54,13 @@ export class ContactsRepository {
     const offset = (pagination.page - 1) * pagination.limit;
     
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      (filters.sort === 'stays'
+        ? query.orderBy('previous_stays', 'desc').orderBy('name', 'asc')
+        : query.orderBy('created_at', 'desc')
+      )
+        .limit(pagination.limit)
+        .offset(offset)
+        .execute(),
       countQuery.execute(),
     ]);
 

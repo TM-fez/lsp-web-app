@@ -5,12 +5,21 @@ import type { ReportsResponse } from '../../../src/modules/reports/reports.types
 
 // One customer per intended segment (spend in thebe; P20,000 = 2,000,000).
 const ROWS: CustomerStat[] = [
-  { id: '1', name: 'Kagiso Holdings', email: null, company: 'Kagiso', stays: 2, spend: 2_500_000, last_stay_days: 10 },  // vip (spend)
-  { id: '2', name: 'Frequent Flyer', email: null, company: null, stays: 6, spend: 500_000, last_stay_days: 20 },        // vip (stays)
-  { id: '3', name: 'Loyal Three', email: null, company: null, stays: 3, spend: 300_000, last_stay_days: 30 },           // frequent
-  { id: '4', name: 'Newbie', email: null, company: null, stays: 1, spend: 100_000, last_stay_days: 15 },                // recent
-  { id: '5', name: 'Long Gone', email: null, company: null, stays: 2, spend: 400_000, last_stay_days: 400 },            // lapsed
-  { id: '6', name: 'Never Stayed', email: null, company: null, stays: 0, spend: 0, last_stay_days: null },              // prospect
+  { id: '1', name: 'Kagiso Holdings', email: null, company: 'Kagiso', stays: 2, previous_stays: 0, spend: 2_500_000, last_stay_days: 10 },  // vip (spend)
+  { id: '2', name: 'Frequent Flyer', email: null, company: null, stays: 6, previous_stays: 0, spend: 500_000, last_stay_days: 20 },        // vip (stays)
+  { id: '3', name: 'Loyal Three', email: null, company: null, stays: 3, previous_stays: 0, spend: 300_000, last_stay_days: 30 },           // frequent
+  { id: '4', name: 'Newbie', email: null, company: null, stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 15 },                // recent
+  { id: '5', name: 'Long Gone', email: null, company: null, stays: 2, previous_stays: 0, spend: 400_000, last_stay_days: 400 },            // lapsed
+  { id: '6', name: 'Never Stayed', email: null, company: null, stays: 0, previous_stays: 0, spend: 0, last_stay_days: null },              // prospect
+];
+
+// Guests carried over from Little Hotelier: a stay COUNT and nothing else — no dates, no
+// amounts. They must count toward loyalty but never toward recency.
+const MIGRATED: CustomerStat[] = [
+  { id: 'm1', name: 'University of Pennsylvania', email: null, company: null, stays: 0, previous_stays: 100, spend: 0, last_stay_days: null },
+  { id: 'm2', name: 'Loyal Legacy', email: null, company: null, stays: 0, previous_stays: 3, spend: 0, last_stay_days: null },
+  { id: 'm3', name: 'Stayed Twice Long Ago', email: null, company: null, stays: 0, previous_stays: 2, spend: 0, last_stay_days: null },
+  { id: 'm4', name: 'Straddler', email: null, company: null, stays: 2, previous_stays: 3, spend: 0, last_stay_days: 20 },
 ];
 
 const repoWith = (rows: CustomerStat[]): MarketingRepository =>
@@ -45,6 +54,24 @@ describe('MarketingService — segmentation (deterministic)', () => {
     expect(by.recent!.count).toBe(1);
     expect(by.lapsed!.count).toBe(1);
     expect(by.prospect!.count).toBe(1);
+  });
+
+  it('counts migrated stays toward loyalty — a 100-booking account is not a prospect', async () => {
+    const { segments } = await new MarketingService(repoWith(MIGRATED), darkLlm).getSegments();
+    const by = Object.fromEntries(segments.map((s) => [s.key, s]));
+    // UPenn (100) and the straddler (2 live + 3 migrated = 5) clear the VIP threshold.
+    expect(by.vip!.count).toBe(2);
+    expect(by.vip!.sample_names[0]).toBe('University of Pennsylvania'); // ranked by stays, spend being 0
+    expect(by.frequent!.count).toBe(1);
+    expect(by.prospect!.count).toBe(0);
+  });
+
+  it('never calls a migrated-only guest "recent" — the export carried no dates', async () => {
+    const { segments } = await new MarketingService(repoWith(MIGRATED), darkLlm).getSegments();
+    const by = Object.fromEntries(segments.map((s) => [s.key, s]));
+    expect(by.past!.count).toBe(1);
+    expect(by.past!.label).toBe('Past guest');
+    expect(by.recent!.count).toBe(0);
   });
 
   it('summarises spend and lists top members per segment', async () => {

@@ -24,17 +24,36 @@ const SEGMENT_META: Record<SegmentKey, { label: string; description: string }> =
   frequent: { label: 'Frequent', description: 'Three or more stays and still active — loyal regulars.' },
   recent: { label: 'Recent', description: 'One or two recent stays — nurture them into regulars.' },
   lapsed: { label: 'Lapsed', description: 'Stayed before but not in the last six months — win them back.' },
+  past: {
+    label: 'Past guest',
+    description:
+      'Stayed once or twice in the old booking system. We know they came, not when — so treat them as a cold list, not a recent one.',
+  },
   prospect: { label: 'Prospects', description: 'Contacts and enquiries who have not stayed yet.' },
 };
 
 // One bucket per customer, by priority: VIP wins outright; otherwise a guest who
 // hasn't returned in six months is a win-back (lapsed), then loyal regulars, then
 // the rest; never-stayed contacts are prospects.
-function classify(s: { stays: number; spend: number; last_stay_days: number | null }): SegmentKey {
-  if (s.stays === 0) return 'prospect';
-  if (s.spend >= VIP_SPEND || s.stays >= VIP_STAYS) return 'vip';
+//
+// Stays migrated from Little Hotelier count toward loyalty (migration 062) — a 100-booking
+// account must not read as a cold prospect just because its history predates this system.
+// They cannot count toward RECENCY though: the export carried no dates, so a guest with only
+// migrated stays gets 'past' rather than 'recent', which would assert a visit we cannot date.
+// Spend is untouched by this: no amounts survived the export, so VIP-by-spend still means
+// money actually recorded in LSP.
+function classify(s: {
+  stays: number;
+  previous_stays: number;
+  spend: number;
+  last_stay_days: number | null;
+}): SegmentKey {
+  const total = s.stays + s.previous_stays;
+  if (total === 0) return 'prospect';
+  if (s.spend >= VIP_SPEND || total >= VIP_STAYS) return 'vip';
   if (s.last_stay_days !== null && s.last_stay_days > LAPSED_DAYS) return 'lapsed';
-  if (s.stays >= FREQUENT_STAYS) return 'frequent';
+  if (total >= FREQUENT_STAYS) return 'frequent';
+  if (s.stays === 0) return 'past';
   return 'recent';
 }
 
@@ -92,24 +111,30 @@ export class MarketingService {
   async getSegments(): Promise<SegmentsResponse> {
     const rows = await this.repo.customerStats();
 
-    const buckets = new Map<SegmentKey, { count: number; spend: number; members: Array<{ name: string; spend: number }> }>();
+    const buckets = new Map<SegmentKey, { count: number; spend: number; members: Array<{ name: string; spend: number; stays: number }> }>();
     for (const key of SEGMENT_KEYS) buckets.set(key, { count: 0, spend: 0, members: [] });
 
     for (const row of rows) {
       const stat = {
         stays: num(row.stays),
+        previous_stays: num(row.previous_stays),
         spend: num(row.spend),
         last_stay_days: row.last_stay_days === null ? null : num(row.last_stay_days),
       };
       const b = buckets.get(classify(stat))!;
       b.count += 1;
       b.spend += stat.spend;
-      b.members.push({ name: row.name, spend: stat.spend });
+      b.members.push({ name: row.name, spend: stat.spend, stays: stat.stays + stat.previous_stays });
     }
 
     const segments: SegmentSummary[] = SEGMENT_KEYS.map((key) => {
       const b = buckets.get(key)!;
-      const sample_names = b.members.sort((a, z) => z.spend - a.spend).slice(0, 5).map((m) => m.name);
+      // Spend first, then stays — migrated guests carry no amounts, so spend alone would pick
+      // the examples at random for any segment made mostly of them.
+      const sample_names = b.members
+        .sort((a, z) => z.spend - a.spend || z.stays - a.stays)
+        .slice(0, 5)
+        .map((m) => m.name);
       return {
         key,
         label: SEGMENT_META[key].label,

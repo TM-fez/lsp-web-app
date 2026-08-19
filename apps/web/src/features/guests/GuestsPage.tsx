@@ -24,6 +24,7 @@ export function GuestsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | ContactType>('ALL');
+  const [sort, setSort] = useState<'recent' | 'stays'>('recent');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
 
@@ -37,8 +38,9 @@ export function GuestsPage() {
     () => ({
       search: search.trim() || undefined,
       type: typeFilter === 'ALL' ? undefined : typeFilter,
+      sort: sort === 'stays' ? ('stays' as const) : undefined,
     }),
-    [search, typeFilter],
+    [search, typeFilter, sort],
   );
 
   const { data, isLoading, isError, isFetching, refetch } = useGuests(params);
@@ -92,6 +94,14 @@ export function GuestsPage() {
             <option value="ALL">All types</option>
             <option value="individual">Individuals</option>
             <option value="company">Companies</option>
+          </Select>
+          <Select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'recent' | 'stays')}
+            className="max-w-[14rem]"
+          >
+            <option value="recent">Newest first</option>
+            <option value="stays">Most previous stays</option>
           </Select>
           {isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
         </div>
@@ -148,6 +158,11 @@ export function GuestsPage() {
                     <Badge tone={guest.type === 'company' ? 'green' : 'slate'} className="relative shrink-0 capitalize">
                       {guest.type}
                     </Badge>
+                    {guest.previous_stays > 0 && (
+                      <Badge tone="amber" className="relative shrink-0">
+                        {guest.previous_stays} previous {guest.previous_stays === 1 ? 'stay' : 'stays'}
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
                     {[guest.email, guest.phone, guest.company].filter(Boolean).join(' · ') || 'No contact details'}

@@ -9,7 +9,7 @@ import { z } from 'zod';
 // the key lands — no request ever hits the API unconfigured.
 
 // Mutually-exclusive segments, assigned by priority (see marketing.service).
-export const SEGMENT_KEYS = ['vip', 'frequent', 'recent', 'lapsed', 'prospect'] as const;
+export const SEGMENT_KEYS = ['vip', 'frequent', 'recent', 'lapsed', 'past', 'prospect'] as const;
 export type SegmentKey = (typeof SEGMENT_KEYS)[number];
 
 export const CampaignChannelEnum = z.enum(['email', 'whatsapp', 'sms']);

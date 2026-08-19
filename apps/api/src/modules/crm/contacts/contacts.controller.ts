@@ -22,9 +22,10 @@ export class ContactsController {
       if (limit > 100) limit = 100;
       const search = req.query.search as string | undefined;
       const type = req.query.type as 'individual' | 'company' | undefined;
+      const sort = req.query.sort === 'stays' ? 'stays' : undefined;
 
       const result = await this.service.getContacts(
-        { search, type },
+        { search, type, sort },
         { page, limit }
       );
       res.json(result);

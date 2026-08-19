@@ -11,6 +11,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../src/config/db.js';
 import { ReservationsRepository } from '../../../src/modules/reservations/reservations.repository.js';
 import { InvoicesRepository } from '../../../src/modules/invoices/invoices.repository.js';
+import { ContactsRepository } from '../../../src/modules/crm/contacts/contacts.repository.js';
 
 let userId: string;
 let propertyId: string;
@@ -108,6 +109,40 @@ afterAll(async () => {
   await db.deleteFrom('buildings').where('id', '=', buildingId).execute();
   await db.deleteFrom('users').where('id', '=', userId).execute();
   await db.deleteFrom('properties').where('id', '=', propertyId).execute();
+});
+
+describe('Contacts list — ranking by migrated stay history (live DB)', () => {
+  // The guests list is capped at 100 rows a page against ~1,300 contacts, so this ordering
+  // has to happen in SQL. Sorted in the client it would rank the page and hide the very
+  // accounts (UPenn: 100 stays) the sort exists to surface.
+  it('orders by previous_stays across the whole table, not just the page', async () => {
+    const repo = new ContactsRepository(db);
+    const meta = { userId, ip: null, requestId: null };
+    const tag = `sort-${Date.now()}`;
+
+    await repo.create({ type: 'individual', name: `${tag} quiet`, created_by: userId, updated_by: userId }, meta);
+    const loud = await repo.create(
+      { type: 'individual', name: `${tag} loud`, created_by: userId, updated_by: userId },
+      meta
+    );
+    await db.updateTable('contacts').set({ previous_stays: 100 }).where('id', '=', loud.id).execute();
+
+    try {
+      const ranked = await repo.findPaginated({ search: tag, sort: 'stays' }, { page: 1, limit: 20 });
+      expect(ranked.data[0]!.name).toBe(`${tag} loud`);
+      expect(ranked.data[0]!.previous_stays).toBe(100);
+
+      // Default ordering is unchanged — newest first.
+      const byDate = await repo.findPaginated({ search: tag }, { page: 1, limit: 20 });
+      expect(byDate.data[0]!.name).toBe(`${tag} loud`);
+      expect(byDate.data[1]!.previous_stays).toBe(0);
+    } finally {
+      // Hard-delete, not the repository's soft delete: this file's afterAll drops the user
+      // these rows are created_by, and a surviving contact row would fail that FK.
+      await db.deleteFrom('audit_logs').where('entity', '=', 'contacts').where('user_id', '=', userId).execute();
+      await db.deleteFrom('contacts').where('name', 'like', `${tag}%`).execute();
+    }
+  });
 });
 
 describe('Reservation CRM contacts (live DB)', () => {

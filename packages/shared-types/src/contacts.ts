@@ -10,6 +10,8 @@ export interface Contact {
   address: string | null;
   notes: string | null;
   avatarFileId: string | null;
+  /** Stays completed in the previous booking system (Little Hotelier). Count only. */
+  previousStays: number;
   createdBy: string;
   updatedBy: string;
   createdAt: string;
