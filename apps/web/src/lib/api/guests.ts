@@ -16,6 +16,9 @@ export type UpdateGuestInput = Partial<CreateGuestInput>;
 export interface GuestListParams {
   search?: string;
   type?: ContactType;
+  /** 'stays' ranks by history carried over from the old booking system. Sorted in SQL, so it
+   *  ranks the whole directory rather than the 100 rows this page happens to hold. */
+  sort?: 'stays';
 }
 
 /** Server caps page size at 100; we fetch one page and surface the total so the

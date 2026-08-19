@@ -111,6 +111,8 @@ export interface Contact {
   company: string | null;
   address: string | null;
   notes: string | null;
+  /** Stays completed in the previous booking system (Little Hotelier). Count only. */
+  previous_stays: number;
   created_at: string;
   updated_at: string;
 }

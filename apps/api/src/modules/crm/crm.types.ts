@@ -22,6 +22,10 @@ export type UpdateContactDTO = z.infer<typeof UpdateContactSchema>;
 export interface ContactFilters {
   search?: string;
   type?: 'individual' | 'company';
+  // 'stays' ranks by migrated stay history. It has to happen in SQL: the list is capped at
+  // 100 rows a page against 1,341 contacts, so sorting client-side would rank the page, not
+  // the guest base — and quietly hide the very accounts it is meant to surface.
+  sort?: 'recent' | 'stays';
 }
 
 export interface PaginationOptions {

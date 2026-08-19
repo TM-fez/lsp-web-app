@@ -77,6 +77,9 @@ export interface ContactsTable {
   address: string | null;
   notes: string | null;
   avatar_file_id: string | null;
+  // Stays completed in the previous booking system (migration 062). Count only — the Little
+  // Hotelier export carried no dates or amounts. 0 for guests originating in LSP.
+  previous_stays: Generated<number>;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;
