@@ -1,9 +1,21 @@
 import { api } from './client';
-import type { SegmentsResponse, CampaignResponse, StrategyResponse, SegmentKey, CampaignChannel } from '@/types';
+import type {
+  SegmentsResponse, SegmentMembersResponse, CampaignResponse, StrategyResponse, SegmentKey,
+  CampaignChannel,
+} from '@/types';
 
 /** P4.4 — deterministic guest segments (+ whether the LLM is keyed). */
 export async function getSegments(): Promise<SegmentsResponse> {
   const { data } = await api.get<SegmentsResponse>('/marketing/segments');
+  return data;
+}
+
+/** The guests inside one segment — phone and email included, so the list can be worked. */
+export async function listSegmentMembers(
+  key: SegmentKey,
+  params?: { search?: string; limit?: number },
+): Promise<SegmentMembersResponse> {
+  const { data } = await api.get<SegmentMembersResponse>(`/marketing/segments/${key}/members`, { params });
   return data;
 }
 

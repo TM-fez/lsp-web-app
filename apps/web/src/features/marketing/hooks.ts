@@ -1,10 +1,23 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { getSegments, generateCampaign, getStrategy, type CampaignInput } from '@/lib/api/marketing';
-import type { SegmentsResponse, CampaignResponse, StrategyResponse } from '@/types';
+import {
+  getSegments, listSegmentMembers, generateCampaign, getStrategy, type CampaignInput,
+} from '@/lib/api/marketing';
+import type {
+  SegmentsResponse, SegmentMembersResponse, CampaignResponse, StrategyResponse, SegmentKey,
+} from '@/types';
 
 /** Cheap, deterministic — auto-loads. */
 export function useSegments() {
   return useQuery<SegmentsResponse>({ queryKey: ['marketing', 'segments'], queryFn: getSegments });
+}
+
+/** The guests in one segment. Only fetched once a segment is actually opened. */
+export function useSegmentMembers(key: SegmentKey | null, search?: string) {
+  return useQuery<SegmentMembersResponse>({
+    queryKey: ['marketing', 'segment-members', key, search ?? ''],
+    queryFn: () => listSegmentMembers(key!, { search: search?.trim() || undefined }),
+    enabled: key !== null,
+  });
 }
 
 /** On-demand (costs tokens) — fires only on the button press. */

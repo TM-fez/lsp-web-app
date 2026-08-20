@@ -19,6 +19,8 @@ export function createMarketingRouter(dbInstance = db): Router {
   router.use(authenticate);
   // Shares the management/analytics permission with the dashboards (A4/A5).
   router.get('/segments', authorize('reports.read'), controller.segments);
+  // Guest contact details, so this one is gated on the CRM permission rather than reports.
+  router.get('/segments/:key/members', authorize('crm.contacts.read'), controller.segmentMembers);
   router.post('/campaign', authorize('reports.read'), validateBody(GenerateCampaignSchema), controller.campaign);
   router.get('/strategy', authorize('reports.read'), controller.strategy);
 

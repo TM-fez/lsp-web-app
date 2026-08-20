@@ -34,6 +34,29 @@ export interface SegmentSummary {
   sample_names: string[];  // a few example guests (top by spend), for context
 }
 
+// One guest inside a segment. Phone leads because this list is worked by phone: the migrated
+// Little Hotelier base is 1,331 numbers against 143 usable email addresses.
+export interface SegmentMember {
+  id: string;
+  name: string;
+  company: string | null;
+  phone: string | null;
+  email: string | null;
+  stays: number;            // booked in LSP
+  previous_stays: number;   // migrated from Little Hotelier (count only)
+  total_stays: number;
+  spend: number;            // thebe, PAID non-refund — 0 for migrated-only guests
+  last_stay_days: number | null;  // null when we have no dated stay (all migrated guests)
+}
+
+export interface SegmentMembersResponse {
+  key: SegmentKey;
+  label: string;
+  total: number;      // everyone in the segment, before the cap
+  members: SegmentMember[];
+  truncated: boolean;
+}
+
 export interface SegmentsResponse {
   configured: boolean;         // is the LLM keyed? (drives the UI's dark-state banner)
   total_customers: number;

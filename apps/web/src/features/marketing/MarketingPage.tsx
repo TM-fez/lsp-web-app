@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils/cn';
 import { useSegments, useGenerateCampaign, useStrategy } from './hooks';
+import { SegmentMembers } from './SegmentMembers';
 import type { CampaignChannel, SegmentKey, SegmentSummary } from '@/types';
 
 const CHANNELS: CampaignChannel[] = ['email', 'whatsapp', 'sms'];
@@ -109,6 +110,19 @@ export function MarketingPage() {
               ))}
             </div>
           </section>
+
+          {selectedSeg && (
+            <section className="rounded-lg border border-line bg-paper p-5">
+              <div className="mb-4 flex items-baseline justify-between gap-2">
+                <h2 className="font-display text-xl text-ink">
+                  {selectedSeg.label} — {selectedSeg.count.toLocaleString('en')}{' '}
+                  {selectedSeg.count === 1 ? 'guest' : 'guests'}
+                </h2>
+                <span className="text-xs text-muted">{selectedSeg.description}</span>
+              </div>
+              <SegmentMembers segment={selectedSeg.key} label={selectedSeg.label} />
+            </section>
+          )}
 
           {selectedSeg && (
             <section className="rounded-lg border border-line bg-paper p-5">
