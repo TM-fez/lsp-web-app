@@ -15,7 +15,9 @@ export function useSegments() {
 export function useSegmentMembers(key: SegmentKey | null, search?: string) {
   return useQuery<SegmentMembersResponse>({
     queryKey: ['marketing', 'segment-members', key, search ?? ''],
-    queryFn: () => listSegmentMembers(key!, { search: search?.trim() || undefined }),
+    // The server's ceiling. 'Past guest' holds ~1,200 people, so the default cap of 500 would
+    // hide most of a segment — and its CSV would ship short without saying so.
+    queryFn: () => listSegmentMembers(key!, { search: search?.trim() || undefined, limit: 2000 }),
     enabled: key !== null,
   });
 }

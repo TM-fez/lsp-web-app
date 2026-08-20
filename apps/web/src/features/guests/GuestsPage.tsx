@@ -57,10 +57,11 @@ export function GuestsPage() {
     [search, typeFilter, sort],
   );
 
-  const { data, isLoading, isError, isFetching, refetch } = useGuests(params);
-  const guests = data?.data ?? [];
-  const total = data?.total ?? 0;
-  const truncated = total > guests.length;
+  const {
+    data, isLoading, isError, isFetching, refetch, fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useGuests(params);
+  const guests = data?.pages.flatMap((p) => p.data) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
   const hasQuery = search.trim() !== '' || typeFilter !== 'ALL';
 
   const countLabel = !data
@@ -208,10 +209,21 @@ export function GuestsPage() {
               </button>
             ))}
           </div>
-          {truncated && (
-            <p className="text-xs text-muted">
-              Showing the first {guests.length} of {total}. Refine your search to narrow results.
-            </p>
+          {hasNextPage ? (
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                {isFetchingNextPage ? 'Loading…' : 'Load more guests'}
+              </Button>
+              <span className="text-xs text-muted">
+                {`Showing ${guests.length.toLocaleString('en')} of ${total.toLocaleString('en')}`}
+              </span>
+            </div>
+          ) : (
+            total > 0 && (
+              <p className="text-xs text-muted">
+                {`All ${total.toLocaleString('en')} ${total === 1 ? 'guest' : 'guests'} shown.`}
+              </p>
+            )
           )}
         </div>
       )}
