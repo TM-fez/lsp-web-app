@@ -16,10 +16,15 @@ const rows = [
   guest({ id: '3', name: 'Booked Here First', previous_stays: 0 }),
 ];
 
+const fetchNextPage = vi.fn();
+
 vi.mock('./hooks', () => ({
+  // The directory arrives a page at a time; the page flattens them. `total` is bigger than the
+  // rows we hand back, which is the state that used to hide 1,200 guests behind "the first 100".
   useGuests: () => ({
-    data: { data: rows, total: rows.length, page: 1, pageSize: 100 },
+    data: { pages: [{ data: rows, total: 1341, page: 1, pageSize: 100 }] },
     isLoading: false, isError: false, isFetching: false, refetch: () => {},
+    fetchNextPage, hasNextPage: true, isFetchingNextPage: false,
   }),
   useDeleteGuest: () => ({ mutateAsync: async () => {}, isPending: false }),
   useCreateGuest: () => ({ mutateAsync: async () => {}, isPending: false }),
@@ -50,6 +55,15 @@ describe('GuestsPage', () => {
   it('offers ranking by stay history, which the server does across the whole directory', () => {
     render(<GuestsPage />);
     expect(screen.getByRole('option', { name: 'Most previous stays' })).toBeInTheDocument();
+  });
+
+  it('offers the rest of the directory instead of stopping at the first page', async () => {
+    const user = userEvent.setup();
+    render(<GuestsPage />);
+    // The old copy told you to refine your search; there was no way to reach guest 101.
+    expect(screen.getByText('Showing 3 of 1,341')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Load more guests/ }));
+    expect(fetchNextPage).toHaveBeenCalled();
   });
 
   it('swaps in the segment list when a segment is picked', async () => {

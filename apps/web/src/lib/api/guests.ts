@@ -25,9 +25,12 @@ export interface GuestListParams {
  *  UI can prompt the user to refine when results are truncated. */
 export const GUEST_LIST_LIMIT = 100;
 
-export async function listGuests(params?: GuestListParams): Promise<Paginated<Contact>> {
+export async function listGuests(
+  params?: GuestListParams,
+  page = 1,
+): Promise<Paginated<Contact>> {
   const { data } = await api.get<Paginated<Contact>>('/contacts', {
-    params: { limit: GUEST_LIST_LIMIT, ...params },
+    params: { limit: GUEST_LIST_LIMIT, page, ...params },
   });
   return data;
 }
