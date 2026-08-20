@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 
 // Guests carried over from Little Hotelier arrive with a stay COUNT and no bookings in LSP,
@@ -29,6 +30,12 @@ vi.mock('@/store/auth', () => ({
   useAuthStore: (sel: (s: { hasPerm: () => boolean }) => unknown) => sel({ hasPerm: () => true }),
 }));
 
+// The segment filter hands off to the marketing member list, so one definition of "VIP"
+// serves both screens.
+vi.mock('@/features/marketing/SegmentMembers', () => ({
+  SegmentMembers: ({ label }: { label: string }) => <div>segment list: {label}</div>,
+}));
+
 import { GuestsPage } from './GuestsPage';
 
 describe('GuestsPage', () => {
@@ -43,5 +50,16 @@ describe('GuestsPage', () => {
   it('offers ranking by stay history, which the server does across the whole directory', () => {
     render(<GuestsPage />);
     expect(screen.getByRole('option', { name: 'Most previous stays' })).toBeInTheDocument();
+  });
+
+  it('swaps in the segment list when a segment is picked', async () => {
+    const user = userEvent.setup();
+    render(<GuestsPage />);
+    expect(screen.getByText('Shinichiro Wada')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByDisplayValue('Every guest'), 'vip');
+
+    expect(screen.getByText('segment list: VIP')).toBeInTheDocument();
+    expect(screen.queryByText('Shinichiro Wada')).not.toBeInTheDocument();
   });
 });

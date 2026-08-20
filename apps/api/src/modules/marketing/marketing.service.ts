@@ -8,6 +8,7 @@ import { MarketingRepository } from './marketing.repository.js';
 import {
   SEGMENT_KEYS, type SegmentKey, type SegmentSummary, type SegmentsResponse,
   type GenerateCampaignDTO, type CampaignResponse, type StrategyResponse,
+  type SegmentMember, type SegmentMembersResponse,
 } from './marketing.types.js';
 
 const num = (v: string | number | null | undefined) => Number(v ?? 0);
@@ -150,6 +151,63 @@ export class MarketingService {
   }
 
   /** Draft campaign copy for a segment. Dark until keyed → copy is null. */
+  /**
+   * GET /marketing/segments/:key/members — who is actually in a segment.
+   *
+   * The summary answers "how many VIPs"; this answers "which ones, and how do I reach them",
+   * which is the difference between a number on a dashboard and a list someone can work
+   * through. Ordered by stays before spend: the migrated Little Hotelier guests carry no
+   * amounts at all, so spend-first would rank the biggest accounts (UPenn, 100 stays) below
+   * anyone who has spent a single Pula in LSP.
+   *
+   * Capped rather than paginated — the caller is building a call list or a CSV, not browsing.
+   */
+  async getSegmentMembers(
+    key: SegmentKey,
+    opts: { search?: string; limit?: number } = {},
+  ): Promise<SegmentMembersResponse> {
+    const limit = Math.min(Math.max(opts.limit ?? 500, 1), 2000);
+    const needle = (opts.search ?? '').trim().toLowerCase();
+
+    const rows = await this.repo.customerStats();
+    const all: SegmentMember[] = [];
+
+    for (const row of rows) {
+      const stat = {
+        stays: num(row.stays),
+        previous_stays: num(row.previous_stays),
+        spend: num(row.spend),
+        last_stay_days: row.last_stay_days === null ? null : num(row.last_stay_days),
+      };
+      if (classify(stat) !== key) continue;
+      if (needle && ![row.name, row.company, row.email, row.phone]
+        .some((f) => (f ?? '').toLowerCase().includes(needle))) continue;
+
+      all.push({
+        id: row.id,
+        name: row.name,
+        company: row.company,
+        phone: row.phone,
+        email: row.email,
+        stays: stat.stays,
+        previous_stays: stat.previous_stays,
+        total_stays: stat.stays + stat.previous_stays,
+        spend: stat.spend,
+        last_stay_days: stat.last_stay_days,
+      });
+    }
+
+    all.sort((a, z) => z.total_stays - a.total_stays || z.spend - a.spend || a.name.localeCompare(z.name));
+
+    return {
+      key,
+      label: SEGMENT_META[key].label,
+      total: all.length,
+      members: all.slice(0, limit),
+      truncated: all.length > limit,
+    };
+  }
+
   async generateCampaign(dto: GenerateCampaignDTO): Promise<CampaignResponse> {
     const { segments } = await this.getSegments();
     const seg = segments.find((s) => s.key === dto.segment)!; // dto.segment is enum-validated

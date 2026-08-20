@@ -447,7 +447,7 @@ export interface OwnersResponse {
 }
 
 // ── AI marketing + strategy (P4.4) — LLM-backed, dark until keyed ─────────────
-export type SegmentKey = 'vip' | 'frequent' | 'recent' | 'lapsed' | 'prospect';
+export type SegmentKey = 'vip' | 'frequent' | 'recent' | 'lapsed' | 'past' | 'prospect';
 export type CampaignChannel = 'email' | 'whatsapp' | 'sms';
 
 export interface SegmentSummary {
@@ -459,6 +459,27 @@ export interface SegmentSummary {
   avg_spend: number;     // thebe
   sample_names: string[];
 }
+export interface SegmentMember {
+  id: string;
+  name: string;
+  company: string | null;
+  phone: string | null;
+  email: string | null;
+  stays: number;
+  previous_stays: number;
+  total_stays: number;
+  spend: number;
+  last_stay_days: number | null;
+}
+
+export interface SegmentMembersResponse {
+  key: SegmentKey;
+  label: string;
+  total: number;
+  members: SegmentMember[];
+  truncated: boolean;
+}
+
 export interface SegmentsResponse {
   configured: boolean;   // is the LLM keyed?
   total_customers: number;

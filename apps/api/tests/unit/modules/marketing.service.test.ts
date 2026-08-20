@@ -5,12 +5,12 @@ import type { ReportsResponse } from '../../../src/modules/reports/reports.types
 
 // One customer per intended segment (spend in thebe; P20,000 = 2,000,000).
 const ROWS: CustomerStat[] = [
-  { id: '1', name: 'Kagiso Holdings', email: null, company: 'Kagiso', stays: 2, previous_stays: 0, spend: 2_500_000, last_stay_days: 10 },  // vip (spend)
-  { id: '2', name: 'Frequent Flyer', email: null, company: null, stays: 6, previous_stays: 0, spend: 500_000, last_stay_days: 20 },        // vip (stays)
-  { id: '3', name: 'Loyal Three', email: null, company: null, stays: 3, previous_stays: 0, spend: 300_000, last_stay_days: 30 },           // frequent
-  { id: '4', name: 'Newbie', email: null, company: null, stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 15 },                // recent
-  { id: '5', name: 'Long Gone', email: null, company: null, stays: 2, previous_stays: 0, spend: 400_000, last_stay_days: 400 },            // lapsed
-  { id: '6', name: 'Never Stayed', email: null, company: null, stays: 0, previous_stays: 0, spend: 0, last_stay_days: null },              // prospect
+  { id: '1', name: 'Kagiso Holdings', email: null, phone: null, company: 'Kagiso', stays: 2, previous_stays: 0, spend: 2_500_000, last_stay_days: 10 },  // vip (spend)
+  { id: '2', name: 'Frequent Flyer', email: null, phone: null, company: null, stays: 6, previous_stays: 0, spend: 500_000, last_stay_days: 20 },        // vip (stays)
+  { id: '3', name: 'Loyal Three', email: null, phone: null, company: null, stays: 3, previous_stays: 0, spend: 300_000, last_stay_days: 30 },           // frequent
+  { id: '4', name: 'Newbie', email: null, phone: null, company: null, stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 15 },                // recent
+  { id: '5', name: 'Long Gone', email: null, phone: null, company: null, stays: 2, previous_stays: 0, spend: 400_000, last_stay_days: 400 },            // lapsed
+  { id: '6', name: 'Never Stayed', email: null, phone: null, company: null, stays: 0, previous_stays: 0, spend: 0, last_stay_days: null },              // prospect
 ];
 
 // Guests carried over from Little Hotelier: a stay COUNT and nothing else — no dates, no
@@ -80,6 +80,44 @@ describe('MarketingService — segmentation (deterministic)', () => {
     expect(vip.total_spend).toBe(3_000_000);
     expect(vip.avg_spend).toBe(1_500_000);
     expect(vip.sample_names).toEqual(['Kagiso Holdings', 'Frequent Flyer']); // ordered by spend
+  });
+});
+
+describe('MarketingService — segment members', () => {
+  const withPhones: CustomerStat[] = [
+    { id: 'a', name: 'University of Pennsylvania', email: null, phone: '77135784', company: null, stays: 0, previous_stays: 100, spend: 0, last_stay_days: null },
+    { id: 'b', name: 'Big Spender', email: 'big@example.com', phone: '+267 71 000 000', company: 'Acme', stays: 1, previous_stays: 0, spend: 5_000_000, last_stay_days: 5 },
+    { id: 'c', name: 'Not A VIP', email: null, phone: '+267 72 000 000', company: null, stays: 1, previous_stays: 0, spend: 100, last_stay_days: 5 },
+  ];
+
+  it('lists who is in the segment with the details needed to call them', async () => {
+    const res = await new MarketingService(repoWith(withPhones), darkLlm).getSegmentMembers('vip');
+    expect(res.total).toBe(2);
+    expect(res.label).toBe('VIP');
+    expect(res.members.map((m) => m.name)).toEqual(['University of Pennsylvania', 'Big Spender']);
+    expect(res.members[0]!.phone).toBe('77135784');
+    expect(res.members[0]!.total_stays).toBe(100);
+  });
+
+  it('ranks by stays before spend, so migrated accounts are not buried', async () => {
+    // UPenn has 100 stays and zero recorded spend; Big Spender has P50,000 and one stay.
+    const res = await new MarketingService(repoWith(withPhones), darkLlm).getSegmentMembers('vip');
+    expect(res.members[0]!.spend).toBe(0);
+    expect(res.members[1]!.spend).toBe(5_000_000);
+  });
+
+  it('searches across name, company, phone and email', async () => {
+    const svc = new MarketingService(repoWith(withPhones), darkLlm);
+    expect((await svc.getSegmentMembers('vip', { search: 'acme' })).members).toHaveLength(1);
+    expect((await svc.getSegmentMembers('vip', { search: '77135' })).members).toHaveLength(1);
+    expect((await svc.getSegmentMembers('vip', { search: 'nobody' })).members).toHaveLength(0);
+  });
+
+  it('caps the list and says so, rather than silently returning fewer', async () => {
+    const res = await new MarketingService(repoWith(withPhones), darkLlm).getSegmentMembers('vip', { limit: 1 });
+    expect(res.members).toHaveLength(1);
+    expect(res.total).toBe(2);
+    expect(res.truncated).toBe(true);
   });
 });
 

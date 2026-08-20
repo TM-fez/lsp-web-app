@@ -9,7 +9,20 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useGuests } from './hooks';
 import { GuestFormDrawer } from './GuestFormDrawer';
-import type { Contact, ContactType } from '@/types';
+import { SegmentMembers } from '@/features/marketing/SegmentMembers';
+import type { Contact, ContactType, SegmentKey } from '@/types';
+
+// Mirrors the labels the marketing service returns, so a segment reads the same on both
+// screens. 'past' exists because migrated guests have a stay count but no dates — see
+// migration 062.
+const SEGMENTS: { key: SegmentKey; label: string }[] = [
+  { key: 'vip', label: 'VIP' },
+  { key: 'frequent', label: 'Frequent' },
+  { key: 'recent', label: 'Recent' },
+  { key: 'lapsed', label: 'Lapsed' },
+  { key: 'past', label: 'Past guest' },
+  { key: 'prospect', label: 'Prospects' },
+];
 
 const fmtDate = (s: string) => {
   const d = new Date(s);
@@ -25,6 +38,7 @@ export function GuestsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | ContactType>('ALL');
   const [sort, setSort] = useState<'recent' | 'stays'>('recent');
+  const [segment, setSegment] = useState<SegmentKey | 'ALL'>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
 
@@ -103,11 +117,28 @@ export function GuestsPage() {
             <option value="recent">Newest first</option>
             <option value="stays">Most previous stays</option>
           </Select>
+          <Select
+            value={segment}
+            onChange={(e) => setSegment(e.target.value as SegmentKey | 'ALL')}
+            className="max-w-[13rem]"
+          >
+            <option value="ALL">Every guest</option>
+            {SEGMENTS.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </Select>
           {isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
         </div>
       )}
 
-      {isLoading ? (
+      {segment !== 'ALL' ? (
+        // Segment membership is computed from stays and spend, so it comes from the marketing
+        // endpoint rather than the contacts list — one definition of "VIP", not two.
+        <SegmentMembers
+          segment={segment}
+          label={SEGMENTS.find((s) => s.key === segment)!.label}
+        />
+      ) : isLoading ? (
         <div className="flex h-40 items-center justify-center">
           <Spinner className="h-6 w-6" />
         </div>

@@ -9,6 +9,7 @@ export interface CustomerStat {
   id: string;
   name: string;
   email: string | null;
+  phone: string | null;
   company: string | null;
   stays: string | number;             // completed/confirmed reservations
   previous_stays: string | number;    // stays migrated from Little Hotelier (count only)
@@ -22,7 +23,7 @@ export class MarketingRepository {
   async customerStats(): Promise<CustomerStat[]> {
     const r = await sql<CustomerStat>`
       SELECT
-        c.id, c.name, c.email, c.company, c.previous_stays,
+        c.id, c.name, c.email, c.phone, c.company, c.previous_stays,
         (SELECT COUNT(*) FROM reservations r
            WHERE r.contact_id = c.id AND r.deleted_at IS NULL
              AND r.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT')) AS stays,
