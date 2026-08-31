@@ -325,3 +325,47 @@ export class ChannelImportService {
     return res;
   }
 }
+
+/** An import that did not run because the sweeper's interval had not yet elapsed. */
+export const NO_IMPORT: ImportSummary = {
+  ran: false,
+  roomsProcessed: 0,
+  upserted: 0,
+  unchanged: 0,
+  cancelled: 0,
+  collisions: 0,
+  alertsSuppressed: 0,
+  warnings: 0,
+  rooms: [],
+};
+
+/**
+ * (H4 go-live) Channel sync as an in-process sweep instead of an external cron.
+ *
+ * The original plan was a platform trigger hitting /cron/channel-sync every 15 min,
+ * because the free Render service slept and could not be trusted to hold a timer.
+ * On the paid always-on plan that constraint is gone, so the poll rides the scheduler
+ * the other five sweeps already use — no extra service, no CRON_SECRET on the happy
+ * path. `/cron/channel-sync` stays mounted as the manual/fallback trigger (and for a
+ * serverless host), exactly like /cron/sweep and /cron/reminders.
+ *
+ * Self-gates to intervalMs because the sweep tick is 60s and an OTA fetch must not run
+ * that hot. Same closure pattern as createRemindersSweeper. Gating is per process: a
+ * restart re-polls immediately, which is harmless — the import is an idempotent
+ * reconcile keyed on (source, external_uid).
+ */
+export function createChannelSyncSweeper(
+  repo: ChannelRepository,
+  intervalMs: number = 15 * 60_000,
+  deps: ImportDeps = {},
+): () => Promise<ImportSummary> {
+  const service = new ChannelImportService(repo, deps);
+  let lastRunMs = 0;
+
+  return async () => {
+    const nowMs = Date.now();
+    if (nowMs - lastRunMs < intervalMs) return NO_IMPORT;
+    lastRunMs = nowMs;
+    return service.runImport();
+  };
+}

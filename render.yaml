@@ -68,6 +68,22 @@ services:
       # (a secret) in the Render dashboard.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # ── Booking.com channel sync (H4) ────────────────────────────────────────
+      # The 15-min import poll runs IN-PROCESS off the scheduler (paid plan = always
+      # awake), so no Render Cron Job is needed. Default cadence is 15 min; override
+      # here only if Booking.com asks for a different one.
+      # - key: CHANNEL_SYNC_INTERVAL_MS
+      #   value: "900000"
+      # Manager inbox for double-booking collision alerts. Sent via Brevo, so it needs
+      # BREVO_API_KEY set too — without it a collision is logged but nobody is paged.
+      - key: CHANNEL_ALERT_EMAIL
+        sync: false
+      # Guards the MANUAL trigger endpoints (/cron/sweep, /cron/reminders,
+      # /cron/channel-sync). Not needed for the scheduled poll, but leave it set: with
+      # no secret those endpoints refuse every caller, so there is no way to force a
+      # sync without waiting out the interval.
+      - key: CRON_SECRET
+        sync: false
 
 databases:
   - name: lsp-db

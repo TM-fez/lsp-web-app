@@ -1,4 +1,4 @@
-import { Kysely, sql } from 'kysely';
+import { Kysely, Transaction, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
 import type { ExpenseStatus, ExpensesRequestMeta } from './expenses.types.js';
 
@@ -50,8 +50,11 @@ export class ExpensesRepository {
       .executeTakeFirst();
   }
 
-  private async audit(id: string, action: string, meta: ExpensesRequestMeta) {
-    await this.db
+  // Takes the transaction rather than this.db so the sign-off and its audit row commit
+  // together — a spend approval that lands with no record of who approved it is exactly
+  // the gap this closes.
+  private async audit(trx: Transaction<Database>, id: string, action: string, meta: ExpensesRequestMeta) {
+    await trx
       .insertInto('audit_logs')
       .values({
         request_id: meta.requestId ?? null,
@@ -66,24 +69,28 @@ export class ExpensesRepository {
   }
 
   async approveSpend(id: string, meta: ExpensesRequestMeta) {
-    const row = await this.db
-      .updateTable('maintenance_work_orders')
-      .set({ cost_approved_by: meta.userId, cost_approved_at: sql`now()`, updated_at: sql`now()` })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-    await this.audit(id, 'spend_approved', meta);
-    return row;
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .updateTable('maintenance_work_orders')
+        .set({ cost_approved_by: meta.userId, cost_approved_at: sql`now()`, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      await this.audit(trx, id, 'spend_approved', meta);
+      return row;
+    });
   }
 
   async reconcile(id: string, meta: ExpensesRequestMeta) {
-    const row = await this.db
-      .updateTable('maintenance_work_orders')
-      .set({ cost_reconciled_by: meta.userId, cost_reconciled_at: sql`now()`, updated_at: sql`now()` })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-    await this.audit(id, 'reconciled', meta);
-    return row;
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .updateTable('maintenance_work_orders')
+        .set({ cost_reconciled_by: meta.userId, cost_reconciled_at: sql`now()`, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      await this.audit(trx, id, 'reconciled', meta);
+      return row;
+    });
   }
 }
