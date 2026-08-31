@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Paginated, Reservation, ReservationStatus, ReservationSource } from '@/types';
+import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod } from '@/types';
 
 export interface ReservationListParams {
   search?: string;
@@ -63,6 +63,23 @@ export async function cancelReservation(id: string): Promise<Reservation> {
 // the row is kept for audit but hidden everywhere). Rejected for any other status.
 export async function removeReservation(id: string): Promise<void> {
   await api.delete(`/reservations/${id}/remove`);
+}
+
+export interface MarkPaidInput {
+  method: PaymentMethod;
+  /** Thebe. Omit to charge the booking's full priced total (discount applied). */
+  amount?: number;
+  reference?: string | null;
+  note?: string | null;
+}
+
+// Record a payment taken at the desk against a PENDING booking so it reaches
+// CONFIRMED. This is the only route from "the guest paid" to a confirmed booking for
+// a reservation that already exists — the cockpit's booking flow always creates a new
+// one, so public-site bookings had no way to be settled before this.
+export async function markReservationPaid(id: string, input: MarkPaidInput): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/mark-paid`, input);
+  return data;
 }
 
 export interface SetDiscountInput {

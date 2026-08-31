@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, InvoiceRow, NewInvoice } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { InvoiceFilters, InvoiceStatus, InvoiceRequestMeta } from './invoices.types.js';
+import type { InvoiceFilters, InvoiceStatus, InvoiceRequestMeta, InvoiceListRow } from './invoices.types.js';
 
 export class InvoicesRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -41,6 +41,25 @@ export class InvoicesRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * The reservation behind a quote, via the hold the quote produced.
+   *
+   * An invoice raised from the Invoices screen carries only a quote_id, and a quote
+   * has no guest on it — so without this the invoice is permanently anonymous. The
+   * hold is the join that knows: quote -> hold -> reservation -> contact.
+   */
+  async findReservationIdForQuote(quoteId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('holds')
+      .select('reservation_id')
+      .where('quote_id', '=', quoteId)
+      .where('reservation_id', 'is not', null)
+      .where('deleted_at', 'is', null)
+      .orderBy('created_at', 'desc')
+      .executeTakeFirst();
+    return row?.reservation_id ?? null;
+  }
+
   // Audit trail for an invoice emailed to the guest.
   async recordEmailSent(id: string, email: string, meta: InvoiceRequestMeta): Promise<void> {
     await this.db.insertInto('audit_logs').values({
@@ -57,27 +76,56 @@ export class InvoicesRepository {
   async findPaginated(
     filters: InvoiceFilters,
     pagination: PaginationOptions
-  ): Promise<PaginatedResult<InvoiceRow>> {
-    let query = this.db.selectFrom('invoices').selectAll().where('deleted_at', 'is', null);
+  ): Promise<PaginatedResult<InvoiceRow & InvoiceListRow>> {
+    // Who + which stay, resolved the same way the printable document resolves them:
+    // the invoice's own reservation when it has one, else the reservation behind its
+    // hold. Bill-to coalesces to the billing/accounts contact (A4) before the guest,
+    // so the name shown is the name that owes the money.
+    //
+    // Every join is LEFT and lands on a primary key, so none of them can multiply a
+    // row — the count query below stays correct without repeating them.
+    // Alias `ih` (not `h`): the property filter opens its own `holds h` subquery, and
+    // an outer `h` shadowed by an inner one is legal SQL that reads like a bug.
+    let query = this.db
+      .selectFrom('invoices')
+      .leftJoin('holds as ih', 'ih.id', 'invoices.hold_id')
+      .leftJoin('reservations as rsv', (join) =>
+        join.on(sql<boolean>`rsv.id = coalesce(invoices.reservation_id, ih.reservation_id)`)
+      )
+      .leftJoin('contacts as c', 'c.id', 'rsv.contact_id')
+      .leftJoin('contacts as bc', 'bc.id', 'rsv.billing_contact_id')
+      .leftJoin('rooms as rm', 'rm.id', 'rsv.room_id')
+      .selectAll('invoices')
+      .select([
+        sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
+        sql<string | null>`c.name`.as('guest_name'),
+        sql<string | null>`rm.code`.as('unit_code'),
+        sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
+        sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
+      ])
+      .where('invoices.deleted_at', 'is', null);
+
     let countQuery = this.db
       .selectFrom('invoices')
       .select(this.db.fn.count<number>('id').as('total'))
       .where('deleted_at', 'is', null);
 
+    // Filters are qualified on the joined query: `status` and `quote_id` now exist on
+    // more than one table in scope, so an unqualified name is ambiguous to Postgres.
     if (filters.status) {
-      query = query.where('status', '=', filters.status);
+      query = query.where('invoices.status', '=', filters.status);
       countQuery = countQuery.where('status', '=', filters.status);
     }
     if (filters.kind) {
-      query = query.where('kind', '=', filters.kind);
+      query = query.where('invoices.kind', '=', filters.kind);
       countQuery = countQuery.where('kind', '=', filters.kind);
     }
     if (filters.quote_id) {
-      query = query.where('quote_id', '=', filters.quote_id);
+      query = query.where('invoices.quote_id', '=', filters.quote_id);
       countQuery = countQuery.where('quote_id', '=', filters.quote_id);
     }
     if (filters.hold_id) {
-      query = query.where('hold_id', '=', filters.hold_id);
+      query = query.where('invoices.hold_id', '=', filters.hold_id);
       countQuery = countQuery.where('hold_id', '=', filters.hold_id);
     }
 
@@ -101,7 +149,7 @@ export class InvoicesRepository {
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('invoices.created_at', 'desc').execute(),
       countQuery.execute(),
     ]);
 

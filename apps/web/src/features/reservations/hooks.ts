@@ -11,10 +11,12 @@ import {
   approveDiscount,
   removeDiscount,
   getReservationPricing,
+  markReservationPaid,
   type ReservationListParams,
   type CreateReservationInput,
   type UpdateReservationInput,
   type SetDiscountInput,
+  type MarkPaidInput,
   type ReservationPricing,
   type ReservationNotPriceable,
 } from '@/lib/api/reservations';
@@ -91,6 +93,23 @@ export function useRemoveReservation() {
     mutationFn: (id: string) => removeReservation(id),
     onSuccess: () => {
       toast.success('Reservation removed');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+/**
+ * Record a payment against a pending booking. On success the server has run the
+ * full money loop (quote → hold → intent → settlePaid), so the booking comes back
+ * CONFIRMED — invalidating RES_KEY refreshes the row, its badge and its pricing.
+ */
+export function useMarkPaid() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: MarkPaidInput }) => markReservationPaid(id, input),
+    onSuccess: () => {
+      toast.success('Payment recorded — booking confirmed ✓');
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),

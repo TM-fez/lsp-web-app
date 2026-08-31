@@ -5,6 +5,9 @@ function setup() {
   const repo = {
     findById: vi.fn(),
     findPaginated: vi.fn(),
+    // Back-fills the stay behind a quote so the invoice is attributable. Null here =
+    // the quote never became a hold, which is the anonymous-invoice case.
+    findReservationIdForQuote: vi.fn(async () => null),
     create: vi.fn(async (v: any) => ({ id: 'inv1', ...v })),
     settle: vi.fn(async (id: string) => ({ id, status: 'PAID' })),
     markStatus: vi.fn(),
@@ -39,6 +42,59 @@ describe('InvoicesService.issueInvoice', () => {
     const { svc, repo } = setup();
     await svc.issueInvoice({ quote_id: 'q1', kind: 'BALANCE' } as any, { userId: 'u1' });
     expect(repo.create.mock.calls[0][0].total_amount).toBe(57000); // 114000 - 57000
+  });
+
+  // A payment taken at the desk is for whatever the guest handed over — not
+  // necessarily the quote's 50/50 deposit-then-balance split.
+  it('honours an explicit amount over the quote slice', async () => {
+    const { svc, repo } = setup();
+    await svc.issueInvoice({ quote_id: 'q1', kind: 'BALANCE', amount: 114000 } as any, { userId: 'u1' });
+    expect(repo.create.mock.calls[0][0].total_amount).toBe(114000);
+  });
+
+  it('refuses an amount larger than the quote it is raised against', async () => {
+    const { svc } = setup();
+    await expect(
+      svc.issueInvoice({ quote_id: 'q1', kind: 'BALANCE', amount: 200000 } as any, { userId: 'u1' }),
+    ).rejects.toThrow('cannot be raised for more than the quote total');
+  });
+
+  // Without this the Invoices screen produces invoices with no guest on them at all,
+  // which is exactly why the list could not say who had paid.
+  it('back-fills the reservation from the quote\u2019s hold when none is given', async () => {
+    const { svc, repo } = setup();
+    repo.findReservationIdForQuote.mockResolvedValue('res-9');
+    await svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT' } as any, { userId: 'u1' });
+    expect(repo.create.mock.calls[0][0].reservation_id).toBe('res-9');
+  });
+
+  it('prefers an explicitly supplied reservation over the back-fill', async () => {
+    const { svc, repo } = setup();
+    repo.findReservationIdForQuote.mockResolvedValue('res-9');
+    await svc.issueInvoice(
+      { quote_id: 'q1', kind: 'DEPOSIT', reservation_id: 'res-explicit' } as any,
+      { userId: 'u1' },
+    );
+    expect(repo.create.mock.calls[0][0].reservation_id).toBe('res-explicit');
+    expect(repo.findReservationIdForQuote).not.toHaveBeenCalled();
+  });
+});
+
+describe('InvoicesService.issueSettledInvoice', () => {
+  // Money already in hand: issuing it as ISSUED would put a settled booking into the
+  // Finance cockpit's outstanding list and debtor ageing, which is untrue.
+  it('raises the invoice and marks it paid in one go', async () => {
+    const { svc, repo } = setup();
+    // settleInvoice re-reads the row it is about to settle, so the fake has to know
+    // about the invoice create() just made.
+    repo.findById.mockResolvedValue({ id: 'inv1', status: 'ISSUED', total_amount: 114000 });
+    const out = await svc.issueSettledInvoice(
+      { quote_id: 'q1', kind: 'BALANCE', amount: 114000 } as any,
+      { userId: 'u1' },
+    );
+    expect(repo.create).toHaveBeenCalled();
+    expect(repo.settle).toHaveBeenCalledWith('inv1', null, expect.anything());
+    expect(out.status).toBe('PAID');
   });
 });
 

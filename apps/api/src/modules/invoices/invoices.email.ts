@@ -73,8 +73,8 @@ export function renderInvoiceEmail(d: InvoiceEmailData): { subject: string; html
         </tr>
       </table>
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;font-size:14px;">
-        <tr><td style="padding:3px 0;color:#5f5e5a;">Subtotal</td><td align="right" style="color:#5f5e5a;">${money(d.subtotal_amount, d.currency)}</td></tr>
-        <tr><td style="padding:3px 0;color:#5f5e5a;">VAT (${taxPct}%)</td><td align="right" style="color:#5f5e5a;">${money(d.tax_amount, d.currency)}</td></tr>
+        ${d.tax_amount > 0 ? `<tr><td style="padding:3px 0;color:#5f5e5a;">Subtotal</td><td align="right" style="color:#5f5e5a;">${money(d.subtotal_amount, d.currency)}</td></tr>
+        <tr><td style="padding:3px 0;color:#5f5e5a;">VAT (${taxPct}%)</td><td align="right" style="color:#5f5e5a;">${money(d.tax_amount, d.currency)}</td></tr>` : ''}
         <tr><td style="padding:10px 0 0;border-top:1px solid #d8d0c0;font-weight:bold;">Total</td>
             <td align="right" style="padding:10px 0 0;border-top:1px solid #d8d0c0;font-weight:bold;">${money(d.total_amount, d.currency)}</td></tr>
       </table>

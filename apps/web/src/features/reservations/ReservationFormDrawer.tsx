@@ -18,14 +18,24 @@ import {
   useRemoveDiscount,
   useReservationPricing,
   useClaimOtaBooking,
+  useMarkPaid,
 } from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
 import { formatMoney } from '@/lib/utils/money';
 import { useAuthStore } from '@/store/auth';
-import type { Reservation, ReservationSource, Room } from '@/types';
+import type { Reservation, ReservationSource, Room, PaymentMethod } from '@/types';
 
 const toDateInput = (s?: string | null) => (s ? s.slice(0, 10) : '');
+
+// How the money actually arrived. Plain wording, not the stored enum — staff read this.
+const PAY_METHODS: Array<{ value: PaymentMethod; label: string }> = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'EFT', label: 'Bank transfer (EFT)' },
+  { value: 'MOBILE_MONEY', label: 'Mobile money' },
+  { value: 'CARD', label: 'Card' },
+  { value: 'CORPORATE_CREDIT', label: 'Company account' },
+];
 
 interface Props {
   open: boolean;
@@ -52,16 +62,23 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const setDiscM = useSetDiscount();
   const approveDisc = useApproveDiscount();
   const removeDisc = useRemoveDiscount();
+  const markPaid = useMarkPaid();
   // Amount-due breakdown — only meaningful for an existing pending booking.
   const showDiscountTools = isEdit && reservation!.status === 'PENDING' && canRequestDiscount;
-  const pricing = useReservationPricing(reservation?.id, open && showDiscountTools);
+  // Recording a payment needs BOTH: raising the intent and settling it are separate
+  // permissions, and reception holds only the first — so the button stays hidden
+  // rather than showing them an action that 403s halfway through.
+  const canTakePayment = hasPerm('payments.create') && hasPerm('payments.update');
+  const showPayment = isEdit && reservation!.status === 'PENDING' && canTakePayment;
+  const pricing = useReservationPricing(reservation?.id, open && (showDiscountTools || showPayment));
   const busy =
     create.isPending ||
     update.isPending ||
     cancel.isPending ||
     setDiscM.isPending ||
     approveDisc.isPending ||
-    removeDisc.isPending;
+    removeDisc.isPending ||
+    markPaid.isPending;
 
   const [guest, setGuest] = useState<PickedGuest | null>(null);
   // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
@@ -73,6 +90,11 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [notes, setNotes] = useState('');
   const [source, setSource] = useState<ReservationSource>('WALK_IN');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Recording a payment — how it was taken, the guest's reference, and a confirm
+  // step, because this one moves money and cannot be undone from here.
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('CASH');
+  const [payReference, setPayReference] = useState('');
+  const [confirmPay, setConfirmPay] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [discValue, setDiscValue] = useState('');
@@ -97,6 +119,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setNotes(reservation?.notes ?? '');
     setSource(reservation?.source ?? 'WALK_IN');
     setConfirmCancel(false);
+    setPayMethod('CASH');
+    setPayReference('');
+    setConfirmPay(false);
     setDiscType('PERCENT');
     setDiscValue('');
     setDiscReason('');
@@ -355,11 +380,122 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             />
           </div>
 
-          {(!isEdit || reservation!.status === 'PENDING') && (
+          {(!isEdit || reservation!.status === 'PENDING') && !showPayment && (
             <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Bookings stay <strong>pending</strong> until payment is received — payment is what confirms a
-              reservation. Take payment from the cockpit to confirm.
+              reservation.
+              {isEdit && !canTakePayment && ' Ask an admin or Accounts to record the payment.'}
             </p>
+          )}
+
+          {showPayment && (
+            <div className="flex flex-col gap-3 border-t border-line pt-4">
+              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Payment</Label>
+
+              <p className="text-xs text-muted">
+                This booking is <strong className="text-ink">pending</strong> — it holds the unit but is not
+                confirmed. Record the payment here once the guest has paid and the booking is confirmed
+                immediately.
+                {reservation!.source === 'WEBSITE' && (
+                  <> Website bookings are cancelled automatically if they stay unpaid for 24 hours.</>
+                )}
+              </p>
+
+              {pricing.isLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Spinner className="h-3.5 w-3.5" /> Working out the amount due…
+                </div>
+              ) : pricing.data?.priceable === false ? (
+                <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  This booking can’t be priced ({pricing.data.reason}), so payment can’t be recorded. Set a rate
+                  plan for the unit type first.
+                </p>
+              ) : (
+                pricing.data?.priceable && (
+                  <>
+                    <div className="flex items-center justify-between rounded-md border border-line bg-cream-2/40 px-3 py-2.5">
+                      <span className="text-sm text-muted">Amount due</span>
+                      <span className="font-display text-lg text-ink">
+                        {formatMoney(pricing.data.total_amount)}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="res-pay-method">How did they pay?</Label>
+                      <Select
+                        id="res-pay-method"
+                        value={payMethod}
+                        onChange={(e) => {
+                          setPayMethod(e.target.value as PaymentMethod);
+                          setConfirmPay(false);
+                        }}
+                        disabled={busy}
+                      >
+                        {PAY_METHODS.map((m) => (
+                          <option key={m.value} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="res-pay-ref">Reference (optional)</Label>
+                      <Input
+                        id="res-pay-ref"
+                        placeholder="Bank reference, receipt number…"
+                        value={payReference}
+                        onChange={(e) => setPayReference(e.target.value)}
+                        disabled={busy}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="primary"
+                        disabled={busy}
+                        onClick={async () => {
+                          if (!confirmPay) {
+                            setConfirmPay(true);
+                            return;
+                          }
+                          try {
+                            await markPaid.mutateAsync({
+                              id: reservation!.id,
+                              input: {
+                                method: payMethod,
+                                reference: payReference.trim() || null,
+                              },
+                            });
+                            onOpenChange(false);
+                          } catch {
+                            /* hook surfaces the error toast */
+                            setConfirmPay(false);
+                          }
+                        }}
+                      >
+                        {markPaid.isPending ? (
+                          <Spinner className="h-4 w-4" />
+                        ) : confirmPay ? (
+                          `Yes — record ${formatMoney(pricing.data.total_amount)} and confirm`
+                        ) : (
+                          'Guest has paid'
+                        )}
+                      </Button>
+                      {confirmPay && !markPaid.isPending && (
+                        <Button variant="outline" disabled={busy} onClick={() => setConfirmPay(false)}>
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-muted">
+                      Records the payment against this booking and confirms it. This can’t be undone here.
+                    </p>
+                  </>
+                )
+              )}
+            </div>
           )}
 
           {showDiscountTools && (
@@ -381,10 +517,12 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       <span>−{formatMoney(pricing.data.discount.amount)}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between text-muted">
-                    <span>Tax ({(pricing.data.tax_rate_bps / 100).toFixed(0)}%)</span>
-                    <span className="text-ink">{formatMoney(pricing.data.tax_amount)}</span>
-                  </div>
+                  {pricing.data.tax_amount > 0 && (
+                    <div className="flex items-center justify-between text-muted">
+                      <span>Tax ({(pricing.data.tax_rate_bps / 100).toFixed(0)}%)</span>
+                      <span className="text-ink">{formatMoney(pricing.data.tax_amount)}</span>
+                    </div>
+                  )}
                   <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5 font-medium text-ink">
                     <span>Total due</span>
                     <span className="font-display">{formatMoney(pricing.data.total_amount)}</span>

@@ -116,8 +116,12 @@ export function InvoiceDocumentPage() {
 
         {/* Totals */}
         <div className="ml-auto mt-4 w-64 text-sm">
-          <div className="flex justify-between py-1 text-slate-500"><span>Subtotal</span><span className="tabnum">{formatMoney(d.subtotal_amount, d.currency)}</span></div>
-          <div className="flex justify-between py-1 text-slate-500"><span>VAT ({taxPct}%)</span><span className="tabnum">{formatMoney(d.tax_amount, d.currency)}</span></div>
+          {d.tax_amount > 0 && (
+            <>
+              <div className="flex justify-between py-1 text-slate-500"><span>Subtotal</span><span className="tabnum">{formatMoney(d.subtotal_amount, d.currency)}</span></div>
+              <div className="flex justify-between py-1 text-slate-500"><span>VAT ({taxPct}%)</span><span className="tabnum">{formatMoney(d.tax_amount, d.currency)}</span></div>
+            </>
+          )}
           <div className="mt-1 flex justify-between border-t border-slate-300 py-2 text-base font-medium text-slate-900"><span>Total</span><span className="tabnum">{formatMoney(d.total_amount, d.currency)}</span></div>
         </div>
 

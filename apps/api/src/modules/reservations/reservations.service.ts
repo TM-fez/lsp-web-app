@@ -1,7 +1,12 @@
 import { ReservationsRepository } from './reservations.repository.js';
 import { RoomsRepository } from '../rooms/rooms.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
+import { QuotesService } from '../quotes/quotes.service.js';
+import { HoldsService } from '../holds/holds.service.js';
+import { PaymentsService } from '../payments/payments.service.js';
+import { InvoicesService } from '../invoices/invoices.service.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { logger } from '../../core/logger.js';
 import { todayInPropertyTZ } from '../../core/time.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
@@ -16,6 +21,7 @@ import type {
   UpdateReservationDTO,
   SetDiscountDTO,
   ClaimOtaBookingDTO,
+  MarkPaidDTO,
   ReservationListRow
 } from './reservations.types.js';
 
@@ -32,11 +38,16 @@ export function isReservationOverlapError(e: unknown): boolean {
 export class ReservationsService {
   // rooms + pricing are optional so unit tests can construct the service with just
   // a repository; the live router (reservations.routes) always wires them in, which
-  // is what GET /:id/pricing needs.
+  // is what GET /:id/pricing needs. quotes/holds/payments are wired the same way and
+  // back POST /:id/mark-paid — see markPaid().
   constructor(
     private readonly repository: ReservationsRepository,
     private readonly rooms?: RoomsRepository,
     private readonly pricing?: PricingService,
+    private readonly quotes?: QuotesService,
+    private readonly holds?: HoldsService,
+    private readonly payments?: PaymentsService,
+    private readonly invoices?: InvoicesService,
   ) {}
 
   /**
@@ -80,6 +91,122 @@ export class ReservationsService {
             }
           : null,
     });
+  }
+
+  /**
+   * Record a payment taken off-system against a PENDING booking, so it reaches
+   * CONFIRMED.
+   *
+   * Why this exists: a booking from the public site lands as a PENDING reservation
+   * with NO quote, hold or payment intent behind it, and `settlePaid()` — the only
+   * thing allowed to confirm a reservation — needs all three. Without this there is
+   * no route from "the guest paid at reception" to a confirmed booking, and the
+   * website-expiry sweep eventually cancels it. The cockpit's booking wizard cannot
+   * help: it builds its own new reservation and can't adopt an existing one.
+   *
+   * So we assemble the same chain the wizard does, in the same order, against the
+   * booking that already exists: quote -> hold -> intent -> successful attempt.
+   * Nothing here bypasses the invariant; settlePaid() still does the confirming.
+   *
+   * The amount defaults to the booking's OWN priced total, which has any approved
+   * discount already applied — so an approved discount reduces what is actually
+   * charged here, not merely what is displayed.
+   *
+   * A paid-up invoice is raised at the end so the guest has a receipt and Accounts has
+   * a record. That step is deliberately best-effort — see the comment at the call.
+   */
+  async markPaid(
+    id: string,
+    dto: MarkPaidDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string,
+  ): Promise<ReservationRow> {
+    if (!this.rooms || !this.pricing || !this.quotes || !this.holds || !this.payments) {
+      throw AppError.internal('Payment recording is not configured for this service');
+    }
+
+    const reservation = await this.getReservationById(id, activePropertyId);
+    if (reservation.status !== 'PENDING') {
+      throw AppError.conflict(
+        `Only a pending booking can be marked paid — this one is already ${reservation.status.toLowerCase().replace('_', ' ')}.`,
+      );
+    }
+
+    const room = await this.rooms.findById(reservation.room_id);
+    if (!room) throw AppError.badRequest('This booking has no unit, so it cannot be priced or paid for.');
+
+    const priced = await this.priceReservation(id, activePropertyId);
+    if (!priced.priceable) {
+      throw AppError.badRequest(`This booking cannot be priced: ${priced.reason}. Set a rate plan for the unit first.`);
+    }
+
+    const amount = dto.amount ?? priced.total_amount;
+    if (amount > priced.total_amount) {
+      throw AppError.badRequest('The amount paid cannot be more than the total due for this booking.');
+    }
+
+    const quote = await this.quotes.createQuote(
+      {
+        unit_type: room.type as UnitType,
+        check_in: reservation.check_in_date,
+        check_out: reservation.check_out_date,
+        guests: 1,
+      },
+      meta,
+    );
+
+    const hold = await this.holds.createHold(
+      { quote_id: quote.id, room_id: reservation.room_id, reservation_id: reservation.id },
+      meta,
+    );
+
+    const intent = await this.payments.createIntent(
+      {
+        hold_id: hold.id,
+        method: dto.method,
+        // Label only — the amount is explicit either way. BALANCE reads correctly for
+        // a payment that settles the whole booking, DEPOSIT for a part payment.
+        purpose: amount >= priced.total_amount ? 'BALANCE' : 'DEPOSIT',
+        amount,
+      },
+      meta,
+    );
+
+    // SUCCESS runs settlePaid(): intent PAID, hold CONFIRMED, reservation CONFIRMED,
+    // all in one transaction with its audit rows.
+    await this.payments.attempt(
+      intent.id,
+      { outcome: 'SUCCESS', reference: dto.reference ?? null, note: dto.note ?? null },
+      meta,
+    );
+
+    // Raise the receipt. Money has changed hands and the booking is already CONFIRMED
+    // by the time we get here, so a failure to write the DOCUMENT must not fail the
+    // request — telling reception "payment failed" after the guest has paid would send
+    // them round again and risk taking the money twice. The quote and hold both exist
+    // now, so Accounts can raise it by hand from the Invoices screen if this misses;
+    // the error is logged loudly rather than swallowed.
+    if (this.invoices) {
+      try {
+        await this.invoices.issueSettledInvoice(
+          {
+            quote_id: quote.id,
+            hold_id: hold.id,
+            reservation_id: reservation.id,
+            kind: amount >= priced.total_amount ? 'BALANCE' : 'DEPOSIT',
+            amount,
+          },
+          meta,
+        );
+      } catch (err) {
+        logger.error(
+          { err, reservationId: id, quoteId: quote.id, amount },
+          '[reservations] payment recorded but the receipt could not be raised — raise it by hand from Invoices',
+        );
+      }
+    }
+
+    return this.getReservationById(id, activePropertyId);
   }
 
   async getReservationById(id: string, activePropertyId?: string): Promise<ReservationRow> {

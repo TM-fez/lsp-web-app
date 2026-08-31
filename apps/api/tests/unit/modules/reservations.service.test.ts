@@ -187,6 +187,177 @@ describe('ReservationsService', () => {
     });
   });
 
+  describe('markPaid', () => {
+    const pending = {
+      id: 'res-w',
+      status: 'PENDING',
+      source: 'WEBSITE',
+      room_id: 'room-1',
+      check_in_date: new Date('2026-09-01'),
+      check_out_date: new Date('2026-09-03'),
+      discount_type: null,
+      discount_value: null,
+      discount_reason: null,
+      discount_approved_at: null,
+    };
+
+    // The priced stay the service should charge: 2 nights, 10% discount applied,
+    // 12% tax on the discounted subtotal. total_amount is what must be paid.
+    const priced = {
+      priceable: true as const,
+      currency: 'BWP',
+      nights: 2,
+      base_amount: 100_000,
+      discount: { type: 'PERCENT' as const, value: 10, reason: null, approved: true, amount: 10_000 },
+      subtotal: 90_000,
+      tax_rate_bps: 1200,
+      tax_amount: 10_800,
+      total_amount: 100_800,
+      deposit_pct: 0,
+      deposit_amount: 0,
+    };
+
+    let rooms: any, pricing: any, quotes: any, holds: any, payments: any, invoices: any, paid: ReservationsService;
+
+    beforeEach(() => {
+      rooms = { findById: vi.fn().mockResolvedValue({ id: 'room-1', type: 'STANDARD' }) };
+      pricing = { getActivePlan: vi.fn(), priceStay: vi.fn() };
+      quotes = { createQuote: vi.fn().mockResolvedValue({ id: 'q1', total_amount: 100_800, deposit_amount: 0 }) };
+      holds = { createHold: vi.fn().mockResolvedValue({ id: 'h1' }) };
+      payments = {
+        createIntent: vi.fn().mockResolvedValue({ id: 'pi1' }),
+        attempt: vi.fn().mockResolvedValue({ id: 'pi1', status: 'PAID' }),
+      };
+      invoices = { issueSettledInvoice: vi.fn().mockResolvedValue({ id: 'inv1', status: 'PAID' }) };
+      paid = new ReservationsService(repository, rooms, pricing, quotes, holds, payments, invoices);
+      // priceReservation is exercised by its own tests; stub it so these focus on the chain.
+      vi.spyOn(paid, 'priceReservation').mockResolvedValue(priced as any);
+      repository.findById.mockResolvedValue(pending as any);
+    });
+
+    it('drives quote → hold → intent → successful attempt, in that order', async () => {
+      await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+
+      expect(quotes.createQuote).toHaveBeenCalledWith(
+        expect.objectContaining({ unit_type: 'STANDARD', check_in: pending.check_in_date }),
+        expect.anything(),
+      );
+      expect(holds.createHold).toHaveBeenCalledWith(
+        expect.objectContaining({ quote_id: 'q1', reservation_id: 'res-w' }),
+        expect.anything(),
+      );
+      expect(payments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ hold_id: 'h1', method: 'CASH' }),
+        expect.anything(),
+      );
+      expect(payments.attempt).toHaveBeenCalledWith(
+        'pi1',
+        expect.objectContaining({ outcome: 'SUCCESS' }),
+        expect.anything(),
+      );
+    });
+
+    it('charges the discounted total, not the pre-discount price', async () => {
+      await paid.markPaid('res-w', { method: 'EFT', reference: 'FNB-123' } as any, { userId: 'u1' } as any);
+
+      expect(payments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 100_800 }),
+        expect.anything(),
+      );
+      expect(payments.attempt).toHaveBeenCalledWith(
+        'pi1',
+        expect.objectContaining({ reference: 'FNB-123' }),
+        expect.anything(),
+      );
+    });
+
+    it('honours an explicit part payment and labels it a deposit', async () => {
+      await paid.markPaid('res-w', { method: 'CASH', amount: 50_000 } as any, { userId: 'u1' } as any);
+      expect(payments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 50_000, purpose: 'DEPOSIT' }),
+        expect.anything(),
+      );
+    });
+
+    it('refuses to take more than the booking is worth', async () => {
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH', amount: 999_999 } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('cannot be more than the total due');
+      expect(quotes.createQuote).not.toHaveBeenCalled();
+    });
+
+    it('refuses anything that is not still pending', async () => {
+      repository.findById.mockResolvedValue({ ...pending, status: 'CONFIRMED' } as any);
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('Only a pending booking can be marked paid');
+      expect(payments.attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the stay cannot be priced', async () => {
+      vi.spyOn(paid, 'priceReservation').mockResolvedValue({
+        priceable: false,
+        reason: 'No active rate plan for a STANDARD unit',
+        nights: 2,
+      } as any);
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('cannot be priced');
+      expect(quotes.createQuote).not.toHaveBeenCalled();
+    });
+
+    it('fails loudly rather than half-charging when the money loop is not wired', async () => {
+      const bare = new ReservationsService(repository);
+      await expect(
+        bare.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('Payment recording is not configured');
+    });
+
+    // The whole point of recording the payment here: Accounts gets a document out of
+    // it. Before this, a settled booking left no invoice at all and the Finance
+    // screens stayed empty.
+    it('raises a paid-up receipt for the amount actually taken', async () => {
+      await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+
+      expect(invoices.issueSettledInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quote_id: 'q1',
+          hold_id: 'h1',
+          reservation_id: 'res-w',   // attributable: the list can name the guest
+          kind: 'BALANCE',           // paid in full
+          amount: 100_800,           // the discounted total, not the list price
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('labels a part payment as a deposit on the receipt too', async () => {
+      await paid.markPaid('res-w', { method: 'CASH', amount: 50_000 } as any, { userId: 'u1' } as any);
+      expect(invoices.issueSettledInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'DEPOSIT', amount: 50_000 }),
+        expect.anything(),
+      );
+    });
+
+    // Money has already changed hands and the booking is CONFIRMED by this point.
+    // Telling reception "payment failed" because a DOCUMENT could not be written
+    // would send the guest round to pay a second time.
+    it('still confirms the booking when the receipt cannot be raised', async () => {
+      invoices.issueSettledInvoice.mockRejectedValue(new Error('invoice numbering collision'));
+      repository.findById.mockResolvedValue(pending as any);
+
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).resolves.toBeDefined();
+
+      expect(payments.attempt).toHaveBeenCalledWith(
+        'pi1',
+        expect.objectContaining({ outcome: 'SUCCESS' }),
+        expect.anything(),
+      );
+    });
+  });
+
   describe('isReservationOverlapError', () => {
     it('matches the no-overlap exclusion violation', () => {
       expect(isReservationOverlapError({ code: '23P01', constraint: 'reservations_no_overlap' })).toBe(true);

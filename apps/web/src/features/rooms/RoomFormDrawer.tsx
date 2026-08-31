@@ -31,7 +31,7 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
   const [code, setCode] = useState('');
   const [type, setType] = useState<UnitType>('STANDARD');
   const [status, setStatus] = useState<RoomCreateStatus>('AVAILABLE');
-  const [capacity, setCapacity] = useState(2);
+  const [capacity, setCapacity] = useState(4);
   const [notes, setNotes] = useState('');
   const [buildingId, setBuildingId] = useState('');
   const [floor, setFloor] = useState('');
@@ -48,7 +48,7 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
     setCode(room?.code ?? '');
     setType(room?.type ?? 'STANDARD');
     setStatus('AVAILABLE');
-    setCapacity(room?.capacity ?? 2);
+    setCapacity(room?.capacity ?? 4);
     setNotes(room?.notes ?? '');
     setBuildingId(room?.building_id ?? '');
     setFloor(room?.floor != null ? String(room.floor) : '');

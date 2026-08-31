@@ -31,7 +31,7 @@ export const CreateRoomSchema = z.object({
   code: z.string().min(1).max(50),
   type: RoomTypeEnum.default('STANDARD'),
   status: UserInputRoomStatusEnum.default('AVAILABLE'),
-  capacity: z.coerce.number().int().positive().default(1),
+  capacity: z.coerce.number().int().positive().default(4),
   notes: z.string().nullable().optional(),
   // Multi-property: which building this unit sits in, plus an optional floor label.
   building_id: z.string().uuid().nullable().optional(),

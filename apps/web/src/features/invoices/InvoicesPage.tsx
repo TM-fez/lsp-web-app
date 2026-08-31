@@ -129,8 +129,8 @@ export function InvoicesPage() {
       ) : invoices.length === 0 ? (
         <EmptyState
           icon={<FileText className="h-8 w-8" />}
-          title="No invoices"
-          description="Invoices are raised against a quote when a deposit or balance is due, then settled here once paid."
+          title="No invoices yet"
+          description="Recording a payment on a booking raises a paid receipt here automatically. You can also raise one by hand against a quote when a deposit or balance is due, then settle it here once the guest pays."
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-line bg-paper">
@@ -138,6 +138,8 @@ export function InvoicesPage() {
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Invoice</th>
+                <th className="px-4 py-3.5 font-medium">Bill to</th>
+                <th className="px-4 py-3.5 font-medium">Stay</th>
                 <th className="px-4 py-3.5 font-medium">Type</th>
                 <th className="px-4 py-3.5 text-right font-medium">Amount</th>
                 <th className="px-4 py-3.5 font-medium">Status</th>
@@ -150,6 +152,34 @@ export function InvoicesPage() {
                 <tr key={inv.id} className="border-b border-line transition-colors duration-300 last:border-0 hover:bg-cream-2">
                   <td className="px-4 py-3.5">
                     <div className="font-display text-base text-ink">{inv.number}</div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {inv.bill_to_name ? (
+                      <>
+                        <div className="text-ink">{inv.bill_to_name}</div>
+                        {/* Only worth a second line when the bill goes somewhere other
+                            than the guest — a company paying for its staff member. */}
+                        {inv.guest_name && inv.guest_name !== inv.bill_to_name && (
+                          <div className="text-xs text-muted">for {inv.guest_name}</div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {inv.unit_code ? (
+                      <>
+                        <div className="text-ink">{inv.unit_code}</div>
+                        {inv.check_in_date && inv.check_out_date && (
+                          <div className="text-xs text-muted">
+                            {fmtDate(inv.check_in_date)} → {fmtDate(inv.check_out_date)}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5"><Badge tone={kindTone[inv.kind]}>{inv.kind}</Badge></td>
                   <td className="px-4 py-3.5 text-right tabnum text-ink">{formatMoney(inv.total_amount, inv.currency)}</td>

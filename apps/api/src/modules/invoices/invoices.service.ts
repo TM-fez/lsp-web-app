@@ -12,6 +12,7 @@ import type {
   IssueInvoiceDTO,
   InvoiceFilters,
   InvoiceRequestMeta,
+  InvoiceListRow,
 } from './invoices.types.js';
 
 function invoiceNumber(): string {
@@ -52,21 +53,35 @@ export class InvoicesService {
     return { sent: true, to };
   }
 
-  async listInvoices(filters: InvoiceFilters, pagination: PaginationOptions): Promise<PaginatedResult<InvoiceRow>> {
+  async listInvoices(
+    filters: InvoiceFilters,
+    pagination: PaginationOptions
+  ): Promise<PaginatedResult<InvoiceRow & InvoiceListRow>> {
     return this.repository.findPaginated(filters, pagination);
   }
 
   async issueInvoice(dto: IssueInvoiceDTO, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
     const quote = await this.quotes.getQuote(dto.quote_id);
 
+    // An explicit amount wins: a payment taken at the desk is for whatever the guest
+    // actually handed over, which need not be the quote's deposit/balance split.
     const total =
-      dto.kind === 'DEPOSIT'
-        ? quote.deposit_amount
-        : quote.total_amount - quote.deposit_amount;
+      dto.amount ??
+      (dto.kind === 'DEPOSIT' ? quote.deposit_amount : quote.total_amount - quote.deposit_amount);
 
     if (total <= 0) {
       throw AppError.badRequest(`Nothing to invoice for kind ${dto.kind} on this quote`);
     }
+    if (total > quote.total_amount) {
+      throw AppError.badRequest('An invoice cannot be raised for more than the quote total.');
+    }
+
+    // Attribute the invoice to a stay whenever one can be found. The Invoices screen
+    // raises against a quote alone, and a quote prices a unit TYPE — it carries no
+    // guest — so without this back-fill those invoices stay anonymous forever and
+    // Accounts cannot tell who has not paid.
+    const reservationId =
+      dto.reservation_id ?? (await this.repository.findReservationIdForQuote(quote.id));
 
     const { subtotal, tax } = splitInclusive(total, quote.tax_rate_bps);
 
@@ -75,7 +90,7 @@ export class InvoicesService {
         number: invoiceNumber(),
         hold_id: dto.hold_id ?? null,
         quote_id: quote.id,
-        reservation_id: dto.reservation_id ?? null,
+        reservation_id: reservationId,
         kind: dto.kind,
         currency: quote.currency,
         subtotal_amount: subtotal,
@@ -88,6 +103,23 @@ export class InvoicesService {
       },
       meta
     );
+  }
+
+  /**
+   * Raise an invoice for money that has ALREADY been received, and mark it paid.
+   *
+   * The ordinary flow issues an invoice so someone can go and pay it. A payment taken
+   * at the desk runs the other way round — the cash is in hand before any document
+   * exists — so issuing it as ISSUED would put a settled booking into the Finance
+   * cockpit's outstanding list and its debtor ageing, which is simply untrue.
+   *
+   * Two statements rather than one transaction because create() and settle() each own
+   * their audit row; the pair is idempotent enough in practice (a failure between them
+   * leaves an ISSUED invoice that Accounts can settle by hand, not a lost payment).
+   */
+  async issueSettledInvoice(dto: IssueInvoiceDTO, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+    const invoice = await this.issueInvoice(dto, meta);
+    return this.settleInvoice(invoice.id, null, meta);
   }
 
   async settleInvoice(id: string, receiptFileId: string | null | undefined, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
