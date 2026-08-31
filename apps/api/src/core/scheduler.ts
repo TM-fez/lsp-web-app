@@ -10,6 +10,12 @@ import { PricingRepository } from '../modules/pricing/pricing.repository.js';
 import { PricingService } from '../modules/pricing/pricing.service.js';
 import { createWebsiteBookingExpiry } from '../modules/reservations/reservations.expiry.js';
 import { createRemindersSweeper, NO_REMINDERS, type ReminderResult } from '../modules/notifications/reminders.js';
+import { ChannelRepository } from '../modules/channel/channel.repository.js';
+import {
+  createChannelSyncSweeper,
+  NO_IMPORT,
+  type ImportSummary,
+} from '../modules/channel/channel.import.service.js';
 import { createRetentionSweeper, type RetentionResult } from './retention.js';
 import { logger } from './logger.js';
 
@@ -25,6 +31,12 @@ import { logger } from './logger.js';
  * The third sweep closes the hold-less public path: a /stay booking is a PENDING
  * reservation that blocks its nights outright, so an abandoned one is auto-cancelled
  * after WEBSITE_PENDING_TTL_HOURS (see reservations.expiry.ts).
+ *
+ * (H4) The Booking.com import poll rides here too, self-gated to CHANNEL_SYNC_INTERVAL_MS
+ * — the paid always-on plan made an external 15-min cron unnecessary. It is the one sweep
+ * that reaches the network, so it is also the one that can be slow; Promise.allSettled
+ * keeps a hanging OTA feed from holding up the rest, and each fetch has its own 15s
+ * timeout inside the importer.
  */
 
 export interface HoldsSweeper {
@@ -36,6 +48,7 @@ export interface QuotesSweeper {
 export type WebsiteBookingsSweeper = () => Promise<number>;
 export type RetentionSweeper = () => Promise<RetentionResult>;
 export type RemindersSweeper = () => Promise<ReminderResult>;
+export type ChannelSyncSweeper = () => Promise<ImportSummary>;
 
 export interface SweepResult {
   holdsReleased: number;
@@ -44,6 +57,9 @@ export interface SweepResult {
   refreshTokensPruned: number;
   auditLogsPruned: number;
   remindersRaised: number;
+  /** OTA blocks written/revived this tick, and collisions the importer could not apply. */
+  channelBlocksUpserted: number;
+  channelCollisions: number;
 }
 
 const NO_RETENTION: RetentionResult = { refreshTokensPruned: 0, auditLogsPruned: 0 };
@@ -58,13 +74,15 @@ export async function runSweep(
   websiteBookings: WebsiteBookingsSweeper = async () => 0,
   retention: RetentionSweeper = async () => NO_RETENTION,
   reminders: RemindersSweeper = async () => NO_REMINDERS,
+  channelSync: ChannelSyncSweeper = async () => NO_IMPORT,
 ): Promise<SweepResult> {
-  const [held, quoted, website, retained, reminded] = await Promise.allSettled([
+  const [held, quoted, website, retained, reminded, synced] = await Promise.allSettled([
     holds.releaseExpired(),
     quotes.expireStaleQuotes(),
     websiteBookings(),
     retention(),
     reminders(),
+    channelSync(),
   ]);
 
   if (held.status === 'rejected') logger.error({ err: held.reason }, '[scheduler] hold sweep failed');
@@ -75,9 +93,12 @@ export async function runSweep(
     logger.error({ err: retained.reason }, '[scheduler] retention sweep failed');
   if (reminded.status === 'rejected')
     logger.error({ err: reminded.reason }, '[scheduler] reminders sweep failed');
+  if (synced.status === 'rejected')
+    logger.error({ err: synced.reason }, '[scheduler] channel sync failed');
 
   const retentionCounts = retained.status === 'fulfilled' ? retained.value : NO_RETENTION;
   const reminderCounts = reminded.status === 'fulfilled' ? reminded.value : NO_REMINDERS;
+  const syncCounts = synced.status === 'fulfilled' ? synced.value : NO_IMPORT;
 
   return {
     holdsReleased: held.status === 'fulfilled' ? held.value : 0,
@@ -87,6 +108,8 @@ export async function runSweep(
     auditLogsPruned: retentionCounts.auditLogsPruned,
     remindersRaised:
       reminderCounts.checkoutDue + reminderCounts.maintenanceStale + reminderCounts.maintenanceUnassigned,
+    channelBlocksUpserted: syncCounts.upserted,
+    channelCollisions: syncCounts.collisions,
   };
 }
 
@@ -98,7 +121,14 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
   const websiteBookings = createWebsiteBookingExpiry(dbInstance);
   const retention = createRetentionSweeper(dbInstance); // self-gates to once per day
   const reminders = createRemindersSweeper(dbInstance); // self-gates to once per day
-  return () => runSweep(holds, quotes, websiteBookings, retention, reminders);
+  // Self-gates to CHANNEL_SYNC_INTERVAL_MS (15 min), not the 60s tick. A no-op until a
+  // unit has a booking_ical_url — listImportRooms() returns nothing before then, so this
+  // is safe to run from the day it deploys, ahead of the extranet paste-in.
+  const channelSync = createChannelSyncSweeper(
+    new ChannelRepository(dbInstance),
+    env.CHANNEL_SYNC_INTERVAL_MS,
+  );
+  return () => runSweep(holds, quotes, websiteBookings, retention, reminders, channelSync);
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -119,7 +149,16 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
 
   const tick = () => {
     sweep()
-      .then(({ holdsReleased, quotesExpired, websiteBookingsExpired, refreshTokensPruned, auditLogsPruned, remindersRaised }) => {
+      .then(({
+        holdsReleased,
+        quotesExpired,
+        websiteBookingsExpired,
+        refreshTokensPruned,
+        auditLogsPruned,
+        remindersRaised,
+        channelBlocksUpserted,
+        channelCollisions,
+      }) => {
         if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
           logger.info(
             { holdsReleased, quotesExpired, websiteBookingsExpired },
@@ -134,6 +173,15 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
         }
         if (remindersRaised > 0) {
           logger.info({ remindersRaised }, '[scheduler] reminder notifications raised');
+        }
+        // Collisions are the line worth watching after go-live: a non-zero count means an
+        // OTA night could not be written because it overlapped a stay LSP already held.
+        // The importer has already emailed CHANNEL_ALERT_EMAIL — this is the log trail.
+        if (channelBlocksUpserted > 0 || channelCollisions > 0) {
+          logger.info(
+            { channelBlocksUpserted, channelCollisions },
+            '[scheduler] channel sync reconciled OTA blocks',
+          );
         }
       })
       .catch((err) => logger.error({ err }, '[scheduler] sweep failed'));
