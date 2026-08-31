@@ -29,24 +29,35 @@ export class PayrollRepository {
     return this.db.selectFrom('staff_compensation').selectAll().where('user_id', '=', userId).executeTakeFirst();
   }
 
+  // A salary write and its audit row commit together. Read `existed` inside the
+  // transaction too: deciding CREATE vs UPDATE from a read taken outside it could label
+  // the row wrongly if the same staff member's pay were set twice at once.
   async upsert(userId: string, fields: CompFields, meta: PayrollRequestMeta) {
-    const existed = await this.getComp(userId);
-    await this.db
-      .insertInto('staff_compensation')
-      .values({ user_id: userId, ...fields, created_by: meta.userId, updated_by: meta.userId })
-      .onConflict((oc) =>
-        oc.column('user_id').doUpdateSet({ ...fields, updated_by: meta.userId, updated_at: sql`now()` }),
-      )
-      .execute();
-    await this.db.insertInto('audit_logs').values({
-      request_id: meta.requestId ?? null,
-      user_id: meta.userId,
-      action: existed ? 'UPDATE' : 'CREATE',
-      entity: 'staff_compensation',
-      entity_id: userId,
-      diff: JSON.stringify(fields),
-      ip_address: meta.ip ?? null,
-    }).execute();
+    await this.db.transaction().execute(async (trx) => {
+      const existed = await trx
+        .selectFrom('staff_compensation')
+        .select('user_id')
+        .where('user_id', '=', userId)
+        .executeTakeFirst();
+
+      await trx
+        .insertInto('staff_compensation')
+        .values({ user_id: userId, ...fields, created_by: meta.userId, updated_by: meta.userId })
+        .onConflict((oc) =>
+          oc.column('user_id').doUpdateSet({ ...fields, updated_by: meta.userId, updated_at: sql`now()` }),
+        )
+        .execute();
+
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: existed ? 'UPDATE' : 'CREATE',
+        entity: 'staff_compensation',
+        entity_id: userId,
+        diff: JSON.stringify(fields),
+        ip_address: meta.ip ?? null,
+      }).execute();
+    });
     return this.getComp(userId);
   }
 
@@ -83,31 +94,35 @@ export class PayrollRepository {
   }
 
   async postPayrollOpex(month: string, incurredOn: Date, amount: number, description: string, meta: PayrollRequestMeta) {
-    const row = await this.db
-      .insertInto('operating_expenses')
-      .values({
-        property_id: null,
-        category: 'PAYROLL',
-        description,
-        vendor: 'Payroll',
-        amount,
-        currency: 'BWP',
-        incurred_on: incurredOn,
-        notes: `payroll:${month}`,
-        created_by: meta.userId,
-        updated_by: meta.userId,
-      })
-      .returning('id')
-      .executeTakeFirstOrThrow();
-    await this.db.insertInto('audit_logs').values({
-      request_id: meta.requestId ?? null,
-      user_id: meta.userId,
-      action: 'CREATE',
-      entity: 'operating_expense',
-      entity_id: row.id,
-      diff: JSON.stringify({ payroll_posted: month, amount }),
-      ip_address: meta.ip ?? null,
-    }).execute();
-    return row.id;
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .insertInto('operating_expenses')
+        .values({
+          property_id: null,
+          category: 'PAYROLL',
+          description,
+          vendor: 'Payroll',
+          amount,
+          currency: 'BWP',
+          incurred_on: incurredOn,
+          notes: `payroll:${month}`,
+          created_by: meta.userId,
+          updated_by: meta.userId,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: 'CREATE',
+        entity: 'operating_expense',
+        entity_id: row.id,
+        diff: JSON.stringify({ payroll_posted: month, amount }),
+        ip_address: meta.ip ?? null,
+      }).execute();
+
+      return row.id;
+    });
   }
 }
