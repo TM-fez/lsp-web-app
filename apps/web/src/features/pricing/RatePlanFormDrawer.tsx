@@ -32,9 +32,9 @@ export function RatePlanFormDrawer({ open, onOpenChange, plan, canDelete }: Prop
   const [weekly, setWeekly] = useState('');
   const [monthly, setMonthly] = useState('');
   const [minNights, setMinNights] = useState(1);
-  const [maxGuests, setMaxGuests] = useState(2);
+  const [maxGuests, setMaxGuests] = useState(4);
   const [depositPct, setDepositPct] = useState(50);
-  const [taxPct, setTaxPct] = useState('14');
+  const [taxPct, setTaxPct] = useState('0');
   const [currency, setCurrency] = useState('BWP');
   const [active, setActive] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -47,9 +47,9 @@ export function RatePlanFormDrawer({ open, onOpenChange, plan, canDelete }: Prop
     setWeekly(plan ? thebeToPula(plan.weekly_rate) : '');
     setMonthly(plan ? thebeToPula(plan.monthly_rate) : '');
     setMinNights(plan?.min_nights ?? 1);
-    setMaxGuests(plan?.max_guests ?? 2);
+    setMaxGuests(plan?.max_guests ?? 4);
     setDepositPct(plan?.deposit_pct ?? 50);
-    setTaxPct(plan ? bpsToPct(plan.tax_rate_bps) : '14');
+    setTaxPct(plan ? bpsToPct(plan.tax_rate_bps) : '0');
     setCurrency(plan?.currency ?? 'BWP');
     setActive(plan?.active ?? true);
     setConfirmDelete(false);

@@ -10,9 +10,11 @@ export const CreateRatePlanSchema = z.object({
   weekly_rate: z.number().int().positive(),
   monthly_rate: z.number().int().positive(),
   min_nights: z.number().int().min(1).default(1),
-  max_guests: z.number().int().min(1).default(2),
+  max_guests: z.number().int().min(1).default(4),
   deposit_pct: z.number().int().min(0).max(100).default(50),
-  tax_rate_bps: z.number().int().min(0).max(10000).default(1400),
+  // Zero-rated by default (migration 063): Lifestyle's advertised rate IS the
+  // price paid, and the engine adds tax on top rather than splitting it out.
+  tax_rate_bps: z.number().int().min(0).max(10000).default(0),
   currency: z.string().length(3).default('BWP'),
   active: z.boolean().default(true),
 });

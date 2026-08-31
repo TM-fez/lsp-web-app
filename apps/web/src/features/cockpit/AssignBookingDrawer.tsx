@@ -256,10 +256,12 @@ export function AssignBookingDrawer({ open, onOpenChange, rooms, preselectedRoom
                 <span className="text-slate-500">Total</span>
                 <span className="font-medium">{formatMoney(quote.total_amount, quote.currency)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Tax</span>
-                <span>{formatMoney(quote.tax_amount, quote.currency)}</span>
-              </div>
+              {quote.tax_amount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Tax</span>
+                  <span>{formatMoney(quote.tax_amount, quote.currency)}</span>
+                </div>
+              )}
               <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm">
                 <span className="font-medium text-emerald-700">Deposit due now</span>
                 <span className="font-semibold text-emerald-700">{formatMoney(quote.deposit_amount, quote.currency)}</span>
