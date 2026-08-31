@@ -9,7 +9,8 @@ services:
   - type: web
     name: lsp-api
     runtime: node
-    plan: free
+    # Paid: always-on (no sleeping), required for the Booking.com channel-sync cron.
+    plan: starter
     buildCommand: npm install --include=dev
     startCommand: npm --prefix apps/api run db:migrate && npm --prefix apps/api run db:seed && npx tsx apps/api/src/server.ts
     healthCheckPath: /health
@@ -87,6 +88,9 @@ services:
 
 databases:
   - name: lsp-db
-    plan: free
+    # Paid (flexible plan): free Postgres expires and is deleted; basic-256mb keeps
+    # the data with adjustable storage. Upgrade the instance in the dashboard too —
+    # this line just keeps the blueprint from syncing it back down.
+    plan: basic-256mb
     databaseName: lsp
     user: lsp
