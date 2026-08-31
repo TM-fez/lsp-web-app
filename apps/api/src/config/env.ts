@@ -87,6 +87,13 @@ const schema = z.object({
 
   // Channel-sync double-booking alerts.
   CHANNEL_ALERT_EMAIL: z.string().optional(), // manager inbox for collision emails (Brevo)
+  // How often the in-process scheduler polls the Booking.com feeds (H4 go-live). The
+  // sweep tick is SCHEDULER_INTERVAL_MS (60s), far too hot for an OTA fetch, so the
+  // channel sweeper self-gates to this instead — 15 min matches what the extranet
+  // expects. Overlapping runs are impossible regardless: runImport() holds a
+  // cluster-wide advisory lock, so a manual /cron/channel-sync hit during a tick
+  // simply reports ran:false.
+  CHANNEL_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(15 * 60_000),
   // WhatsApp seam — built but DARK until a provider template is approved. Even with creds
   // set, sends stay off unless WHATSAPP_LIVE=1, so APPROVAL (not deploy) flips it on.
   WHATSAPP_TOKEN: z.string().optional(),

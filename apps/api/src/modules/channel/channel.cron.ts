@@ -9,10 +9,12 @@ import { ChannelImportService } from './channel.import.service.js';
  * pattern: secret-guarded (CRON_SECRET), refuses everyone when the secret is unset, and
  * is meant to be hit by the platform scheduler — not by RBAC users.
  *
- * NOT yet mounted or scheduled — held for review per the build plan. To wire it:
- *   1. mount in cron.routes.ts:  router.get('/channel-sync', createChannelSyncHandler());
- *   2. add the 15-min trigger (Render Cron Job / GitHub Action) that GETs it with the
- *      Authorization: Bearer <CRON_SECRET> header.
+ * Mounted in cron.routes.ts. Since the paid always-on Render plan, the 15-min poll runs
+ * in-process off the scheduler (see createChannelSyncSweeper) rather than an external
+ * cron, so this endpoint is now the MANUAL/fallback trigger — for forcing a poll without
+ * waiting out the interval, and for a serverless host that cannot hold a timer. Both
+ * paths are safe to use together: runImport() takes a cluster-wide advisory lock, so
+ * whichever loses reports ran:false and does nothing.
  */
 export function createChannelSyncHandler() {
   const service = new ChannelImportService(new ChannelRepository(db));

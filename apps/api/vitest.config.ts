@@ -20,6 +20,10 @@ export default defineConfig({
       // proves the SQL export filter against actual data. Runs in the live-DB suite, not the
       // no-DB default run — see vitest.live.config.ts.
       'tests/integration/modules/channel-export.test.ts',
+      // Real Postgres required: it installs a trigger that fails audit_logs inserts and
+      // asserts the money row rolls back with them, which only means anything against a
+      // real transaction. Runs in the live-DB suite — see vitest.live.config.ts.
+      'tests/integration/modules/audit-atomicity.test.ts',
     ],
     coverage: {
       provider: 'v8',

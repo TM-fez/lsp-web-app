@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ChannelImportService, feedNotes, type ImportDeps } from '../../../src/modules/channel/channel.import.service.js';
+import {
+  ChannelImportService,
+  createChannelSyncSweeper,
+  feedNotes,
+  NO_IMPORT,
+  type ImportDeps,
+} from '../../../src/modules/channel/channel.import.service.js';
 import type { ChannelRepository } from '../../../src/modules/channel/channel.repository.js';
 
 // A Booking.com feed with the given VEVENT bodies.
@@ -346,5 +352,56 @@ describe('feedNotes', () => {
   it('returns null when the feed says nothing', () => {
     expect(feedNotes({ summary: null, description: null })).toBeNull();
     expect(feedNotes({ summary: '  ', description: null })).toBeNull();
+  });
+});
+
+// ── (H4) In-process sweeper gating ────────────────────────────────────────────
+// The scheduler ticks every 60s but an OTA feed must only be polled every 15 min,
+// so the sweeper self-gates. These cover the gate itself, not the import logic.
+describe('createChannelSyncSweeper', () => {
+  const fetchIcs = () => Promise.resolve(feed());
+
+  it('runs on the first call, then gates until the interval elapses', async () => {
+    const repo = makeRepo();
+    const sweep = createChannelSyncSweeper(repo, 15 * 60_000, { fetchIcs });
+
+    const first = await sweep();
+    expect(first.ran).toBe(true);
+    expect(repo.listImportRooms).toHaveBeenCalledTimes(1);
+
+    // A tick 60s later must not touch the network again.
+    const second = await sweep();
+    expect(second).toEqual(NO_IMPORT);
+    expect(repo.listImportRooms).toHaveBeenCalledTimes(1);
+  });
+
+  it('polls again once the interval has elapsed', async () => {
+    vi.useFakeTimers();
+    try {
+      const repo = makeRepo();
+      const sweep = createChannelSyncSweeper(repo, 15 * 60_000, { fetchIcs });
+
+      await sweep();
+      vi.advanceTimersByTime(15 * 60_000);
+      const later = await sweep();
+
+      expect(later.ran).toBe(true);
+      expect(repo.listImportRooms).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A unit only enters the poll once someone pastes Booking.com's .ics into the unit
+  // drawer, so this ships safely ahead of the extranet step.
+  it('is a no-op while no unit has a feed configured', async () => {
+    const repo = makeRepo({ listImportRooms: vi.fn().mockResolvedValue([]) });
+    const sweep = createChannelSyncSweeper(repo, 15 * 60_000, { fetchIcs });
+
+    const result = await sweep();
+
+    expect(result.ran).toBe(true);
+    expect(result.roomsProcessed).toBe(0);
+    expect(result.upserted).toBe(0);
   });
 });
