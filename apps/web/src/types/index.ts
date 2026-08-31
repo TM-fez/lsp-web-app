@@ -569,6 +569,15 @@ export interface Invoice {
   receipt_file_id: string | null;
   created_at: string;
   updated_at: string;
+  // Who the invoice is for and which stay it covers, resolved server-side from the
+  // invoice's reservation (or the one behind its hold). All nullable: an invoice
+  // raised straight off a quote has no guest to resolve — a quote prices a unit type
+  // and dates, and carries no contact.
+  bill_to_name: string | null;
+  guest_name: string | null;
+  unit_code: string | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
 }
 export interface Paginated<T> {
   data: T[];

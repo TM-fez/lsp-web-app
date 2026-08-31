@@ -84,10 +84,26 @@ export const SetDiscountSchema = z
     path: ['discount_value'],
   });
 
+// Record a payment already taken off-system (cash at the desk, EFT, mobile money)
+// against a PENDING booking, so it can reach CONFIRMED. A booking made on the public
+// site arrives with no quote/hold/intent behind it, and only settlePaid() may confirm
+// a reservation — so without this there is no path from "guest paid at reception" to
+// a confirmed booking. Amount defaults to the booking's own priced total (discount
+// applied), which is why it is optional here.
+export const MarkPaidSchema = z.object({
+  method: z.enum(['CARD', 'MOBILE_MONEY', 'EFT', 'CASH', 'CORPORATE_CREDIT']),
+  /** Thebe. Omit to charge the booking's full priced total. */
+  amount: z.number().int().positive().optional(),
+  /** Bank/receipt reference the guest gave, kept on the payment attempt. */
+  reference: z.string().max(200).optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
+});
+
 export type CreateReservationDTO = z.infer<typeof CreateReservationSchema>;
 export type UpdateReservationDTO = z.infer<typeof UpdateReservationSchema>;
 export type SetDiscountDTO = z.infer<typeof SetDiscountSchema>;
 export type ClaimOtaBookingDTO = z.infer<typeof ClaimOtaBookingSchema>;
+export type MarkPaidDTO = z.infer<typeof MarkPaidSchema>;
 
 // List rows are enriched with guest + room display fields via LEFT JOINs, so the
 // UI never shows bare UUIDs and can search by guest name / room code.
