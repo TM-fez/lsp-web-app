@@ -37,3 +37,7 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Real guest data — NEVER commit (PII: names, emails, phones, addresses)
+apps/api/src/db/import-lh-guests.json
+apps/api/src/db/*-guests.json
