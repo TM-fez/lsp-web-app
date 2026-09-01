@@ -46,7 +46,10 @@ export class ReservationsRepository {
       .select(this.db.fn.count<number>('id').as('overlap_count'))
       .where('room_id', '=', roomId)
       .where('deleted_at', 'is', null)
-      .where('status', 'not in', ['CANCELLED', 'CHECKED_OUT'])
+      // A blacklist, unlike every other status filter in the app — so each new status
+      // holds the dates unless named here. A no-show never turned up: the nights are
+      // free and must be re-lettable.
+      .where('status', 'not in', ['CANCELLED', 'CHECKED_OUT', 'NO_SHOW'])
       .where('check_in_date', '<', checkOut)
       .where('check_out_date', '>', checkIn);
 

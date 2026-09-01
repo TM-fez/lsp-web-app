@@ -19,6 +19,7 @@ import {
   useReservationPricing,
   useClaimOtaBooking,
   useMarkPaid,
+  useMarkNoShow,
 } from './hooks';
 import { nights, statusLabel, statusTone, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
@@ -63,6 +64,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const approveDisc = useApproveDiscount();
   const removeDisc = useRemoveDiscount();
   const markPaid = useMarkPaid();
+  const markNoShow = useMarkNoShow();
   // Amount-due breakdown — only meaningful for an existing pending booking.
   const showDiscountTools = isEdit && reservation!.status === 'PENDING' && canRequestDiscount;
   // Recording a payment needs BOTH: raising the intent and settling it are separate
@@ -70,6 +72,13 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   // rather than showing them an action that 403s halfway through.
   const canTakePayment = hasPerm('payments.create') && hasPerm('payments.update');
   const showPayment = isEdit && reservation!.status === 'PENDING' && canTakePayment;
+  // No-show: only a CONFIRMED booking whose arrival day has already passed. Mirrors the
+  // server's rule (markNoShow) so the button never offers something the API refuses.
+  const showNoShow =
+    isEdit &&
+    !!canUpdate &&
+    reservation!.status === 'CONFIRMED' &&
+    toDateInput(reservation!.check_in_date) < todayISO();
   const pricing = useReservationPricing(reservation?.id, open && (showDiscountTools || showPayment));
   const busy =
     create.isPending ||
@@ -78,7 +87,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setDiscM.isPending ||
     approveDisc.isPending ||
     removeDisc.isPending ||
-    markPaid.isPending;
+    markPaid.isPending ||
+    markNoShow.isPending;
 
   const [guest, setGuest] = useState<PickedGuest | null>(null);
   // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
@@ -95,6 +105,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [payMethod, setPayMethod] = useState<PaymentMethod>('CASH');
   const [payReference, setPayReference] = useState('');
   const [confirmPay, setConfirmPay] = useState(false);
+  const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [discValue, setDiscValue] = useState('');
@@ -122,6 +133,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setPayMethod('CASH');
     setPayReference('');
     setConfirmPay(false);
+    setConfirmNoShow(false);
     setDiscType('PERCENT');
     setDiscValue('');
     setDiscReason('');
@@ -171,6 +183,16 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
       onOpenChange(false);
     } catch {
       /* hook surfaces the error toast; keep the drawer open */
+    }
+  }
+
+  async function doNoShow() {
+    if (!reservation) return;
+    try {
+      await markNoShow.mutateAsync(reservation.id);
+      onOpenChange(false);
+    } catch {
+      /* toast shown by hook */
     }
   }
 
@@ -621,6 +643,32 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               {busy && <Spinner className="text-white" />} {isEdit ? 'Save changes' : 'Create reservation'}
             </Button>
           </div>
+
+          {showNoShow && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">
+              <Label>Guest didn’t arrive</Label>
+              {!confirmNoShow ? (
+                <Button variant="outline" onClick={() => setConfirmNoShow(true)} disabled={busy}>
+                  Mark as no-show
+                </Button>
+              ) : (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-cream-2/50 p-3">
+                  <span className="text-sm text-muted">
+                    Record that nobody arrived? These nights stop counting as occupied and the
+                    unit is free to re-let.
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="ghost" onClick={() => setConfirmNoShow(false)} disabled={busy}>
+                      Keep
+                    </Button>
+                    <Button variant="primary" onClick={doNoShow} disabled={busy}>
+                      {busy && <Spinner className="text-white" />} No-show
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {isEdit && canCancel && isOpen(reservation!.status) && (
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4">

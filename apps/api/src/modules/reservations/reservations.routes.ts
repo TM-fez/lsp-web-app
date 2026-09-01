@@ -67,6 +67,11 @@ export function createReservationsRouter(dbInstance = db): Router {
   // raise the intent, payments.update to settle it), so this changes WHERE staff can
   // take a payment, never WHO may take one.
   router.post('/:id/mark-paid', authorize('payments.create', 'payments.update'), validateBody(MarkPaidSchema), controller.markPaid);
+
+  // Record that a confirmed guest never arrived (migration 065). Gated on
+  // reservations.update, not a payment permission: this changes what the booking says
+  // happened, it does not move money. No body — the id and the clock say everything.
+  router.post('/:id/no-show', authorize('reservations.update'), controller.markNoShow);
   
   // Specific endpoint for cancellation could be POST /:id/cancel or DELETE /:id
   router.delete('/:id', authorize('reservations.delete'), controller.cancelReservation);

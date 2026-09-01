@@ -234,6 +234,43 @@ export class ReservationsService {
     return this.getReservationById(id, activePropertyId);
   }
 
+  /**
+   * Record that a confirmed guest never arrived.
+   *
+   * Until this existed the booking stayed CONFIRMED for ever, and the occupancy
+   * reports count nights whose status is in ('CONFIRMED','CHECKED_IN','CHECKED_OUT') —
+   * so an empty unit was reported as occupied, including in occupancyByOwnedRoom,
+   * which feeds owner statements. A landlord could be shown nights nobody slept.
+   *
+   * Cancelling instead would fix the arithmetic and lose the fact: a guest who
+   * cancelled and a guest who simply did not turn up are different things to know
+   * about an account, and only one of them is worth remembering next time they book.
+   *
+   * Marking it also releases the dates — checkAvailability excludes NO_SHOW and the
+   * reservations_no_overlap constraint never covered it — so a stay abandoned halfway
+   * frees its remaining nights for someone else.
+   */
+  async markNoShow(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+    const reservation = await this.getReservationById(id, activePropertyId);
+
+    if (reservation.status !== 'CONFIRMED') {
+      throw AppError.conflict(
+        `Only a confirmed booking can be marked a no-show — this one is ${reservation.status.toLowerCase().replace('_', ' ')}.`,
+      );
+    }
+
+    // The arrival day must have passed in the PROPERTY's timezone. Marking someone a
+    // no-show on the morning they are due is a mistake, not a judgement call.
+    const checkIn = new Date(reservation.check_in_date).toISOString().slice(0, 10);
+    if (checkIn >= todayInPropertyTZ()) {
+      throw AppError.badRequest('This guest is not due to arrive until today or later, so they cannot be a no-show yet.');
+    }
+
+    const updated = await this.repository.update(id, { status: 'NO_SHOW', updated_by: meta.userId }, meta);
+    if (!updated) throw AppError.notFound(`Reservation with id ${id} not found`);
+    return updated;
+  }
+
   async getReservationById(id: string, activePropertyId?: string): Promise<ReservationRow> {
     const reservation = await this.repository.findById(id);
     if (!reservation) {
@@ -336,6 +373,12 @@ export class ReservationsService {
       throw AppError.badRequest(
         `Reservation status '${dto.status}' is set by the system (payment / check-in), not by direct edit`
       );
+    }
+
+    // NO_SHOW carries its own preconditions (confirmed, arrival day passed, never
+    // checked in) — see markNoShow. Reaching it through a plain edit would skip them.
+    if (dto.status === 'NO_SHOW') {
+      throw AppError.badRequest('Use the no-show action on the booking to record that a guest did not arrive.');
     }
 
     // Status transitions enforced

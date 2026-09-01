@@ -382,6 +382,48 @@ describe('ReservationsService', () => {
     });
   });
 
+  describe('markNoShow', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dueYesterday = {
+      id: 'res-n', status: 'CONFIRMED', source: 'WALK_IN', room_id: 'room-1',
+      check_in_date: yesterday, check_out_date: tomorrow,
+    };
+
+    it('marks a confirmed booking whose arrival day has passed', async () => {
+      repository.findById.mockResolvedValue(dueYesterday as any);
+      repository.update.mockResolvedValue({ ...dueYesterday, status: 'NO_SHOW' } as any);
+
+      const out = await service.markNoShow('res-n', { userId: 'u1' } as any);
+
+      expect(out.status).toBe('NO_SHOW');
+      expect(repository.update).toHaveBeenCalledWith(
+        'res-n',
+        expect.objectContaining({ status: 'NO_SHOW' }),
+        expect.anything(),
+      );
+    });
+
+    // Marking someone a no-show on the morning they are due is a mistake, not a call.
+    it('refuses a guest who is not due until today or later', async () => {
+      repository.findById.mockResolvedValue({ ...dueYesterday, check_in_date: tomorrow } as any);
+      await expect(
+        service.markNoShow('res-n', { userId: 'u1' } as any),
+      ).rejects.toThrow('not due to arrive until today or later');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses anything that is not confirmed', async () => {
+      repository.findById.mockResolvedValue({ ...dueYesterday, status: 'CHECKED_IN' } as any);
+      await expect(
+        service.markNoShow('res-n', { userId: 'u1' } as any),
+      ).rejects.toThrow('Only a confirmed booking can be marked a no-show');
+    });
+  });
+
   describe('isReservationOverlapError', () => {
     it('matches the no-overlap exclusion violation', () => {
       expect(isReservationOverlapError({ code: '23P01', constraint: 'reservations_no_overlap' })).toBe(true);

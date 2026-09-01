@@ -1,0 +1,26 @@
+-- postgres-migrations disable-transaction
+--
+-- Add the NO_SHOW reservation status.
+--
+-- Why: a CONFIRMED booking whose guest never arrived had nowhere to go. It stayed
+-- CONFIRMED for ever, and the occupancy reports count nights where the status is in
+-- ('CONFIRMED','CHECKED_IN','CHECKED_OUT') — so an empty unit was reported as
+-- occupied. The same query backs occupancyByOwnedRoom, which feeds OWNER STATEMENTS,
+-- so a landlord could be shown nights that never happened.
+--
+-- Cancelling was the only available action, and it says the wrong thing: a booking
+-- someone cancelled and a booking someone simply did not turn up for are different
+-- facts about a guest, and only one of them is worth remembering when they book again.
+--
+-- Run OUTSIDE a transaction, like 045: Postgres forbids USING a freshly-added enum
+-- value in the transaction that added it. IF NOT EXISTS makes it re-runnable.
+--
+-- Nothing else needs changing at the schema level, and that is by design:
+--   · reservations_no_overlap (046) whitelists PENDING/CONFIRMED/CHECKED_IN/BLOCKED,
+--     so a NO_SHOW row stops holding its dates the moment it is marked;
+--   · every occupancy/report/availability query whitelists statuses too, so NO_SHOW
+--     drops out of all of them without a single query edit.
+-- The one place that BLACKLISTS is ReservationsRepository.checkAvailability
+-- ('CANCELLED','CHECKED_OUT'), which is updated in the same change.
+
+ALTER TYPE reservation_status ADD VALUE IF NOT EXISTS 'NO_SHOW';

@@ -29,6 +29,7 @@ vi.mock('./hooks', () => ({
   useRemoveDiscount: () => idle,
   useClaimOtaBooking: () => idle,
   useMarkPaid: () => ({ mutateAsync: markPaidMutate, isPending: false }),
+  useMarkNoShow: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useAvailability: () => ({ data: undefined, isFetching: false }),
   useReservationPricing: () => ({
     isLoading: false,
