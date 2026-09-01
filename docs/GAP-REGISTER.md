@@ -197,17 +197,18 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 - **Today** — `reports.forwardOccupancy` counts `('CONFIRMED','CHECKED_IN','BLOCKED')`. Since D01, a PENDING night is unsellable but still absent from the forward-occupancy nudge, so the nudge can say "you have space" about a room nobody can book.
 - **Needed** — an owner answer, not a build. Whether an unpaid night is *occupancy in a report* is a different question from whether it is *sellable*, and changing it moves numbers the owner reads. Deliberately left alone in #99.
 
-### D03 · The activity feed is not property-scoped · `OPEN` · Build · M
-- **Today** — a Village user sees CBD activity. `/activity` is gated on `activity.read` (migration 066) so contractors are out, but there is no property filter.
-- **Needed** — `audit_logs` carries no property column, unlike the money paths (H5), so scoping means tracing each entity back through its own room → building → property chain. Low harm inside one company; matters before any third party gets a login.
+### D03 · The activity feed is not property-scoped · ✅ `RESOLVED` 2026-09-01 (PR #101)
+- **Was** — a Village user read CBD's activity. `/activity` was gated on `activity.read` (066) so contractors were out, but there was no property filter.
+- **Fixed** — the property is resolved at READ time, walking each entity down its own chain to a building (reservations, rooms, housekeeping tasks, work orders + costs, occupancy, holds, invoices, payment intents, buildings, properties, operating expenses, channel collisions). One rule: `coalesce(resolved, :propertyId) = :propertyId` — resolves to a property, must match; resolves to nothing, it is house-wide and everyone sees it. The route now takes `requireActiveProperty`, the same gate the cockpit board beside it already used.
+- **Accepted, documented** — an audit row whose entity was HARD-deleted resolves to NULL and reads as global. Soft deletes are unaffected. Hiding such rows would quietly lose history, which is the worse trade.
 
 ### D04 · `PARTIALLY_PAID` is a status nothing writes · `OPEN` · Decide · S
 - **Today** — read by the finance queries, the UI badges and the status filter; written by nothing. A part payment produces a fully-PAID smaller invoice plus an ISSUED balance (#96) instead.
 - **Needed** — leave it or remove it. Removing means rebuilding a Postgres enum type, which is real work for no functional gain today. It earns its place with monthly rent instalments (G22/G24).
 
-### D05 · The e2e suite cannot run twice against one database · `OPEN` · Build · S
-- **Today** — `tests/e2e/cockpit.e2e.test.ts` leaves an ACTIVE STANDARD rate plan behind, and `rate_plans_active_unit_type_unique` makes the next run 500. Verified both ways 2026-08-31.
-- **Needed** — teardown for what it creates. Invisible in CI (fresh container per run); it only costs local developers.
+### D05 · The e2e suite cannot run twice against one database · ✅ `RESOLVED` 2026-09-01 (PR #101)
+- **Was** — `afterAll` closed the pool and deleted nothing, so the ACTIVE STANDARD rate plan it created 500'd the next run's first write.
+- **Fixed** — teardown in FK order, deleting by `room_id` rather than by captured ids (a run that fails early never assigns them). The property and building are resolved from the seed, so they are left alone. Verified by three consecutive runs against one database: 12/12 each, no warnings, tables left empty.
 
 ---
 
