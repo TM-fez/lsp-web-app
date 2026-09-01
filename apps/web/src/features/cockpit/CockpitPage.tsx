@@ -87,7 +87,9 @@ export function CockpitPage() {
             <span className="lowercase">percent full.</span>
           </h1>
           <p className="mt-5 max-w-md text-[13px] leading-relaxed text-muted">
-            {data.arrivals.length} arrival{data.arrivals.length === 1 ? '' : 's'} on the book today.{' '}
+            {/* "to check in", not "today": the rail now carries arrivals still waiting
+                from earlier days, and calling those today's would misreport the day. */}
+            {data.arrivals.length} arrival{data.arrivals.length === 1 ? '' : 's'} to check in.{' '}
             {summary.needsCleaning} unit{summary.needsCleaning === 1 ? '' : 's'} await housekeeping,{' '}
             {summary.maintenance} in repair.
           </p>
@@ -112,7 +114,12 @@ export function CockpitPage() {
             Today’s <em className="italic text-terra">movements</em>
           </h2>
         </div>
-        <TodayRail arrivals={data.arrivals} inHouse={data.in_house} departures={data.departures} />
+        <TodayRail
+          arrivals={data.arrivals}
+          inHouse={data.in_house}
+          departures={data.departures}
+          today={data.date}
+        />
       </section>
 
       <div className="grid grid-cols-1 gap-10 xl:grid-cols-3">
