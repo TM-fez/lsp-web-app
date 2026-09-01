@@ -113,7 +113,8 @@ export class ReservationsService {
    * charged here, not merely what is displayed.
    *
    * A paid-up invoice is raised at the end so the guest has a receipt and Accounts has
-   * a record. That step is deliberately best-effort — see the comment at the call.
+   * a record, plus an UNPAID one for anything still owed. That step is deliberately
+   * best-effort — see the comment at the call.
    */
   async markPaid(
     id: string,
@@ -198,10 +199,34 @@ export class ReservationsService {
           },
           meta,
         );
+
+        // Part payment: invoice what is STILL OWED, unpaid.
+        //
+        // Without this the money simply disappears from view — reception takes P500
+        // against a P4,500 stay, the guest gets a P500 receipt, the booking confirms,
+        // and nothing anywhere records the P4,000 outstanding. It would not appear in
+        // the Finance cockpit's total, its ageing, or the property receivables, because
+        // all three read OPEN invoices and no open invoice would exist.
+        //
+        // ISSUED, not settled: this is the one the guest still has to pay, and Accounts
+        // settles it when they do.
+        const outstanding = priced.total_amount - amount;
+        if (outstanding > 0) {
+          await this.invoices.issueInvoice(
+            {
+              quote_id: quote.id,
+              hold_id: hold.id,
+              reservation_id: reservation.id,
+              kind: 'BALANCE',
+              amount: outstanding,
+            },
+            meta,
+          );
+        }
       } catch (err) {
         logger.error(
           { err, reservationId: id, quoteId: quote.id, amount },
-          '[reservations] payment recorded but the receipt could not be raised — raise it by hand from Invoices',
+          '[reservations] payment recorded but its invoices could not be raised — raise them by hand from Invoices',
         );
       }
     }

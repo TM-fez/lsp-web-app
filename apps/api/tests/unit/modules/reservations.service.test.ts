@@ -228,7 +228,10 @@ describe('ReservationsService', () => {
         createIntent: vi.fn().mockResolvedValue({ id: 'pi1' }),
         attempt: vi.fn().mockResolvedValue({ id: 'pi1', status: 'PAID' }),
       };
-      invoices = { issueSettledInvoice: vi.fn().mockResolvedValue({ id: 'inv1', status: 'PAID' }) };
+      invoices = {
+        issueSettledInvoice: vi.fn().mockResolvedValue({ id: 'inv1', status: 'PAID' }),
+        issueInvoice: vi.fn().mockResolvedValue({ id: 'inv2', status: 'ISSUED' }),
+      };
       paid = new ReservationsService(repository, rooms, pricing, quotes, holds, payments, invoices);
       // priceReservation is exercised by its own tests; stub it so these focus on the chain.
       vi.spyOn(paid, 'priceReservation').mockResolvedValue(priced as any);
@@ -337,6 +340,27 @@ describe('ReservationsService', () => {
         expect.objectContaining({ kind: 'DEPOSIT', amount: 50_000 }),
         expect.anything(),
       );
+    });
+
+    // Without the second invoice the unpaid remainder is invisible: no open invoice
+    // means nothing in the Finance cockpit's total, its ageing, or receivables.
+    it('invoices the remainder as UNPAID when only part is handed over', async () => {
+      await paid.markPaid('res-w', { method: 'CASH', amount: 50_000 } as any, { userId: 'u1' } as any);
+
+      expect(invoices.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'BALANCE',
+          amount: 50_800,              // 100_800 due − 50_000 taken
+          reservation_id: 'res-w',     // attributable, so it lands on the right property
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('raises no second invoice when the booking is paid in full', async () => {
+      await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+      expect(invoices.issueSettledInvoice).toHaveBeenCalledTimes(1);
+      expect(invoices.issueInvoice).not.toHaveBeenCalled();
     });
 
     // Money has already changed hands and the booking is CONFIRMED by this point.
