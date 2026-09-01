@@ -66,8 +66,8 @@ function humanize(entity: string, action: Action, diff: unknown): string {
 export class ActivityService {
   constructor(private readonly repo: ActivityRepository) {}
 
-  async recent(limit = 30): Promise<ActivityItem[]> {
-    const rows = await this.repo.recent(limit);
+  async recent(limit = 30, propertyId?: string): Promise<ActivityItem[]> {
+    const rows = await this.repo.recent(limit, propertyId);
     return rows.map((r) => ({
       id: r.id,
       actor: r.actor_name ?? 'System',
