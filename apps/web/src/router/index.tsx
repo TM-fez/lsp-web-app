@@ -23,6 +23,7 @@ import { OwnerStatementPrintPage } from '@/features/owners/OwnerStatementPrintPa
 import { OperationalCockpitPage } from '@/features/operations/OperationalCockpitPage';
 import { MarketingPage } from '@/features/marketing/MarketingPage';
 import { InvoicesPage } from '@/features/invoices/InvoicesPage';
+import { PaymentsPage } from '@/features/payments/PaymentsPage';
 import { InvoiceDocumentPage } from '@/features/invoices/InvoiceDocumentPage';
 import { ReportStatementPage } from '@/features/reports/ReportStatementPage';
 import { OperatingExpensesPage } from '@/features/operating-expenses/OperatingExpensesPage';
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
           { path: '/operations', element: <OperationalCockpitPage /> },
           { path: '/marketing', element: <MarketingPage /> },
           { path: '/invoices', element: <InvoicesPage /> },
+          { path: '/payments', element: <PaymentsPage /> },
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },
           { path: '/finance', element: <FinanceCockpitPage /> },

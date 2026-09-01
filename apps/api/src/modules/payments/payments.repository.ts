@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, PaymentIntentRow, NewPaymentIntent, PaymentAttemptRow, NewAuditLog } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { PaymentFilters, PaymentMethod, PaymentRequestMeta } from './payments.types.js';
+import type { PaymentFilters, PaymentMethod, PaymentRequestMeta, PaymentListRow } from './payments.types.js';
 
 interface AttemptParams {
   intentId: string;
@@ -34,16 +34,36 @@ export class PaymentsRepository {
   async findPaginated(
     filters: PaymentFilters,
     pagination: PaginationOptions
-  ): Promise<PaginatedResult<PaymentIntentRow>> {
-    let query = this.db.selectFrom('payment_intents').selectAll();
+  ): Promise<PaginatedResult<PaymentIntentRow & PaymentListRow>> {
+    // Whose payment this is. An intent hangs off a hold, and the hold knows the
+    // reservation (and, failing that, the unit) — without this the list is a row of
+    // UUIDs and you cannot tell which guest's payment failed.
+    //
+    // Alias `ph`, not `h`: the property filter below opens its own `holds h` subquery,
+    // and an outer alias shadowed by an inner one is legal SQL that reads like a bug.
+    let query = this.db
+      .selectFrom('payment_intents')
+      .leftJoin('holds as ph', 'ph.id', 'payment_intents.hold_id')
+      .leftJoin('reservations as rsv', 'rsv.id', 'ph.reservation_id')
+      .leftJoin('contacts as c', 'c.id', 'rsv.contact_id')
+      // The unit comes from the reservation when there is one, else straight off the hold.
+      .leftJoin('rooms as rm', (join) => join.on(sql<boolean>`rm.id = coalesce(rsv.room_id, ph.room_id)`))
+      .selectAll('payment_intents')
+      .select([
+        sql<string | null>`c.name`.as('guest_name'),
+        sql<string | null>`rm.code`.as('unit_code'),
+        sql<string | null>`rsv.id`.as('reservation_id'),
+      ]);
     let countQuery = this.db.selectFrom('payment_intents').select(this.db.fn.count<number>('id').as('total'));
 
+    // Qualified on the joined query: `status` now exists on intents, holds AND
+    // reservations, so an unqualified name is ambiguous to Postgres.
     if (filters.status) {
-      query = query.where('status', '=', filters.status);
+      query = query.where('payment_intents.status', '=', filters.status);
       countQuery = countQuery.where('status', '=', filters.status);
     }
     if (filters.hold_id) {
-      query = query.where('hold_id', '=', filters.hold_id);
+      query = query.where('payment_intents.hold_id', '=', filters.hold_id);
       countQuery = countQuery.where('hold_id', '=', filters.hold_id);
     }
 
@@ -64,7 +84,7 @@ export class PaymentsRepository {
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('payment_intents.created_at', 'desc').execute(),
       countQuery.execute(),
     ]);
 

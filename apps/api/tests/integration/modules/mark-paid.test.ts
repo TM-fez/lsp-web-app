@@ -248,6 +248,17 @@ describe('Recording a desk payment (live DB)', () => {
     expect(open.map((o) => o.id)).toEqual([owing.id]);
   });
 
+  // The Payments screen reads this list. Unjoined it is a row of UUIDs and an amount,
+  // with no way to tell whose payment failed.
+  it('names the guest and unit on the payments list', async () => {
+    const page = await new PaymentsRepository(db).findPaginated({}, { page: 1, limit: 100 });
+    const mine = page.data.filter((p) => p.guest_name === 'Neo Kgosi');
+
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine[0]!.unit_code).toMatch(/^MP/);
+    expect(mine[0]!.reservation_id).toBeTruthy();
+  });
+
   it('refuses a second payment on a booking that is already confirmed', async () => {
     const service = buildService();
     await expect(

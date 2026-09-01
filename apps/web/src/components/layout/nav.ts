@@ -10,6 +10,7 @@ import {
   Wallet,
   Receipt,
   FileText,
+  CreditCard,
   Banknote,
   BarChart3,
   HandCoins,
@@ -70,6 +71,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     items: [
       { to: '/finance', label: 'Cockpit', icon: Gauge, perm: 'reports.read', built: true },
       { to: '/invoices', label: 'Invoices', icon: FileText, perm: 'invoices.read', built: true },
+      { to: '/payments', label: 'Payments', icon: CreditCard, perm: 'payments.read', built: true },
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },
       { to: '/operating-expenses', label: 'Operating costs', icon: Banknote, perm: 'opex.read', built: true },
       { to: '/payroll', label: 'Payroll', icon: Users, perm: 'payroll.read', built: true },

@@ -13,6 +13,11 @@ describe('workspaceForPath', () => {
     expect(workspaceForPath('/finance')).toBe('FINANCE');
   });
 
+  it('maps Payments to Finance, beside Invoices', () => {
+    expect(workspaceForPath('/payments')).toBe('FINANCE');
+    expect(workspaceForPath('/invoices')).toBe('FINANCE');
+  });
+
   it('matches nested detail paths by prefix', () => {
     expect(workspaceForPath('/guests/123')).toBe('OPERATIONS');
   });

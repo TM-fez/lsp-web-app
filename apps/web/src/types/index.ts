@@ -653,15 +653,41 @@ export interface Hold {
   held_until: string;
 }
 
+export type PaymentStatus = 'PENDING' | 'RETRY' | 'PAID' | 'FAILED' | 'EXPIRED';
+export type PaymentPurpose = 'DEPOSIT' | 'BALANCE';
+
 export interface PaymentIntent {
   id: string;
   hold_id: string;
+  quote_id: string;
+  invoice_id: string | null;
+  purpose: PaymentPurpose;
   amount: number;
   currency: string;
   method: PaymentMethod;
-  status: 'PENDING' | 'RETRY' | 'PAID' | 'FAILED' | 'EXPIRED';
+  status: PaymentStatus;
   attempts: number;
   max_attempts: number;
+  /** What the last failure said. The whole reason this screen exists. */
+  last_error: string | null;
+  paid_at: string | null;
+  created_at: string;
+  // Whose payment it is, resolved server-side through the hold's reservation. All
+  // nullable: a hold need not carry one.
+  guest_name: string | null;
+  unit_code: string | null;
+  reservation_id: string | null;
+}
+
+export interface PaymentAttempt {
+  id: string;
+  payment_intent_id: string;
+  attempt_no: number;
+  outcome: 'INITIATED' | 'SUCCESS' | 'FAILURE';
+  method: PaymentMethod;
+  reference: string | null;
+  note: string | null;
+  created_at: string;
 }
 
 export interface Paginated<T> {

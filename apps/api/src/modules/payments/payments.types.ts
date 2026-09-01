@@ -33,6 +33,19 @@ export interface PaymentFilters {
   hold_id?: string;
 }
 
+/**
+ * A list row: the intent plus the stay it was taken against.
+ *
+ * The list was `selectAll()` on payment_intents alone, which is unreadable — a row of
+ * UUIDs, an amount and a status, with no way to tell whose payment failed. Nullable
+ * throughout: an intent hangs off a HOLD, and a hold need not carry a reservation.
+ */
+export interface PaymentListRow {
+  guest_name: string | null;
+  unit_code: string | null;
+  reservation_id: string | null;
+}
+
 export interface PaymentRequestMeta {
   userId: string;
   ip?: string;
