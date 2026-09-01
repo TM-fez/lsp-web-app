@@ -44,6 +44,8 @@ let guestId: string;
 let billerId: string;
 let ratePlanId: string;
 let reservationId: string;
+let partPaidRoomId: string;
+let partPaidReservationId: string;
 
 function buildService(): ReservationsService {
   const pricing = new PricingService(new PricingRepository(db));
@@ -112,6 +114,17 @@ beforeAll(async () => {
   guestId = contacts.find((c) => c.name === 'Neo Kgosi')!.id;
   billerId = contacts.find((c) => c.name === 'Debswana Accounts')!.id;
 
+  // A second unit + booking, for the part-payment case (its own unit so the two
+  // stays cannot collide on the no-overlap constraint).
+  partPaidRoomId = (
+    await db.insertInto('rooms')
+      .values({
+        name: 'MarkPaid Unit 2', code: `MP2-${uniq}`, type: 'CUSTOM', capacity: 4,
+        building_id: buildingId, created_by: userId, updated_by: userId,
+      })
+      .returning('id').executeTakeFirstOrThrow()
+  ).id;
+
   // The shape this feature exists for: a WEBSITE booking, PENDING, no hold behind it.
   reservationId = (
     await db.insertInto('reservations')
@@ -124,6 +137,17 @@ beforeAll(async () => {
       })
       .returning('id').executeTakeFirstOrThrow()
   ).id;
+
+  partPaidReservationId = (
+    await db.insertInto('reservations')
+      .values({
+        contact_id: guestId, room_id: partPaidRoomId,
+        check_in_date: dayFromNow(40), check_out_date: dayFromNow(42),  // 2 nights
+        status: 'PENDING', source: 'WEBSITE',
+        created_by: userId, updated_by: userId,
+      })
+      .returning('id').executeTakeFirstOrThrow()
+  ).id;
 });
 
 afterAll(async () => {
@@ -131,8 +155,10 @@ afterAll(async () => {
   await db.deleteFrom('invoices').where('reservation_id', '=', reservationId).execute();
   // Scoped to this test's own hold — an unqualified delete here would wipe every
   // other suite's payment rows out from under it.
+  const allReservations = [reservationId, partPaidReservationId];
+  await db.deleteFrom('invoices').where('reservation_id', 'in', allReservations).execute();
   const holdIds = (
-    await db.selectFrom('holds').select('id').where('reservation_id', '=', reservationId).execute()
+    await db.selectFrom('holds').select('id').where('reservation_id', 'in', allReservations).execute()
   ).map((h) => h.id);
   if (holdIds.length > 0) {
     const intentIds = (
@@ -143,12 +169,12 @@ afterAll(async () => {
       await db.deleteFrom('payment_intents').where('id', 'in', intentIds).execute();
     }
   }
-  await db.deleteFrom('holds').where('reservation_id', '=', reservationId).execute();
-  await db.deleteFrom('reservations').where('id', '=', reservationId).execute();
+  await db.deleteFrom('holds').where('reservation_id', 'in', allReservations).execute();
+  await db.deleteFrom('reservations').where('id', 'in', allReservations).execute();
   await db.deleteFrom('quotes').where('rate_plan_id', '=', ratePlanId).execute();
   await db.deleteFrom('rate_plans').where('id', '=', ratePlanId).execute();
   await db.deleteFrom('contacts').where('id', 'in', [guestId, billerId]).execute();
-  await db.deleteFrom('rooms').where('id', '=', roomId).execute();
+  await db.deleteFrom('rooms').where('id', 'in', [roomId, partPaidRoomId]).execute();
   await db.deleteFrom('buildings').where('id', '=', buildingId).execute();
   await db.deleteFrom('properties').where('id', '=', propertyId).execute();
   await db.deleteFrom('users').where('id', '=', userId).execute();
@@ -185,6 +211,41 @@ describe('Recording a desk payment (live DB)', () => {
     expect(row!.guest_name).toBe('Neo Kgosi');
     expect(row!.unit_code).toBe(`MP-${uniq}`);
     expect(row!.check_in_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  // Reception takes what the guest has on them. The rest must not vanish.
+  it('invoices the unpaid remainder of a part payment, and Finance counts it', async () => {
+    const service = buildService();
+    const meta = { userId, ip: null, requestId: null } as never;
+    const HALF = NIGHTLY;                    // one night's worth of a two-night stay
+    const DUE = NIGHTLY * 2;
+
+    await service.markPaid(partPaidReservationId, { method: 'CASH', amount: HALF } as never, meta);
+
+    const invoices = await db.selectFrom('invoices')
+      .selectAll().where('reservation_id', '=', partPaidReservationId)
+      .orderBy('total_amount', 'asc').execute();
+
+    expect(invoices).toHaveLength(2);
+
+    const receipt = invoices.find((i) => i.status === 'PAID')!;
+    const owing = invoices.find((i) => i.status === 'ISSUED')!;
+
+    expect(receipt.kind).toBe('DEPOSIT');
+    expect(receipt.total_amount).toBe(HALF);
+    expect(owing.kind).toBe('BALANCE');
+    expect(owing.total_amount).toBe(DUE - HALF);
+
+    // The point of the whole thing: the debt is visible to Accounts. Finance treats an
+    // ISSUED DEPOSIT/BALANCE invoice as an open receivable.
+    const open = await db.selectFrom('invoices')
+      .select('id')
+      .where('reservation_id', '=', partPaidReservationId)
+      .where('status', 'in', ['ISSUED', 'PARTIALLY_PAID'])
+      .where('kind', 'in', ['DEPOSIT', 'BALANCE'])
+      .where('deleted_at', 'is', null)
+      .execute();
+    expect(open.map((o) => o.id)).toEqual([owing.id]);
   });
 
   it('refuses a second payment on a booking that is already confirmed', async () => {

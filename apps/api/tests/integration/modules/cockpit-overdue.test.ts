@@ -16,6 +16,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../src/config/db.js';
 import { CockpitRepository } from '../../../src/modules/cockpit/cockpit.repository.js';
+import { ReservationsRepository } from '../../../src/modules/reservations/reservations.repository.js';
+import { ReservationsService } from '../../../src/modules/reservations/reservations.service.js';
 import { todayInPropertyTZ } from '../../../src/core/time.js';
 
 const uniq = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -131,6 +133,47 @@ describe('Cockpit rail — overdue arrivals and departures (live DB)', () => {
       expect(arrivals.map((a) => a.reservation_id)).not.toContain(noShow.id);
     } finally {
       await db.deleteFrom('reservations').where('id', '=', noShow.id).execute();
+    }
+  });
+
+  // A no-show is the other end of the same story: the guest never came, and the
+  // booking has to stop claiming the unit and stop counting as occupancy.
+  it('drops a no-show out of arrivals and frees its nights to be re-let', async () => {
+    const reservations = new ReservationsRepository(db);
+    const service = new ReservationsService(reservations);
+    const meta = { userId, ip: null, requestId: null } as never;
+
+    // Its own unit and booking: this test mutates what it looks at, and the others
+    // must not depend on having run first.
+    const roomId = await makeRoom(`OD-N-${uniq}`);
+    const from = new Date(propertyDay(-2));
+    const to = new Date(propertyDay(2));
+    const res = await db.insertInto('reservations').values({
+      contact_id: guestId, room_id: roomId,
+      check_in_date: from, check_out_date: to,
+      status: 'CONFIRMED', source: 'WALK_IN', created_by: userId, updated_by: userId,
+    }).returning('id').executeTakeFirstOrThrow();
+
+    try {
+      // While CONFIRMED it holds the nights and sits on the arrivals rail.
+      expect(await reservations.checkAvailability(roomId, from, to)).toBe(false);
+      const before = await new CockpitRepository(db).arrivals(propertyId);
+      expect(before.map((a) => a.reservation_id)).toContain(res.id);
+
+      const marked = await service.markNoShow(res.id, meta);
+      expect(marked.status).toBe('NO_SHOW');
+
+      // Off the rail — arrivals asks for CONFIRMED.
+      const after = await new CockpitRepository(db).arrivals(propertyId);
+      expect(after.map((a) => a.reservation_id)).not.toContain(res.id);
+
+      // And the unit is bookable again: checkAvailability blacklists NO_SHOW, and the
+      // reservations_no_overlap constraint never covered it.
+      expect(await reservations.checkAvailability(roomId, from, to)).toBe(true);
+    } finally {
+      await db.deleteFrom('audit_logs').where('entity_id', '=', res.id).execute();
+      await db.deleteFrom('reservations').where('id', '=', res.id).execute();
+      await db.deleteFrom('rooms').where('id', '=', roomId).execute();
     }
   });
 

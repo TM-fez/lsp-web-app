@@ -228,7 +228,10 @@ describe('ReservationsService', () => {
         createIntent: vi.fn().mockResolvedValue({ id: 'pi1' }),
         attempt: vi.fn().mockResolvedValue({ id: 'pi1', status: 'PAID' }),
       };
-      invoices = { issueSettledInvoice: vi.fn().mockResolvedValue({ id: 'inv1', status: 'PAID' }) };
+      invoices = {
+        issueSettledInvoice: vi.fn().mockResolvedValue({ id: 'inv1', status: 'PAID' }),
+        issueInvoice: vi.fn().mockResolvedValue({ id: 'inv2', status: 'ISSUED' }),
+      };
       paid = new ReservationsService(repository, rooms, pricing, quotes, holds, payments, invoices);
       // priceReservation is exercised by its own tests; stub it so these focus on the chain.
       vi.spyOn(paid, 'priceReservation').mockResolvedValue(priced as any);
@@ -339,6 +342,27 @@ describe('ReservationsService', () => {
       );
     });
 
+    // Without the second invoice the unpaid remainder is invisible: no open invoice
+    // means nothing in the Finance cockpit's total, its ageing, or receivables.
+    it('invoices the remainder as UNPAID when only part is handed over', async () => {
+      await paid.markPaid('res-w', { method: 'CASH', amount: 50_000 } as any, { userId: 'u1' } as any);
+
+      expect(invoices.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'BALANCE',
+          amount: 50_800,              // 100_800 due − 50_000 taken
+          reservation_id: 'res-w',     // attributable, so it lands on the right property
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('raises no second invoice when the booking is paid in full', async () => {
+      await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+      expect(invoices.issueSettledInvoice).toHaveBeenCalledTimes(1);
+      expect(invoices.issueInvoice).not.toHaveBeenCalled();
+    });
+
     // Money has already changed hands and the booking is CONFIRMED by this point.
     // Telling reception "payment failed" because a DOCUMENT could not be written
     // would send the guest round to pay a second time.
@@ -355,6 +379,48 @@ describe('ReservationsService', () => {
         expect.objectContaining({ outcome: 'SUCCESS' }),
         expect.anything(),
       );
+    });
+  });
+
+  describe('markNoShow', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dueYesterday = {
+      id: 'res-n', status: 'CONFIRMED', source: 'WALK_IN', room_id: 'room-1',
+      check_in_date: yesterday, check_out_date: tomorrow,
+    };
+
+    it('marks a confirmed booking whose arrival day has passed', async () => {
+      repository.findById.mockResolvedValue(dueYesterday as any);
+      repository.update.mockResolvedValue({ ...dueYesterday, status: 'NO_SHOW' } as any);
+
+      const out = await service.markNoShow('res-n', { userId: 'u1' } as any);
+
+      expect(out.status).toBe('NO_SHOW');
+      expect(repository.update).toHaveBeenCalledWith(
+        'res-n',
+        expect.objectContaining({ status: 'NO_SHOW' }),
+        expect.anything(),
+      );
+    });
+
+    // Marking someone a no-show on the morning they are due is a mistake, not a call.
+    it('refuses a guest who is not due until today or later', async () => {
+      repository.findById.mockResolvedValue({ ...dueYesterday, check_in_date: tomorrow } as any);
+      await expect(
+        service.markNoShow('res-n', { userId: 'u1' } as any),
+      ).rejects.toThrow('not due to arrive until today or later');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses anything that is not confirmed', async () => {
+      repository.findById.mockResolvedValue({ ...dueYesterday, status: 'CHECKED_IN' } as any);
+      await expect(
+        service.markNoShow('res-n', { userId: 'u1' } as any),
+      ).rejects.toThrow('Only a confirmed booking can be marked a no-show');
     });
   });
 

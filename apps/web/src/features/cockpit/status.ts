@@ -22,7 +22,8 @@ export const reservationTone: Record<ReservationStatus, Tone> = {
   CHECKED_IN: 'blue',
   CHECKED_OUT: 'slate',
   CANCELLED: 'rose',
-  BLOCKED: 'violet', // OTA-imported night (channel sync) — importer-owned, read-only
+  BLOCKED: 'violet',
+  NO_SHOW: 'rose', // OTA-imported night (channel sync) — importer-owned, read-only
 };
 
 export const taskActionLabel: Record<HousekeepingTaskStatus, string | null> = {

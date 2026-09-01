@@ -82,6 +82,13 @@ export async function markReservationPaid(id: string, input: MarkPaidInput): Pro
   return data;
 }
 
+// Record that a confirmed guest never arrived. No body: the booking id and the
+// calendar say everything, and the server enforces that the arrival day has passed.
+export async function markReservationNoShow(id: string): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/no-show`, {});
+  return data;
+}
+
 export interface SetDiscountInput {
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: number; // percent points, or thebe for FIXED

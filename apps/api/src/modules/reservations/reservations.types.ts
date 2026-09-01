@@ -12,6 +12,9 @@ export const ReservationStatusEnum = z.enum([
   // user — intentionally absent from UserInputReservationStatusEnum below, and rejected
   // by UpdateReservationSchema.
   'BLOCKED',
+  // Confirmed, due, and nobody arrived (migration 065). Set only through
+  // POST /reservations/:id/no-show, never by a direct status edit.
+  'NO_SHOW',
 ]);
 
 // A reservation can only be CREATED as PENDING. CONFIRMED is reached solely

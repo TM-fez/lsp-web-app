@@ -119,6 +119,15 @@ export class ReservationsController {
     }
   };
 
+  markNoShow = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const meta = this.getRequestMeta(req);
+      res.json(await this.service.markNoShow(req.params.id as string, meta, req.activePropertyId));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   setDiscount = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = SetDiscountSchema.parse(req.body);

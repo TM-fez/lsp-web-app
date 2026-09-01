@@ -112,7 +112,7 @@ export interface ReservationsTable {
   room_id: string;
   check_in_date: Date;
   check_out_date: Date;
-  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED';
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED' | 'NO_SHOW';
   notes: string | null;
   // Unified booking origin (migration 046 channel sync + 050 widening): one column
   // serving both the iCal import (DIRECT/WEBSITE/BOOKING_COM) and CRM "direct vs OTA"

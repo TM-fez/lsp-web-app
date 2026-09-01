@@ -17,11 +17,13 @@ export const statusTone: Record<ReservationStatus, Tone> = {
   CHECKED_OUT: 'slate',
   CANCELLED: 'rose',
   BLOCKED: 'violet',
+  NO_SHOW: 'rose',
 };
 
 // "blocked" alone reads like a maintenance state — name the OTA origin instead.
+// "no show" reads as two words rather than a status, so hyphenate it.
 export const statusLabel = (s: ReservationStatus) =>
-  s === 'BLOCKED' ? 'OTA block' : s.replace(/_/g, ' ').toLowerCase();
+  s === 'BLOCKED' ? 'OTA block' : s === 'NO_SHOW' ? 'no-show' : s.replace(/_/g, ' ').toLowerCase();
 
 // Booking origin, ordered for the filter dropdown (most common first).
 export const SOURCES: ReservationSource[] = [

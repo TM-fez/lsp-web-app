@@ -12,6 +12,7 @@ import {
   removeDiscount,
   getReservationPricing,
   markReservationPaid,
+  markReservationNoShow,
   type ReservationListParams,
   type CreateReservationInput,
   type UpdateReservationInput,
@@ -110,6 +111,23 @@ export function useMarkPaid() {
     mutationFn: ({ id, input }: { id: string; input: MarkPaidInput }) => markReservationPaid(id, input),
     onSuccess: () => {
       toast.success('Payment recorded — booking confirmed ✓');
+      invalidate();
+    },
+    onError: (e) => toast.error(errMessage(e)),
+  });
+}
+
+/**
+ * Mark a confirmed booking a no-show. Invalidating RES_KEY refreshes the row and its
+ * badge; the cockpit board drops it from Arrivals on its own next poll, since that
+ * query asks for CONFIRMED.
+ */
+export function useMarkNoShow() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => markReservationNoShow(id),
+    onSuccess: () => {
+      toast.success('Recorded as a no-show — the nights are free again');
       invalidate();
     },
     onError: (e) => toast.error(errMessage(e)),
