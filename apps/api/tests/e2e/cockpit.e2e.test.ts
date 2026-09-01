@@ -39,8 +39,51 @@ let holdId = '';
 let intentId = '';
 let occupancyId = '';
 let reservation2Id = '';
+let ratePlanId = '';
 
+/**
+ * Undo everything this file created, so the suite can be run twice against one database.
+ *
+ * It could not be. Only one rate plan per unit type may be ACTIVE
+ * (`rate_plans_active_unit_type_unique`), and this file creates a STANDARD one and left it
+ * behind — so the second run got a 500 on "creates a STANDARD rate plan" and every later
+ * step fell over with it. CI never saw it, because CI gets a fresh container each time; it
+ * only ever cost whoever was running the suite locally, which is the person least able to
+ * tell a real failure from a dirty database.
+ *
+ * Deleted in FK order, and only by id — the property and building are RESOLVED from the
+ * seed rather than created here, so they are not ours to remove. Each statement is
+ * independent: one failing must not strand the rest, or the next run is dirty again.
+ */
 afterAll(async () => {
+  const run = async (label: string, sql: string, params: unknown[]) => {
+    if (params.some((p) => !p)) return;
+    try {
+      await pool.query(sql, params);
+    } catch (err) {
+      // Surfaced, not swallowed: a teardown that fails silently is how this started.
+      console.warn(`[e2e teardown] ${label} —`, (err as Error).message);
+    }
+  };
+
+  // Almost everything this file creates hangs off the one test unit, so delete by
+  // room_id rather than by the handful of ids the tests happened to capture — a test
+  // that failed early leaves rows whose id was never assigned to a variable.
+  await run('payment_attempts', `DELETE FROM payment_attempts WHERE payment_intent_id IN
+    (SELECT pi.id FROM payment_intents pi JOIN holds h ON h.id = pi.hold_id WHERE h.room_id = $1)`, [roomId]);
+  await run('payment_intents', `DELETE FROM payment_intents WHERE hold_id IN
+    (SELECT id FROM holds WHERE room_id = $1)`, [roomId]);
+  await run('housekeeping_tasks', 'DELETE FROM housekeeping_tasks WHERE room_id = $1', [roomId]);
+  await run('occupancy', 'DELETE FROM occupancy WHERE room_id = $1', [roomId]);
+  await run('holds', 'DELETE FROM holds WHERE room_id = $1', [roomId]);
+  await run('reservations', 'DELETE FROM reservations WHERE room_id = $1', [roomId]);
+  await run('rooms', 'DELETE FROM rooms WHERE id = $1', [roomId]);
+  await run('contacts', 'DELETE FROM contacts WHERE id = $1', [contactId]);
+  await run('quotes', 'DELETE FROM quotes WHERE rate_plan_id = $1', [ratePlanId]);
+  // The one that actually blocked a re-run: only one rate plan per unit type may be
+  // ACTIVE, so leaving this behind 500'd the next run's very first write.
+  await run('rate_plans', 'DELETE FROM rate_plans WHERE id = $1', [ratePlanId]);
+
   await pool.end();
 });
 
@@ -80,6 +123,7 @@ describe('Operations Cockpit — end to end', () => {
         monthly_rate: 1100000,
       });
     expect(res.status).toBe(201);
+    ratePlanId = res.body.id;
   });
 
   it('creates an AVAILABLE + READY unit', async () => {
