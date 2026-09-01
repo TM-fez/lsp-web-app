@@ -1,4 +1,5 @@
 import { CockpitRepository } from './cockpit.repository.js';
+import { todayInPropertyTZ } from '../../core/time.js';
 import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
 import type { CockpitBoard } from './cockpit.types.js';
 
@@ -20,7 +21,10 @@ export class CockpitService {
     ]);
 
     return {
-      date: new Date().toISOString().slice(0, 10),
+      // Africa/Gaborone, not the server's UTC clock: between midnight and 02:00 local
+      // a raw toISOString() still reads yesterday, and the rail dates its own "late by"
+      // arithmetic off this value.
+      date: todayInPropertyTZ(),
       units,
       arrivals,
       in_house,

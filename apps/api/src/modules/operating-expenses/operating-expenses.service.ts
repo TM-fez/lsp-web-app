@@ -1,5 +1,6 @@
 import { OperatingExpensesRepository } from './operating-expenses.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { todayInPropertyTZ } from '../../core/time.js';
 import type {
   CreateOperatingExpenseDTO,
   UpdateOperatingExpenseDTO,
@@ -109,7 +110,7 @@ export class OperatingExpensesService {
 
   /** Generate this month's (or the given month's) operating costs from the templates. */
   generate(month: string | undefined, meta: OperatingExpensesRequestMeta) {
-    const m = month ?? new Date().toISOString().slice(0, 7);
+    const m = month ?? todayInPropertyTZ().slice(0, 7);
     return this.repository.generateForMonth(m, meta).then((r) => ({ month: m, ...r }));
   }
 }

@@ -41,11 +41,27 @@ export class CockpitRepository {
     return query.orderBy('r.code', 'asc').execute();
   }
 
-  // Confirmed reservations arriving today, not yet checked in.
+  /**
+   * Confirmed reservations whose stay has started and who are not yet checked in —
+   * today's arrivals AND anyone still waiting from an earlier day.
+   *
+   * This used to test `check_in_date = today` exactly, which stranded a guest the
+   * moment their arrival date passed: they were no longer an arrival, and they were
+   * not in-house either (nobody had checked them in), so they vanished from the
+   * cockpit entirely. The rail's Check in button is the ONLY one in the app, so a
+   * late arrival became genuinely unreachable — the board read "0% full" with a guest
+   * in the unit, and the only workaround was to falsify the booking's dates.
+   *
+   * Bounded by `check_out_date > today`: once the whole stay is behind us the booking
+   * is a no-show, not a pending arrival, and dressing it up as one would be wrong.
+   */
   async arrivals(propertyId?: string): Promise<CockpitGuestCard[]> {
     return this.guestCards(propertyId)
       .where('res.status', '=', 'CONFIRMED')
-      .where(sql<boolean>`res.check_in_date = ${propertyToday()}`)
+      .where(sql<boolean>`res.check_in_date <= ${propertyToday()}`)
+      .where(sql<boolean>`res.check_out_date > ${propertyToday()}`)
+      // Oldest arrival first: whoever has been waiting longest is the urgent one.
+      .orderBy('res.check_in_date', 'asc')
       .orderBy('r.code', 'asc')
       .execute();
   }
@@ -55,10 +71,21 @@ export class CockpitRepository {
     return this.occupancyCards(propertyId).orderBy('r.code', 'asc').execute();
   }
 
-  // In-house guests whose reservation departs today.
+  /**
+   * In-house guests whose reservation has reached its check-out date — today's
+   * departures AND anyone who has overstayed it.
+   *
+   * Same stranding as arrivals, mirrored: `check_out_date = today` meant a guest who
+   * was not checked out on the day dropped off the Departures column the next
+   * morning. The In-house column has no action on its rows, and Check out is only
+   * rendered in Departures, so the occupancy could never be closed — the unit stayed
+   * OCCUPIED, never reached the cleaning queue, and could not be re-let.
+   */
   async departures(propertyId?: string): Promise<CockpitGuestCard[]> {
     return this.occupancyCards(propertyId)
-      .where(sql<boolean>`res.check_out_date = ${propertyToday()}`)
+      .where(sql<boolean>`res.check_out_date <= ${propertyToday()}`)
+      // Longest overstay first.
+      .orderBy('res.check_out_date', 'asc')
       .orderBy('r.code', 'asc')
       .execute();
   }
