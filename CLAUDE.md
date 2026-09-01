@@ -55,11 +55,20 @@ These are real invariants. Breaking one is a production bug, not a style issue.
 5. **Soft delete everywhere.** Every read filters `.where('deleted_at', 'is', null)`.
 6. **Every mutation writes an `audit_logs` row in the same transaction.** `meta = { userId, ip, requestId }`
    is threaded controller → service → repository.
+7. **An unpaid booking holds the room.** PENDING blocks, everywhere. Owner decision 2026-09-01,
+   closing defect D01 ("looked free, got 409" — the availability engine used to count only
+   CONFIRMED while `checkAvailability` and the DB constraint both blocked on PENDING). Three
+   places must agree and must move together if this is ever reversed:
+   `AvailabilityRepository` (3 queries), `ReservationsRepository.checkAvailability`
+   (a *blacklist* — new statuses block unless named), and `reservations_no_overlap`
+   (migration 046, a whitelist). `availability-d01.test.ts` asserts the invariant rather than
+   the rule: what search calls free must be bookable, and vice versa.
+   Consequence, deliberate: `EXPORTABLE_STATUSES` includes PENDING, so a held night publishes to
+   Booking.com as busy. Over-blocking loses a booking; under-blocking loses a guest's room.
 
-⚠️ **Known open bug:** two divergent definitions of "blocked". `Reservation.checkAvailability` blocks
-PENDING+CONFIRMED+CHECKED_IN; the availability engine counts only CONFIRMED. This is the
-"looked free, got 409" surface. See `reservation_integrity_gate.sql`. The fix ("PENDING blocks") is a
-**human policy decision** — do not resolve it unilaterally.
+⚠️ **Still divergent, on purpose:** `reports.forwardOccupancy` excludes PENDING from "demand".
+Whether an unpaid night counts as *occupancy in a report* is a separate question from whether it
+is *sellable*, and it moves numbers the owner reads. Do not "align" it without asking.
 
 ## API conventions (`apps/api`)
 
