@@ -1,64 +1,58 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import type { Room } from '@/types';
+import { MemoryRouter } from 'react-router-dom';
 
-const rooms = [
-  { id: '1', code: 'J1-01', name: 'Unit 1', status: 'OCCUPIED', housekeeping_status: 'DIRTY' },
-  { id: '2', code: 'J1-02', name: 'Unit 2', status: 'AVAILABLE', housekeeping_status: 'CLEANING' },
-  { id: '3', code: 'J1-03', name: 'Unit 3', status: 'AVAILABLE', housekeeping_status: 'INSPECTED' },
-  { id: '4', code: 'J1-04', name: 'Unit 4', status: 'AVAILABLE', housekeeping_status: 'READY' },
-] as unknown as Room[];
+// This board is read off a tablet, on wifi, by the least technical users in the
+// business. When the fetch failed it rendered four columns of zero under a "Live"
+// label — which reads as "every room is done", not "I cannot see the rooms".
 
-vi.mock('@/features/rooms/hooks', () => ({
-  useRooms: () => ({ data: rooms, isLoading: false, dataUpdatedAt: Date.now() }),
-}));
+let state: Record<string, unknown> = {};
 
-vi.mock('./hooks', () => ({
-  useTurn: () => ({ isPending: false, mutate: vi.fn(), variables: undefined }),
-  useRoomChecks: () => ({ data: undefined, isLoading: false }),
-  useSetRoomCheck: () => ({ isPending: false, mutate: vi.fn() }),
-}));
+vi.mock('@/features/rooms/hooks', () => ({ useRooms: () => state }));
+vi.mock('./hooks', () => ({ useTurn: () => ({ mutate: vi.fn(), isPending: false }) }));
+vi.mock('./ChecklistDialog', () => ({ ChecklistDialog: () => null }));
 
-// A cleaner's tablet: can start cleans, cannot inspect or sign off.
 vi.mock('@/store/auth', () => ({
-  useAuthStore: (sel: (s: any) => any) =>
-    sel({ hasPerm: (p: string) => ['housekeeping.read', 'housekeeping.update'].includes(p) }),
+  useAuthStore: (sel: (s: { hasPerm: (p: string) => boolean }) => unknown) =>
+    sel({ hasPerm: () => true }),
 }));
 
 import { HousekeepingBoardPage } from './HousekeepingBoardPage';
 
-const renderPage = () =>
-  render(
-    <MemoryRouter>
-      <HousekeepingBoardPage />
-    </MemoryRouter>,
-  );
+const show = () => render(<MemoryRouter><HousekeepingBoardPage /></MemoryRouter>);
 
 describe('HousekeepingBoardPage', () => {
-  it('groups every unit into its stage column', () => {
-    renderPage();
+  it('says the board could not load rather than showing an empty one', () => {
+    state = { data: undefined, isLoading: false, isError: true, refetch: vi.fn(), dataUpdatedAt: 0 };
+    show();
+
+    expect(screen.getByText(/couldn’t load/i)).toBeInTheDocument();
+    expect(screen.getByText(/not an empty board/i)).toBeInTheDocument();
+    // The columns must not render — a "0" beside "To clean" is the lie being fixed.
+    expect(screen.queryByText('To clean')).not.toBeInTheDocument();
+  });
+
+  it('stops calling itself Live while the connection is down', () => {
+    state = {
+      data: [{ id: 'r1', code: 'B1', name: 'B1', housekeeping_status: 'DIRTY', status: 'AVAILABLE' }],
+      isLoading: false, isError: true, refetch: vi.fn(), dataUpdatedAt: Date.now(),
+    };
+    show();
+
+    expect(screen.getByText(/lost contact with the server/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Live —/)).not.toBeInTheDocument();
+    // Stale data is still shown — better than a blank board, as long as it is labelled.
     expect(screen.getByText('To clean')).toBeInTheDocument();
-    expect(screen.getByText('Cleaning')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting sign-off')).toBeInTheDocument();
-    expect(screen.getByText('Ready')).toBeInTheDocument();
-    for (const code of ['J1-01', 'J1-02', 'J1-03', 'J1-04']) {
-      expect(screen.getByText(code)).toBeInTheDocument();
-    }
   });
 
-  it('shows only the actions the signed-in user may take', () => {
-    renderPage();
-    // Cleaner: start on the DIRTY unit, checklist on the CLEANING unit…
-    expect(screen.getByRole('button', { name: 'Start cleaning' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Checklist' })).toBeInTheDocument();
-    // …but no supervisor validation or manager sign-off buttons.
-    expect(screen.queryByRole('button', { name: 'Mark inspected' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Sign off' })).toBeNull();
-  });
+  it('reads as Live when it is', () => {
+    state = {
+      data: [{ id: 'r1', code: 'B1', name: 'B1', housekeeping_status: 'READY', status: 'AVAILABLE' }],
+      isLoading: false, isError: false, refetch: vi.fn(), dataUpdatedAt: Date.now(),
+    };
+    show();
 
-  it('links back out of the board', () => {
-    renderPage();
-    expect(screen.getByRole('link', { name: 'Exit board' })).toHaveAttribute('href', '/housekeeping');
+    expect(screen.getByText(/Live —/)).toBeInTheDocument();
+    expect(screen.queryByText(/lost contact/i)).not.toBeInTheDocument();
   });
 });

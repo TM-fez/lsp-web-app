@@ -28,7 +28,7 @@ const COLUMNS: { status: HousekeepingStatus; title: string; accent: string; chip
 
 export function HousekeepingBoardPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
-  const { data: rooms, isLoading, dataUpdatedAt } = useRooms({ refetchInterval: POLL_MS });
+  const { data: rooms, isLoading, isError, refetch, dataUpdatedAt } = useRooms({ refetchInterval: POLL_MS });
   const turn = useTurn();
   const [checklistRoom, setChecklistRoom] = useState<Room | null>(null);
 
@@ -44,10 +44,20 @@ export function HousekeepingBoardPage() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl text-ink">Housekeeping board</h1>
-          <p className="text-xs text-slate-500">
-            Live — refreshes every {POLL_MS / 1000}s
-            {dataUpdatedAt ? ` · updated ${new Date(dataUpdatedAt).toLocaleTimeString()}` : ''}
-          </p>
+          {/* Never claim "Live" while the last fetch is failing — this board is read
+              off a tablet on wifi, and a stale board that looks current is worse than
+              one that admits it is stale. */}
+          {isError ? (
+            <p className="text-xs font-semibold text-rose-700">
+              Not updating — lost contact with the server
+              {dataUpdatedAt ? ` · last good at ${new Date(dataUpdatedAt).toLocaleTimeString()}` : ''}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Live — refreshes every {POLL_MS / 1000}s
+              {dataUpdatedAt ? ` · updated ${new Date(dataUpdatedAt).toLocaleTimeString()}` : ''}
+            </p>
+          )}
         </div>
         <Link to="/housekeeping" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
           Exit board
@@ -57,6 +67,21 @@ export function HousekeepingBoardPage() {
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
           <Spinner className="h-8 w-8" />
+        </div>
+      ) : isError && !rooms ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-xl border-2 border-rose-300 bg-rose-50 p-6 text-center">
+          <p className="font-display text-xl text-ink">The board couldn’t load</p>
+          <p className="max-w-sm text-sm text-slate-600">
+            This is not an empty board — nothing could be fetched, so no unit is shown. Check
+            the tablet’s connection and try again before assuming the rooms are done.
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-md border border-slate-400 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Try again
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
