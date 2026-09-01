@@ -4,7 +4,7 @@ import { QuotesService } from '../quotes/quotes.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import type { PaymentIntentRow, PaymentAttemptRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { CreatePaymentIntentDTO, AttemptPaymentDTO, PaymentFilters, PaymentRequestMeta } from './payments.types.js';
+import type { CreatePaymentIntentDTO, AttemptPaymentDTO, PaymentFilters, PaymentRequestMeta, PaymentListRow } from './payments.types.js';
 
 const RETRY_EXTENSION_MS = 15 * 60 * 1000;
 
@@ -27,7 +27,10 @@ export class PaymentsService {
     return { ...intent, attempts_log };
   }
 
-  async listIntents(filters: PaymentFilters, pagination: PaginationOptions): Promise<PaginatedResult<PaymentIntentRow>> {
+  async listIntents(
+    filters: PaymentFilters,
+    pagination: PaginationOptions
+  ): Promise<PaginatedResult<PaymentIntentRow & PaymentListRow>> {
     return this.repository.findPaginated(filters, pagination);
   }
 
