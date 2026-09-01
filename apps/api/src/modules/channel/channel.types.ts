@@ -1,9 +1,17 @@
 // Channel sync (LSP ↔ Booking.com via iCal) — shared constants for both directions.
 
-// Nights we PUBLISH to OTAs: this unit's own direct-sold stays. Deliberately excludes
-// PENDING — an unpaid hold should not block OTA inventory (it would over-block and lose
-// sales if the hold later expires). To also block on holds, add 'PENDING' here.
-export const EXPORTABLE_STATUSES = ['CONFIRMED', 'CHECKED_IN'] as const;
+// Nights we PUBLISH to OTAs: this unit's own direct-sold stays.
+//
+// PENDING is included (defect D01, owner decision 2026-09-01: an unpaid booking holds
+// the room). It has a cost, and the cost is deliberate: a hold that later expires
+// over-blocks OTA inventory for up to WEBSITE_PENDING_TTL_HOURS and may lose a sale.
+// The alternative is worse — if a PENDING night blocks us but reads as free to
+// Booking.com, the OTA sells it and we get a real double-booking with a guest at the
+// door. Over-blocking loses a booking; under-blocking loses a guest's room.
+//
+// The window is self-limiting: the expiry sweep cancels unpaid website bookings after
+// WEBSITE_PENDING_TTL_HOURS and the next export drops the night again.
+export const EXPORTABLE_STATUSES = ['PENDING', 'CONFIRMED', 'CHECKED_IN'] as const;
 
 // Only OUR OWN bookings get published. BOOKING_COM-sourced rows are excluded so an OTA's
 // own booking is never echoed back to it — that feedback loop is the one bug we cannot

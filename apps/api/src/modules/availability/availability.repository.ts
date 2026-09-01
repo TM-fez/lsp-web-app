@@ -16,8 +16,18 @@ import type {
  * Blocking model:
  *  - room.status MAINTENANCE / OUT_OF_SERVICE  -> structurally blocked
  *  - room.status OCCUPIED or active CHECKED_IN occupancy -> occupied
- *  - overlapping CONFIRMED or BLOCKED reservation in the range -> reserved
+ *  - overlapping PENDING, CONFIRMED or BLOCKED reservation in the range -> reserved
  *    (BLOCKED = a Booking.com night imported by channel sync; migration 046)
+ *
+ * PENDING counts (defect D01, owner decision 2026-09-01: an unpaid booking DOES hold
+ * the room). It used to be absent here while `ReservationsRepository.checkAvailability`
+ * and the `reservations_no_overlap` constraint both blocked on it — so two definitions
+ * of "blocked" were live at once and a unit read as free in search, then 409'd the
+ * moment you tried to book it. Public /stay bookings sit PENDING for up to
+ * WEBSITE_PENDING_TTL_HOURS, so this bit hardest on direct bookings.
+ *
+ * If that policy is ever reversed, all three must move together: this file, that
+ * repository's blacklist, and the DB constraint in migration 046.
  */
 export class AvailabilityRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -43,7 +53,7 @@ export class AvailabilityRepository {
       LEFT JOIN (
         SELECT room_id, count(*) AS cnt
         FROM reservations
-        WHERE deleted_at IS NULL AND status IN ('CONFIRMED', 'BLOCKED')
+        WHERE deleted_at IS NULL AND status IN ('PENDING', 'CONFIRMED', 'BLOCKED')
           AND check_in_date < ${range.checkOut}::date
           AND check_out_date > ${range.checkIn}::date
         GROUP BY room_id
@@ -83,7 +93,7 @@ export class AvailabilityRepository {
       LEFT JOIN (
         SELECT room_id, count(*) AS cnt
         FROM reservations
-        WHERE deleted_at IS NULL AND status IN ('CONFIRMED', 'BLOCKED')
+        WHERE deleted_at IS NULL AND status IN ('PENDING', 'CONFIRMED', 'BLOCKED')
           AND check_in_date < ${range.checkOut}::date
           AND check_out_date > ${range.checkIn}::date
         GROUP BY room_id
@@ -121,7 +131,7 @@ export class AvailabilityRepository {
       CROSS JOIN rooms r
       LEFT JOIN LATERAL (
         SELECT 1 AS id FROM reservations res
-        WHERE res.room_id = r.id AND res.deleted_at IS NULL AND res.status IN ('CONFIRMED', 'BLOCKED')
+        WHERE res.room_id = r.id AND res.deleted_at IS NULL AND res.status IN ('PENDING', 'CONFIRMED', 'BLOCKED')
           AND res.check_in_date <= d.day AND res.check_out_date > d.day
         LIMIT 1
       ) res ON true
