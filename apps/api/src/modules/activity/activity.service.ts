@@ -49,6 +49,17 @@ function humanize(entity: string, action: Action, diff: unknown): string {
     return `set a unit ${s}`;
   }
 
+  // The costliest thing that can happen to this business, and it used to fall through
+  // to "created a record" — the default phrase, indistinguishable from any other row.
+  // A Booking.com night arrived for a unit already sold and could not be stored, which
+  // means the OTA believes it has an inventory we do not have. Name the unit, because
+  // the feed is where anyone is going to notice it: the only other channel is an email
+  // that needs BREVO_API_KEY and CHANNEL_ALERT_EMAIL both set.
+  if (entity === 'channel_collision') {
+    const unit = d?.unit ? ` on ${String(d.unit)}` : '';
+    return `⚠️ found a Booking.com double-booking${unit} — the direct stay was kept`;
+  }
+
   return VERBS[entity]?.[action] ?? `${action.toLowerCase()}d a record`;
 }
 
