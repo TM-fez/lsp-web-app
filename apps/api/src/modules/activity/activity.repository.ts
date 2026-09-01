@@ -1,8 +1,11 @@
 import type { Kysely } from 'kysely';
 import type { Database } from '../../db/types.js';
 
-// Entities that are noise in a "what's happening" feed.
-const HIDE = ['auth_login', 'refresh_token'];
+// Entities kept out of a shared "what's happening" feed: session plumbing, which is
+// noise, and staff pay, which is nobody else's business. The feed never renders the
+// diff, so no figure leaked — but "Tumelo updated a record" against staff_compensation
+// still tells the whole team that somebody's salary was touched, and by whom.
+const HIDE = ['auth_login', 'refresh_token', 'staff_compensation'];
 
 export class ActivityRepository {
   constructor(private readonly db: Kysely<Database>) {}
