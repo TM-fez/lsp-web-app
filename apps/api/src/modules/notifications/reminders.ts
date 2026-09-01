@@ -75,9 +75,11 @@ export async function remindLeaseRenewals(
     .select(['r.id as reservation_id', 'rm.name as room_name', 'c.name as guest_name', 'b.property_id'])
     .where('r.status', 'in', ['CONFIRMED', 'CHECKED_IN'])
     .where('r.deleted_at', 'is', null)
-    // Fire once, exactly LEASE_RENEWAL_LEAD_DAYS out — dates in the DB's timezone
-    // (Africa/Gaborone), matching how the stay dates are stored.
-    .where(sql<boolean>`r.check_out_date = current_date + ${sql.lit(LEASE_RENEWAL_LEAD_DAYS)}`)
+    // Fire once, exactly LEASE_RENEWAL_LEAD_DAYS out, counted from the PROPERTY's day.
+    // `current_date` here would be the DB session's timezone — UTC on Render — which
+    // disagrees with Africa/Gaborone between midnight and 02:00 local. This is an exact
+    // date match, so a day's drift does not delay the nudge, it loses it.
+    .where(sql<boolean>`r.check_out_date = ${propertyToday()} + ${sql.lit(LEASE_RENEWAL_LEAD_DAYS)}`)
     .where(sql<boolean>`(r.check_out_date - r.check_in_date) >= ${sql.lit(LEASE_MIN_NIGHTS)}`)
     .execute();
 
