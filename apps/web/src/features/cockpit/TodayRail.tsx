@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { reservationTone } from './status';
 import { sourceLabel } from '@/features/reservations/util';
+import { calendarDay, shortDay } from '@/lib/utils/date';
 import { useCheckIn, useCheckOut } from './hooks';
 
 // Origins worth flagging on the rail: front desk should instantly see an OTA or
@@ -34,7 +35,8 @@ function GuestRow({ no, card, action, late = 0 }: { no: number; card: CockpitGue
       <div className="min-w-0 flex-1">
         <div className="truncate font-display text-lg text-ink">{card.guest_name}</div>
         <div className="text-[11px] uppercase tracking-[0.12em] text-muted">
-          {card.room_code} · {card.check_in_date.slice(5)} → {card.check_out_date.slice(5)}
+          {/* shortDay, not slice(5): API dates arrive as ISO timestamps. */}
+          {card.room_code} · {shortDay(card.check_in_date)} → {shortDay(card.check_out_date)}
         </div>
       </div>
       <LateBadge days={late} />
@@ -81,7 +83,7 @@ export function TodayRail({
             key={c.reservation_id}
             no={i + 1}
             card={c}
-            late={daysBetween(c.check_in_date.slice(0, 10), today)}
+            late={daysBetween(calendarDay(c.check_in_date), today)}
             action={
               <Button
                 size="sm"
@@ -110,7 +112,7 @@ export function TodayRail({
             key={c.occupancy_id ?? c.reservation_id}
             no={i + 1}
             card={c}
-            late={daysBetween(c.check_out_date.slice(0, 10), today)}
+            late={daysBetween(calendarDay(c.check_out_date), today)}
             action={
               c.occupancy_id ? (
                 <Button
