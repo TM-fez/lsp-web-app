@@ -98,13 +98,19 @@ const BLOCKS = ['B', 'D', 'G', 'I', 'J', 'T'];
 const UNIT_TYPES = ['STANDARD', 'DELUXE', 'SUITE'] as const;
 type UnitType = (typeof UNIT_TYPES)[number];
 
-// nightly / weekly / monthly in thebe, per unit type
+// nightly / weekly / monthly in thebe, per unit type.
+// `guests` is 4 to match migration 063 ("units sleep four"): seeding 2 and 3 here
+// re-created the very bug that migration fixed — a family of four was refused at
+// the quote stage and the unit never even appeared in an availability search.
 const RATES: Record<UnitType, { nightly: number; weekly: number; monthly: number; guests: number }> = {
-  STANDARD: { nightly: 65_000, weekly: 390_000, monthly: 1_400_000, guests: 2 },
-  DELUXE: { nightly: 95_000, weekly: 570_000, monthly: 2_100_000, guests: 3 },
+  STANDARD: { nightly: 65_000, weekly: 390_000, monthly: 1_400_000, guests: 4 },
+  DELUXE: { nightly: 95_000, weekly: 570_000, monthly: 2_100_000, guests: 4 },
   SUITE: { nightly: 150_000, weekly: 900_000, monthly: 3_400_000, guests: 4 },
 };
-const TAX_BPS = 1400; // 14% VAT (Botswana)
+// Zero-rated, matching migration 063: Lifestyle does not add tax on top of its
+// rates — the advertised price is the price the guest pays. Demo invoices that
+// showed 14% VAT were demonstrating a rule the business does not have.
+const TAX_BPS = 0;
 const DEPOSIT_PCT = 50;
 
 const client = new Client({
@@ -188,19 +194,29 @@ async function run(): Promise<void> {
   }
 
   // 2. Rate plans, one per unit type.
+  //
+  // A UNIQUE index allows only ONE active plan per unit_type, so we cannot blindly
+  // insert an active one — live already has real ones and the insert would fail.
+  // But seeding them all inactive left a fresh local database with NO active plan
+  // at all, and the quote engine resolves by active plan: /stay offered no
+  // apartments, and every booking answered "No active rate plan for a STANDARD
+  // unit" when staff tried to take payment. So: activate only where the slot is
+  // empty. Live keeps its own plans; a fresh demo is actually bookable.
   const ratePlanByType: Record<UnitType, string> = {} as Record<UnitType, string>;
   for (const t of UNIT_TYPES) {
     const r = RATES[t];
-    // active=false: a UNIQUE index allows only one ACTIVE rate plan per unit_type,
-    // and live already has real active ones. Demo quotes reference these by id and
-    // carry their own amounts, so inactive is fine.
+    const { rows: [existingActive] } = await client.query(
+      `SELECT id FROM rate_plans WHERE unit_type = $1 AND active AND deleted_at IS NULL LIMIT 1`,
+      [t]
+    );
+    const activate = !existingActive;
     const { rows: [row] } = await client.query(
       `INSERT INTO rate_plans
          (unit_type, name, nightly_rate, weekly_rate, monthly_rate, min_nights,
           max_guests, deposit_pct, tax_rate_bps, currency, active, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,'BWP',false,$9,$9) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,'BWP',$9,$10,$10) RETURNING id`,
       [t, `DEMO ${t[0]}${t.slice(1).toLowerCase()} Rate`, r.nightly, r.weekly,
-        r.monthly, r.guests, DEPOSIT_PCT, TAX_BPS, A]
+        r.monthly, r.guests, DEPOSIT_PCT, TAX_BPS, activate, A]
     );
     ratePlanByType[t] = row.id;
   }
@@ -287,6 +303,22 @@ async function run(): Promise<void> {
       [guest, room.id, iso(checkIn), iso(checkOut), status, `DEMO ${room.type} ${nights}n`, A, bookedAt.toISOString()]
     );
     nRes++;
+
+    // A CHECKED_IN reservation is not enough to put a guest on the board: the
+    // cockpit reads in-house from OCCUPANCY (that is what Check in creates), so
+    // seeding the status alone produced a house that was fully booked and yet
+    // reported "zero percent full" with nobody in-house. Mirror what
+    // CheckinsRepository.checkIn does — occupancy row + room OCCUPIED.
+    if (status === 'CHECKED_IN') {
+      await client.query(
+        `INSERT INTO occupancy
+           (reservation_id, room_id, status, checked_in_at, guest_count, notes,
+            created_by, updated_by, created_at, updated_at)
+         VALUES ($1,$2,'CHECKED_IN',$3,$4,'DEMO',$5,$5,$3,$3)`,
+        [resRow.id, room.id, checkIn.toISOString(), guests, A]
+      );
+      await client.query(`UPDATE rooms SET status = 'OCCUPIED', updated_at = NOW() WHERE id = $1`, [room.id]);
+    }
 
     const { rows: [quoteRow] } = await client.query(
       `INSERT INTO quotes
