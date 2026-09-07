@@ -38,10 +38,20 @@ export class CheckinsService {
       throw AppError.notFound(`Reservation with id ${dto.reservation_id} not found`);
     }
 
-    // Only a confirmed reservation may check in.
-    if (reservation.status !== 'CONFIRMED') {
+    // A guest at the door may check in whether or not they have paid (owner decision
+    // 2026-09-07, amending invariant 3). Some clients settle after the stay, and
+    // refusing them at the desk did not collect the money — it just meant the booking
+    // never got made, so the room they slept in read as free to everyone else.
+    //
+    // A WHITELIST, not a status test, so a new reservation status has to be considered
+    // here rather than silently inheriting the right to check in.
+    if (reservation.status !== 'PENDING' && reservation.status !== 'CONFIRMED') {
       throw AppError.conflict(
-        `Reservation must be CONFIRMED to check in (current status: ${reservation.status})`
+        reservation.status === 'BLOCKED'
+          ? 'This is an imported Booking.com block — claim it to a guest before checking them in.'
+          : reservation.status === 'CHECKED_IN'
+            ? 'This guest is already checked in.'
+            : `A ${reservation.status.toLowerCase().replace('_', ' ')} booking cannot be checked in.`
       );
     }
 

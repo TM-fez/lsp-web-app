@@ -30,9 +30,51 @@ describe('CheckinsService', () => {
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
-    it('throws 409 when the reservation is not CONFIRMED', async () => {
+    // Owner decision 2026-09-07 (invariant 3): money no longer gates the stay. This
+    // test used to assert the opposite — that a PENDING booking could NOT check in —
+    // and it is inverted deliberately, not relaxed. Refusing an unpaid guest at the
+    // desk never collected the money; it just meant the booking was never made, so the
+    // room they slept in read as free to everyone else.
+    it('checks in a PENDING (unpaid) booking — some guests settle after the stay', async () => {
       repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1' } as any);
-      await expect(service.checkIn(dto, meta)).rejects.toThrow('must be CONFIRMED');
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY' } as any);
+      repository.checkIn.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN' } as any);
+
+      const result = await service.checkIn(dto, meta);
+
+      expect(result.id).toBe('occ1');
+      expect(repository.checkIn).toHaveBeenCalled();
+    });
+
+    // A whitelist, so every OTHER status still has to earn its way in.
+    it.each([
+      ['CANCELLED', 'cancelled booking cannot be checked in'],
+      ['CHECKED_OUT', 'checked out booking cannot be checked in'],
+      ['NO_SHOW', 'no show booking cannot be checked in'],
+    ])('refuses a %s booking', async (status, message) => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status, room_id: 'rm1' } as any);
+      await expect(service.checkIn(dto, meta)).rejects.toThrow(message);
+      expect(repository.checkIn).not.toHaveBeenCalled();
+    });
+
+    it('sends a BLOCKED Booking.com row to the claim flow rather than checking it in', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'BLOCKED', room_id: 'rm1' } as any);
+      await expect(service.checkIn(dto, meta)).rejects.toThrow('claim it to a guest');
+      expect(repository.checkIn).not.toHaveBeenCalled();
+    });
+
+    it('tells you plainly when the guest is already checked in', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CHECKED_IN', room_id: 'rm1' } as any);
+      await expect(service.checkIn(dto, meta)).rejects.toThrow('already checked in');
+      expect(repository.checkIn).not.toHaveBeenCalled();
+    });
+
+    // The money gate is gone; the OPERATIONAL gates below must be untouched. A unit
+    // that is occupied or unclean still cannot take a guest, paid or not.
+    it('still refuses an unpaid guest when the room is not READY', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1' } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'DIRTY' } as any);
+      await expect(service.checkIn(dto, meta)).rejects.toThrow('not ready');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 

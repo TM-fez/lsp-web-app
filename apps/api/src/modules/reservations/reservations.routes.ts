@@ -19,7 +19,7 @@ import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
-import { CreateReservationSchema, UpdateReservationSchema, ClaimOtaBookingSchema, MarkPaidSchema } from './reservations.types.js';
+import { CreateReservationSchema, UpdateReservationSchema, ClaimOtaBookingSchema, MarkPaidSchema, ConfirmReservationSchema } from './reservations.types.js';
 
 export function createReservationsRouter(dbInstance = db): Router {
   const router = Router();
@@ -71,6 +71,15 @@ export function createReservationsRouter(dbInstance = db): Router {
   // raise the intent, payments.update to settle it), so this changes WHERE staff can
   // take a payment, never WHO may take one.
   router.post('/:id/mark-paid', authorize('payments.create', 'payments.update'), validateBody(MarkPaidSchema), controller.markPaid);
+
+  // Confirm a stay with NO money in hand (owner decision 2026-09-07, invariant 3).
+  // Some clients settle after the stay, and a booking nobody has paid for is still a
+  // booking the house must honour. Gated on reservations.update, deliberately NOT a new
+  // permission and NOT a payments one: reception already holds payments.create +
+  // payments.update (064) and could already reach CONFIRMED by recording a P1 payment,
+  // so a new gate would be theatre. The audit trail is the control — the row records
+  // confirmed_without_payment plus who and why.
+  router.post('/:id/confirm', authorize('reservations.update'), validateBody(ConfirmReservationSchema), controller.confirmReservation);
 
   // Record that a confirmed guest never arrived (migration 065). Gated on
   // reservations.update, not a payment permission: this changes what the booking says

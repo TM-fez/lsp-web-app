@@ -42,8 +42,8 @@ export class CockpitRepository {
   }
 
   /**
-   * Confirmed reservations whose stay has started and who are not yet checked in —
-   * today's arrivals AND anyone still waiting from an earlier day.
+   * Reservations whose stay has started and who are not yet checked in — today's
+   * arrivals AND anyone still waiting from an earlier day.
    *
    * This used to test `check_in_date = today` exactly, which stranded a guest the
    * moment their arrival date passed: they were no longer an arrival, and they were
@@ -57,7 +57,14 @@ export class CockpitRepository {
    */
   async arrivals(propertyId?: string): Promise<CockpitGuestCard[]> {
     return this.guestCards(propertyId)
-      .where('res.status', '=', 'CONFIRMED')
+      // PENDING as well as CONFIRMED (owner decision 2026-09-07, invariant 3): money no
+      // longer decides whether a stay is real. This rail's Check in button is the ONLY
+      // one in the app, so filtering on CONFIRMED stranded every unpaid guest exactly
+      // the way the date test used to strand late ones — not an arrival, not in-house,
+      // invisible. A guest standing at the desk who has not paid is still an arrival.
+      // Bounded below by the same date window, and stale website PENDINGs are swept by
+      // reservations.expiry, so this cannot fill with abandoned baskets.
+      .where('res.status', 'in', ['PENDING', 'CONFIRMED'])
       .where(sql<boolean>`res.check_in_date <= ${propertyToday()}`)
       .where(sql<boolean>`res.check_out_date > ${propertyToday()}`)
       // Oldest arrival first: whoever has been waiting longest is the urgent one.
