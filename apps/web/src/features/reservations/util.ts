@@ -1,4 +1,4 @@
-import type { ReservationStatus, ReservationSource } from '@/types';
+import type { ReservationStatus, ReservationSource, PaymentState } from '@/types';
 
 type Tone = 'slate' | 'green' | 'amber' | 'blue' | 'rose' | 'violet';
 
@@ -25,6 +25,25 @@ export const statusTone: Record<ReservationStatus, Tone> = {
 export const statusLabel = (s: ReservationStatus) =>
   s === 'BLOCKED' ? 'OTA block' : s === 'NO_SHOW' ? 'no-show' : s.replace(/_/g, ' ').toLowerCase();
 
+/**
+ * The MONEY badge, deliberately separate from statusTone above.
+ *
+ * Since 2026-09-07 a booking can be CONFIRMED, or the guest already in the unit, with
+ * nothing paid — so one badge can no longer carry both facts. Green here means the
+ * money is in, and nothing else does.
+ */
+export const paymentTone: Record<PaymentState, Tone> = {
+  UNPAID: 'rose',
+  PART_PAID: 'amber',
+  PAID: 'green',
+};
+
+export const paymentLabel: Record<PaymentState, string> = {
+  UNPAID: 'unpaid',
+  PART_PAID: 'part paid',
+  PAID: 'paid',
+};
+
 // Booking origin, ordered for the filter dropdown (most common first).
 export const SOURCES: ReservationSource[] = [
   'WALK_IN',
@@ -50,7 +69,10 @@ const SOURCE_LABELS: Record<ReservationSource, string> = {
 
 export const sourceLabel = (s: ReservationSource) => SOURCE_LABELS[s] ?? s;
 
-/** A reservation can be edited / cancelled only while it is still open. */
+/**
+ * A reservation can be edited / cancelled only while it is still open. Note this is
+ * about the STAY, not the money: a confirmed booking nobody has paid for is still open.
+ */
 export const isOpen = (s: ReservationStatus) => s === 'PENDING' || s === 'CONFIRMED';
 
 export function fmtDate(s: string): string {

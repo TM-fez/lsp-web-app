@@ -185,6 +185,37 @@ export interface RatePlan {
   updated_by_name?: string | null;
 }
 
+/** Where a booking stands on money — derived from its invoices, never stored. */
+export type PaymentState = 'UNPAID' | 'PART_PAID' | 'PAID';
+
+export interface FolioInvoiceLine {
+  id: string;
+  number: string;
+  kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
+  status: 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID';
+  total_amount: number;
+  created_at: string;
+}
+
+/**
+ * A booking's money: total / paid / outstanding, all in thebe.
+ *
+ * `total_source` matters on screen. 'FOLIO' means the price was agreed and frozen, so
+ * it is what the guest owes. 'PRICED' means nothing was ever frozen and this figure was
+ * recomputed from TODAY's rate plan — a live estimate that moves if rates move. Showing
+ * the two identically would let staff quote a number the booking does not stand behind.
+ */
+export interface ReservationFolio {
+  reservation_id: string;
+  currency: string;
+  total_amount: number;
+  paid_amount: number;
+  outstanding_amount: number;
+  payment_state: PaymentState;
+  total_source: 'FOLIO' | 'PRICED';
+  invoices: FolioInvoiceLine[];
+}
+
 export interface Reservation {
   id: string;
   contact_id: string;
@@ -199,6 +230,11 @@ export interface Reservation {
   discount_reason: string | null;
   discount_approved_at: string | null;
   created_at: string;
+  // Folio (migration 067) — the money axis, orthogonal to `status`. The agreed price,
+  // frozen when the booking was confirmed or first paid; null if it never was.
+  folio_total_amount?: number | null;
+  confirmed_without_payment?: boolean;
+  confirmation_note?: string | null;
   // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
   booking_coordinator_id?: string | null;
   billing_contact_id?: string | null;

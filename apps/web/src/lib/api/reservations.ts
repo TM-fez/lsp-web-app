@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod } from '@/types';
+import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio } from '@/types';
 
 export interface ReservationListParams {
   search?: string;
@@ -33,8 +33,9 @@ export async function listReservations(params?: ReservationListParams): Promise<
   return data;
 }
 
-// Status is intentionally never sent: the server forces PENDING on create, and a
-// reservation only becomes CONFIRMED through payment (settlePaid).
+// Status is intentionally never sent: the server forces PENDING on create. CONFIRMED is
+// reached only through one of the three sanctioned server paths (payment, confirming
+// without payment, or claiming an OTA block) — never by a client setting it.
 export async function createReservation(input: CreateReservationInput): Promise<Reservation> {
   const { data } = await api.post<Reservation>('/reservations', input);
   return data;
@@ -79,6 +80,21 @@ export interface MarkPaidInput {
 // one, so public-site bookings had no way to be settled before this.
 export async function markReservationPaid(id: string, input: MarkPaidInput): Promise<Reservation> {
   const { data } = await api.post<Reservation>(`/reservations/${id}/mark-paid`, input);
+  return data;
+}
+
+// The booking's money: total / paid / outstanding, derived from its invoices. Gated on
+// reservations.read, not a payments permission — this reports money, it never moves any.
+export async function getReservationFolio(id: string): Promise<ReservationFolio> {
+  const { data } = await api.get<ReservationFolio>(`/reservations/${id}/folio`);
+  return data;
+}
+
+// Confirm a stay with no money in hand (owner decision 2026-09-07). Some clients settle
+// after the stay, and refusing to confirm them never collected the money — it just meant
+// the booking was never made, so the unit read as free to everyone else.
+export async function confirmReservation(id: string, note?: string): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/confirm`, note ? { note } : {});
   return data;
 }
 

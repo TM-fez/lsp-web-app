@@ -14,6 +14,10 @@ describe('ReservationsService', () => {
       create: vi.fn(),
       update: vi.fn(),
       contactExists: vi.fn(),
+      // The folio reads (migration 067). markPaid now caps against what is actually
+      // OUTSTANDING rather than the whole stay, so it goes through these.
+      paidToDate: vi.fn().mockResolvedValue(new Map()),
+      folioInvoices: vi.fn().mockResolvedValue([]),
     } as unknown as vi.Mocked<ReservationsRepository>;
 
     service = new ReservationsService(repository);
@@ -282,19 +286,63 @@ describe('ReservationsService', () => {
       );
     });
 
-    it('refuses to take more than the booking is worth', async () => {
+    it('refuses to take more than the booking still owes', async () => {
       await expect(
         paid.markPaid('res-w', { method: 'CASH', amount: 999_999 } as any, { userId: 'u1' } as any),
-      ).rejects.toThrow('cannot be more than the total due');
+      ).rejects.toThrow('more than this booking still owes');
       expect(quotes.createQuote).not.toHaveBeenCalled();
     });
 
-    it('refuses anything that is not still pending', async () => {
-      repository.findById.mockResolvedValue({ ...pending, status: 'CONFIRMED' } as any);
+    // Owner decision 2026-09-07: money can arrive at any point in a LIVE stay,
+    // including after it. This test used to assert that only a PENDING booking could
+    // pay — which excluded the very guest pay-later exists for, since by the time they
+    // settle they are CHECKED_OUT.
+    it.each(['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'])(
+      'accepts payment on a %s booking that still owes money',
+      async (status) => {
+        repository.findById.mockResolvedValue({ ...pending, status } as any);
+        await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+        expect(payments.attempt).toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['CANCELLED', 'cancelled booking cannot take a payment'],
+      ['NO_SHOW', 'no show booking cannot take a payment'],
+    ])('refuses payment on a %s booking', async (status, message) => {
+      repository.findById.mockResolvedValue({ ...pending, status } as any);
       await expect(
         paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
-      ).rejects.toThrow('Only a pending booking can be marked paid');
+      ).rejects.toThrow(message);
       expect(payments.attempt).not.toHaveBeenCalled();
+    });
+
+    it('sends a BLOCKED Booking.com row to the claim flow instead of taking money', async () => {
+      repository.findById.mockResolvedValue({ ...pending, status: 'BLOCKED' } as any);
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('claim it to a guest');
+      expect(payments.attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a second payment once nothing is outstanding', async () => {
+      // P1,008.00 already received against a P1,008.00 stay.
+      (repository.paidToDate as any).mockResolvedValue(new Map([['res-w', 100_800]]));
+      await expect(
+        paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('already paid in full');
+      expect(payments.attempt).not.toHaveBeenCalled();
+    });
+
+    it('charges only the REMAINDER when the booking is part paid', async () => {
+      (repository.paidToDate as any).mockResolvedValue(new Map([['res-w', 50_000]]));
+      await paid.markPaid('res-w', { method: 'CASH' } as any, { userId: 'u1' } as any);
+      // 100_800 total − 50_000 already in = 50_800 still owed. Capping against the
+      // whole stay would have taken the full 100_800 a second time.
+      expect(payments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 50_800, purpose: 'BALANCE' }),
+        expect.anything(),
+      );
     });
 
     it('refuses when the stay cannot be priced', async () => {

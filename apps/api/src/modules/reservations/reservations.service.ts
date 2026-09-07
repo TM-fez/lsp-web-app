@@ -178,9 +178,18 @@ export class ReservationsService {
     }
 
     const reservation = await this.getReservationById(id, activePropertyId);
-    if (reservation.status !== 'PENDING') {
+    // Money can arrive at any point in a live stay — including AFTER it, which is the
+    // whole point of pay-later ("some clients pay after stay", owner 2026-09-07). This
+    // used to demand PENDING, so the very guest the decoupling exists for could not be
+    // recorded as paying: by the time they paid they were CHECKED_OUT.
+    // A whitelist, so a new status must be considered rather than inheriting the right
+    // to take money.
+    const PAYABLE = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'];
+    if (!PAYABLE.includes(reservation.status)) {
       throw AppError.conflict(
-        `Only a pending booking can be marked paid — this one is already ${reservation.status.toLowerCase().replace('_', ' ')}.`,
+        reservation.status === 'BLOCKED'
+          ? 'This is an imported Booking.com block — claim it to a guest before taking payment.'
+          : `A ${reservation.status.toLowerCase().replace('_', ' ')} booking cannot take a payment.`,
       );
     }
 
@@ -192,9 +201,34 @@ export class ReservationsService {
       throw AppError.badRequest(`This booking cannot be priced: ${priced.reason}. Set a rate plan for the unit first.`);
     }
 
-    const amount = dto.amount ?? priced.total_amount;
-    if (amount > priced.total_amount) {
-      throw AppError.badRequest('The amount paid cannot be more than the total due for this booking.');
+    // The folio is the authority on what is still owed: the frozen agreed price minus
+    // what has already arrived. Capping against `priced.total_amount` (the whole stay,
+    // recomputed at TODAY's rates) let a second payment be taken for the full amount on
+    // a booking that was already part-paid, and moved with the rate plan besides.
+    const folio = await this.getFolio(id, activePropertyId);
+    const amount = dto.amount ?? folio.outstanding_amount;
+
+    if (amount <= 0) {
+      throw AppError.badRequest(
+        folio.outstanding_amount <= 0
+          ? 'This booking is already paid in full.'
+          : 'Enter how much the guest paid.',
+      );
+    }
+    if (amount > folio.outstanding_amount) {
+      throw AppError.badRequest(
+        `That is more than this booking still owes. Outstanding: ${(folio.outstanding_amount / 100).toFixed(2)}.`,
+      );
+    }
+
+    // Freeze the agreed price on first contact with money, if confirming did not
+    // already. After this a rate change cannot restate what this guest owes.
+    if (reservation.folio_total_amount == null && folio.total_amount > 0) {
+      await this.repository.update(
+        id,
+        { folio_total_amount: folio.total_amount, updated_by: meta.userId },
+        meta,
+      );
     }
 
     const quote = await this.quotes.createQuote(
@@ -217,8 +251,10 @@ export class ReservationsService {
         hold_id: hold.id,
         method: dto.method,
         // Label only — the amount is explicit either way. BALANCE reads correctly for
-        // a payment that settles the whole booking, DEPOSIT for a part payment.
-        purpose: amount >= priced.total_amount ? 'BALANCE' : 'DEPOSIT',
+        // a payment that CLEARS the booking, DEPOSIT for one that leaves a balance.
+        // Measured against what was outstanding, not the whole stay, so the second
+        // half of a part payment is a BALANCE rather than another DEPOSIT.
+        purpose: amount >= folio.outstanding_amount ? 'BALANCE' : 'DEPOSIT',
         amount,
       },
       meta,
@@ -245,7 +281,7 @@ export class ReservationsService {
             quote_id: quote.id,
             hold_id: hold.id,
             reservation_id: reservation.id,
-            kind: amount >= priced.total_amount ? 'BALANCE' : 'DEPOSIT',
+            kind: amount >= folio.outstanding_amount ? 'BALANCE' : 'DEPOSIT',
             amount,
           },
           meta,
