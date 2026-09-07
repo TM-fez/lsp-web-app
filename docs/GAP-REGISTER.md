@@ -171,9 +171,13 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 - **Today** — roles and per-property access decide who can see what.
 - **Needed** — who must *do* what, and by when: the month-end checklist. Accounts is two people; the process should not live in their heads.
 
-### G30 · Accounts Processing · `HALF` · Decide · L
+### G30 · Accounts Processing · `HALF` · Build · L
 - **Today** — expenses, operating costs, payroll, receipts and invoices all captured.
-- **Needed** — the accountant's working layer: journal, period notes, close. The app was deliberately built as not-an-accounting-system and QuickBooks is in use. **Decide the boundary before building.**
+- ✅ **Boundary decided 2026-09-07: LSP is the book of record for revenue.** The owner's driver was a P&L that reads correctly month by month — revenue earned in September must show in September even when the guest pays in October, and October's payment must then show September's debt as settled.
+- **Consequence** — revenue moves from cash-basis to **accrual**, recognised per night. Today's `/reports/pnl` is a *hybrid*: cash revenue against accrual costs (`operating_expenses.incurred_on`, `maintenance_work_orders.opened_at` are already accrual). That is the real reason the monthly margin does not read correctly — the two sides of the same month are measured on different clocks.
+- **Scope taken now** — the nightly revenue ledger, earned/received views, receivables and aging. Plus two pieces of accounting hygiene pulled forward because they cannot be retrofitted: gapless invoice numbering (D09) and void-instead-of-delete on posted documents.
+- **Deliberately deferred** — period close and credit notes. The recognition ledger is *versioned* (supersede, never update in place), which is the structure period close needs, so adding it later is a new table and a rule rather than a rewrite. Tracked under G29.
+- **Known limit, must be said on screen** — the backfill prices historic stays at *current* rates, because rate plans have no effective dating. Figures before go-live are reconstructed, not recovered.
 
 ### G31 · Banking · `OUT` · Build · L
 - **Today** — no bank account, statement import or reconciliation. Reconciliation happens by hand every Monday.
@@ -193,9 +197,11 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 - **Consequence, deliberate** — `EXPORTABLE_STATUSES` gained PENDING, so a held night publishes to Booking.com as busy. Over-blocking loses a booking if the hold expires; under-blocking loses a guest's room. One constant to flip if the balance proves wrong in practice.
 - **Guarded by** — `availability-d01.test.ts` asserts the *invariant* (search and booking never disagree), not the rule, so a reversal fails loudly rather than reopening the divergence elsewhere.
 
-### D02 · Unpaid nights are not "demand" in forward occupancy · `OPEN` · Decide · S
-- **Today** — `reports.forwardOccupancy` counts `('CONFIRMED','CHECKED_IN','BLOCKED')`. Since D01, a PENDING night is unsellable but still absent from the forward-occupancy nudge, so the nudge can say "you have space" about a room nobody can book.
-- **Needed** — an owner answer, not a build. Whether an unpaid night is *occupancy in a report* is a different question from whether it is *sellable*, and changing it moves numbers the owner reads. Deliberately left alone in #99.
+### D02 · Unpaid nights are not "demand" in forward occupancy · ✅ `RESOLVED` 2026-09-07
+- **Was** — `reports.forwardOccupancy` counted `('CONFIRMED','CHECKED_IN','BLOCKED')`. Since D01 a PENDING night is unsellable but was still absent from the nudge, so it could say "you have space" about a room nobody can book.
+- **Owner decision** — **yes, a held night is demand.** PENDING joins the forward-occupancy set. The asymmetry runs the same way D01 already chose: over-counting costs a discount you needn't have offered, under-counting costs a room you promised twice.
+- **Scoped to the forward view only.** `occupancyByProperty`, `occupancyByMonth` and `occupancyByOwnedRoom` are *historic* occupancy and still exclude PENDING: a past held night is one nobody slept in, and counting it would inflate ADR's denominator and put phantom nights on a landlord's statement.
+- **What it moves** — the nudge thresholds only. Nothing on the P&L, nothing on an owner statement, no number the owner reads as money. That is what made it a cheap call.
 
 ### D03 · The activity feed is not property-scoped · ✅ `RESOLVED` 2026-09-01 (PR #101)
 - **Was** — a Village user read CBD's activity. `/activity` was gated on `activity.read` (066) so contractors were out, but there was no property filter.
@@ -204,7 +210,28 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 
 ### D04 · `PARTIALLY_PAID` is a status nothing writes · `OPEN` · Decide · S
 - **Today** — read by the finance queries, the UI badges and the status filter; written by nothing. A part payment produces a fully-PAID smaller invoice plus an ISSUED balance (#96) instead.
-- **Needed** — leave it or remove it. Removing means rebuilding a Postgres enum type, which is real work for no functional gain today. It earns its place with monthly rent instalments (G22/G24).
+- **Needed** — leave it or remove it. Removing means rebuilding a Postgres enum type, which is real work for no functional gain today.
+- **Annotated 2026-09-07** — **keep it, still unwritten, for now.** The owner asked for "P500 of P1,500 paid", and that is answered at the *reservation* level by the folio (derived from invoices), not by this status. Writing `PARTIALLY_PAID` today would be actively wrong: there is no part-payment amount column, so `finance.repository.ts` counts such an invoice's **full** value as outstanding — it would inflate the receivables ledger and every aging bucket. It earns its place when `payments` + `payment_allocations` land (G30 scope), at which point `outstanding = total − Σ allocations` makes the status true. Until then the folio arithmetic must live in **exactly one SQL helper**, so that swap is one query rather than a hunt.
+
+### D06 · Availability's occupancy join has no date predicate · `OPEN` · Build · S
+- **Today** — the reservation leg of `AvailabilityRepository` is correctly date-bounded, but the occupancy leg beside it is `WHERE deleted_at IS NULL AND status = 'CHECKED_IN'` with no dates (`availability.repository.ts:61-66`, `:101-106`, `:138-142`). `occupancy` carries no dates of its own; it hangs off a reservation.
+- **Effect** — a unit occupied *tonight* reads as unavailable for **every** future range. Harmless for today's walk-in (the guest really is in the room), useless for "what is free next month" — which is exactly what the booking calendar and the walk-in search ask.
+- **Needed** — the date-bounded four-status reservation set already subsumes CHECKED_IN, so the fix is to not inherit this join in the new queries, then narrow it in place. Found while planning G32's calendar.
+
+### D07 · Maintenance has no date-ranged block · `OPEN` · Decide · M
+- **Today** — `rooms.status` MAINTENANCE / OUT_OF_SERVICE is a *now* flag, and `maintenance_work_orders` has no scheduled window. There is no way to say "this unit is out from the 12th to the 15th".
+- **Effect** — the calendar can only draw repairs as a whole-row wash with no end date, and forward availability cannot see a planned outage at all. Drawing a bar with invented dates would be a lie on the screen staff are meant to trust.
+- **Needed** — a `room_blocks` table (room, date range, reason, `[)` like every other range here). Neighbours G20/G21; decide with them.
+
+### D08 · Cash-basis revenue buckets months in UTC, not Gaborone · `OPEN` · Build · S
+- **Today** — `reports.repository.ts` buckets on `i.created_at AT TIME ZONE 'UTC'` (`:29-33`, `:40`, `:48-49`, `:66-67`, `:84-85`). The timezone of record is `Africa/Gaborone` (invariant 2).
+- **Effect** — a payment taken at 01:00 Gaborone on 1 October lands in **September**. Two hours of every month land in the wrong one.
+- **Needed** — `PROPERTY_TIMEZONE` from `core/time.ts`. It shifts historical figures slightly, so announce it rather than sliding it in. *Note the accrual ledger is immune by construction: `stay_date` is a `DATE`, and a calendar night has no timezone ambiguity.*
+
+### D09 · Invoice numbers are random, and stamped with the wrong year at midnight · `OPEN` · Build · S
+- **Today** — `invoiceNumber()` (`invoices.service.ts:18-21`) returns `INV-<year>-<8 hex>`.
+- **Effect, two of them** — (1) numbers have no sequence, so "is a document missing?" is unanswerable, for the owner and for BURS; (2) the year comes from raw `new Date().getFullYear()`, which breaks invariant 2 — an invoice raised at 01:00 Gaborone on 1 January is numbered for the *previous* year.
+- **Needed** — a gapless per-year Postgres sequence, and the property-day helper for the year. **Pulled forward into the G30 build deliberately**: issued documents have been sent to guests and cannot be renumbered later, so every month of delay permanently enlarges the ungapless stretch. This is the one piece of accounting hygiene with a real deadline.
 
 ### D05 · The e2e suite cannot run twice against one database · ✅ `RESOLVED` 2026-09-01 (PR #101)
 - **Was** — `afterAll` closed the pool and deleted nothing, so the ACTIVE STANDARD rate plan it created 500'd the next run's first write.
@@ -225,7 +252,8 @@ Several entries are one capability drawn twice on the board.
 ## Decisions to put to the client
 
 1. **Do campaigns run through this app, or through tools that already do it well?** Settles G04, G06, G07, G14; G05 and G09 lean on the answer.
-2. **How far does the app go into accounting, given QuickBooks is in use?** Settles G30, shapes G31.
+2. ~~**How far does the app go into accounting, given QuickBooks is in use?**~~ ✅ **Answered 2026-09-07: LSP is the book of record for revenue.** G30 moves from Decide to Build; G31 (banking) is now a real follow-on rather than a maybe. Period close and credit notes deferred, gapless numbering (D09) pulled forward.
 3. **When does Little Hotelier actually get switched off?** Settles G32, dates G08.
 4. **How many units are on monthly leases right now?** Decides whether the whole long-term block (G19, G22–G26) is urgent or merely untidy.
-5. ~~**Should an unpaid booking hold the room?**~~ ✅ **Answered 2026-09-01: yes.** D01 closed in PR #99. Follow-on still open: does an unpaid night count as *occupancy in a report* (**D02**)?
+5. ~~**Should an unpaid booking hold the room?**~~ ✅ **Answered 2026-09-01: yes.** D01 closed in PR #99. Follow-on ~~**does an unpaid night count as occupancy in a report?**~~ ✅ **Answered 2026-09-07: yes, in the forward view only.** D02 closed.
+6. ~~**Must a guest pay before the stay is confirmed?**~~ ✅ **Answered 2026-09-07: no.** Some clients settle after the stay. CONFIRMED now means *the stay is on*; money moved to its own axis (the folio). Recorded as an amended invariant 3 in `CLAUDE.md`.
