@@ -14,8 +14,11 @@
  * on the negative side — a P1,000 booking refunded P300 reads as MINUS P300 received
  * instead of P700. A REFUNDED invoice was still paid; the money really did arrive.
  *
- * Unit type CUSTOM, not STANDARD: only one rate plan per unit type may be active at a
- * time, so a shared type would collide with any other suite that wants one.
+ * Unit type DELUXE, and this suite claims it. `rate_plans_active_unit_type_unique` is a
+ * partial unique index allowing only ONE active plan per unit type, so two suites
+ * sharing a type collide the moment they run in the same pass — CUSTOM belongs to
+ * mark-paid, STANDARD to everyone else. Choosing CUSTOM here made mark-paid fail
+ * intermittently: order-dependent, so it passed alone and passed some full runs.
  *
  * Invoices are inserted directly rather than driven through markPaid. That is
  * deliberate — this suite is about how the folio READS invoices, and hand-built rows
@@ -84,7 +87,7 @@ async function makeBooking(label: string, folioTotal: number | null): Promise<st
   const roomId = (
     await db.insertInto('rooms')
       .values({
-        name: `Folio ${label}`, code: `FO-${label}-${uniq}`.slice(0, 20), type: 'CUSTOM',
+        name: `Folio ${label}`, code: `FO-${label}-${uniq}`.slice(0, 20), type: 'DELUXE',
         capacity: 4, building_id: buildingId, created_by: userId, updated_by: userId,
       })
       .returning('id').executeTakeFirstOrThrow()
@@ -150,7 +153,7 @@ beforeAll(async () => {
   ratePlanId = (
     await db.insertInto('rate_plans')
       .values({
-        unit_type: 'CUSTOM', name: `FO Rate ${uniq}`,
+        unit_type: 'DELUXE', name: `FO Rate ${uniq}`,
         nightly_rate: NIGHTLY, weekly_rate: NIGHTLY * 6, monthly_rate: NIGHTLY * 24,
         max_guests: 4, deposit_pct: 50, tax_rate_bps: 0,
         created_by: userId, updated_by: userId,
@@ -275,7 +278,7 @@ describe('booking folio', () => {
     const id = await makeBooking('priced', null);
     const folio = await buildService().getFolio(id, propertyId);
 
-    // One night on the CUSTOM plan.
+    // One night on the DELUXE plan.
     expect(folio.total_amount).toBe(NIGHTLY);
     // The flag is the point: this figure came from TODAY's rate plan, so it will move
     // if rates move. The UI has to be able to tell the guest which one they are seeing.
