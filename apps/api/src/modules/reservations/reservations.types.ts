@@ -17,8 +17,10 @@ export const ReservationStatusEnum = z.enum([
   'NO_SHOW',
 ]);
 
-// A reservation can only be CREATED as PENDING. CONFIRMED is reached solely
-// through settlePaid() (payment) — it can never be set directly by a client.
+// A reservation can only be CREATED as PENDING. CONFIRMED is never set directly by a
+// client: it is reached through one of the three sanctioned writers named in invariant 3
+// — settlePaid() (payment arrived), confirmWithoutPayment() (staff vouched for it), or
+// claimOtaBooking() (a Booking.com block gained a real guest). Each audits who did it.
 export const UserInputReservationStatusEnum = z.enum([
   'PENDING',
 ]);
@@ -119,6 +121,48 @@ export interface ReservationListRow extends ReservationRow {
   // CRM display names for the two optional booking contacts (A4).
   booking_coordinator_name: string | null;
   billing_contact_name: string | null;
+}
+
+/**
+ * One invoice as it appears on a booking's folio — enough to explain the arithmetic
+ * on screen ("what made up the P500 we've received?") without a second request.
+ */
+export interface FolioInvoiceLine {
+  id: string;
+  number: string;
+  kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
+  status: 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID';
+  total_amount: number;
+  created_at: Date;
+}
+
+/**
+ * The MONEY axis of a booking (migration 067) — total / paid / outstanding, all in
+ * integer thebe. Orthogonal to `status`: nothing here decides whether the booking
+ * holds the room (invariant 7).
+ *
+ * `total_source` is deliberately on the wire. 'FOLIO' means the agreed price was
+ * frozen on the booking and is authoritative. 'PRICED' means it was never frozen and
+ * this figure was recomputed from TODAY's rate plan — a best guess that will move if
+ * rates move. The UI must be able to tell the guest which one they are looking at.
+ */
+export interface ReservationFolio {
+  reservation_id: string;
+  currency: string;
+  total_amount: number;
+  paid_amount: number;
+  outstanding_amount: number;
+  payment_state: 'UNPAID' | 'PART_PAID' | 'PAID';
+  total_source: 'FOLIO' | 'PRICED';
+  invoices: FolioInvoiceLine[];
+}
+
+/** The three folio figures alone, for list rows that want a badge, not a breakdown. */
+export interface FolioTotals {
+  reservation_id: string;
+  paid_amount: number;
+  outstanding_amount: number;
+  payment_state: 'UNPAID' | 'PART_PAID' | 'PAID';
 }
 
 export interface ReservationFilters {

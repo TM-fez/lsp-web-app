@@ -99,6 +99,14 @@ export class ReservationsController {
     }
   };
 
+  getFolio = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.getFolio(req.params.id as string, req.activePropertyId));
+    } catch (err) {
+      next(err);
+    }
+  };
+
   claimOtaBooking = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as ClaimOtaBookingDTO;

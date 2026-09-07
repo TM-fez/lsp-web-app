@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
-import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow } from './reservations.types.js';
+import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 export class ReservationsRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -12,6 +12,60 @@ export class ReservationsRepository {
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
+  }
+
+  /**
+   * ── THE folio arithmetic. One definition, deliberately. ──────────────────────
+   *
+   * How much money has actually arrived against a booking, in thebe.
+   *
+   * Why it lives in exactly one place: D01 was two definitions of "blocked" drifting
+   * apart. A second definition of "paid" would fail the same way — so every caller
+   * (the folio read, list badges, the cockpit, markPaid's cap) comes through here.
+   * When `payments` + `payment_allocations` land (G30, closing D04) the body of this
+   * one query changes to sum allocations, and every caller follows for free.
+   *
+   * ⚠️ The refund subtlety, which the obvious query gets backwards:
+   * refundInvoice() marks the ORIGINAL invoice 'REFUNDED' and inserts a SEPARATE
+   * positive row with kind='REFUND', status='PAID'. So filtering on status='PAID'
+   * alone drops the original from the positive side while keeping the refund on the
+   * negative side: a P1,000 booking refunded P300 would read as −P300 paid instead of
+   * P700. A REFUNDED invoice was still paid — the money did arrive — so both statuses
+   * count, and the REFUND row is what takes it back out.
+   */
+  async paidToDate(reservationIds: string[]): Promise<Map<string, number>> {
+    const paid = new Map<string, number>();
+    if (reservationIds.length === 0) return paid;
+
+    const rows = await this.db
+      .selectFrom('invoices')
+      .select(['reservation_id'])
+      .select(
+        sql<string>`COALESCE(SUM(CASE WHEN kind = 'REFUND' THEN -total_amount ELSE total_amount END), 0)`.as('paid')
+      )
+      .where('reservation_id', 'in', reservationIds)
+      .where('deleted_at', 'is', null)
+      .where('status', 'in', ['PAID', 'REFUNDED'])
+      .groupBy('reservation_id')
+      .execute();
+
+    for (const row of rows) {
+      // SUM() comes back as a string from pg (bigint), so Number() it here rather than
+      // letting a string leak into money arithmetic (invariant 1: integer thebe).
+      if (row.reservation_id) paid.set(row.reservation_id, Number(row.paid));
+    }
+    return paid;
+  }
+
+  /** The invoice documents behind a booking's folio, newest last. */
+  async folioInvoices(reservationId: string): Promise<FolioInvoiceLine[]> {
+    return this.db
+      .selectFrom('invoices')
+      .select(['id', 'number', 'kind', 'status', 'total_amount', 'created_at'])
+      .where('reservation_id', '=', reservationId)
+      .where('deleted_at', 'is', null)
+      .orderBy('created_at', 'asc')
+      .execute();
   }
 
   /** The property a room belongs to (room → building → property), or null. */
