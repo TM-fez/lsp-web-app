@@ -47,8 +47,18 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    `apps/web/src/lib/utils/money.ts`. Percentages are basis points (`bpsToPct` / `pctToBps`).
 2. **Never use raw `new Date()` for "the property day".** Timezone of record is `Africa/Gaborone`.
    Use `apps/api/src/core/time.ts` and `apps/web/src/lib/utils/date.ts` (`todayISO(offsetDays)`).
-3. **Only `settlePaid()` in `apps/api/src/modules/payments/payments.repository.ts` may set a
-   reservation to CONFIRMED.** Create/edit paths must never do it.
+3. **CONFIRMED means the stay is on — not that the money arrived.** Owner decision 2026-09-07:
+   a guest can be confirmed, and can check in, without paying. Some clients settle after the stay,
+   and a booking nobody has paid for is still a booking the house must honour. Money lives on its
+   own axis — the *folio* (total / paid / outstanding, derived from invoices).
+   Three sanctioned writers may set CONFIRMED, each auditing who did it in the same transaction:
+   `settlePaid()` (`modules/payments/payments.repository.ts` — payment arrived),
+   `confirmWithoutPayment()` (`modules/reservations/reservations.service.ts` — staff vouched for
+   it, `confirmed_without_payment = true`; ⏳ lands in `feat/g28-confirm-without-payment`), and
+   `claimOtaBooking()` (same file — a Booking.com block gained a real guest). Create/edit paths must still never set it directly:
+   `UserInputReservationStatusEnum` stays `['PENDING']`.
+   *This rule previously read "only `settlePaid()`" — which `claimOtaBooking` had already quietly
+   outgrown. The decoupling makes the existing exception coherent rather than adding a new one.*
 4. **No double-booking.** Overlap = `daterange(check_in_date, check_out_date, '[)')` on the same
    `room_id` — half-open, so same-day checkout/checkin is legal. Enforced by the DB constraint
    `reservations_no_overlap`; catch Postgres code `23P01` (see `isReservationOverlapError`).
@@ -65,10 +75,18 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    the rule: what search calls free must be bookable, and vice versa.
    Consequence, deliberate: `EXPORTABLE_STATUSES` includes PENDING, so a held night publishes to
    Booking.com as busy. Over-blocking loses a booking; under-blocking loses a guest's room.
+   **The money axis is separate and must stay that way.** No availability, overlap or channel-export
+   query may reference the folio, the derived payment state, or the `invoices` table. Whether a
+   booking holds the room is a question about its *status*, never about its money — an unpaid
+   booking holds the room, and so does a part-paid one. `folio-invariant.test.ts` asserts this, so
+   a future "free up the unpaid ones" optimisation fails loudly.
 
-⚠️ **Still divergent, on purpose:** `reports.forwardOccupancy` excludes PENDING from "demand".
-Whether an unpaid night counts as *occupancy in a report* is a separate question from whether it
-is *sellable*, and it moves numbers the owner reads. Do not "align" it without asking.
+✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
+D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
+**Forward view only.** `occupancyByProperty`, `occupancyByMonth` and `occupancyByOwnedRoom` are
+*historic* occupancy and still exclude PENDING on purpose: a past held night is one nobody slept
+in, and counting it would inflate ADR's denominator and put phantom nights on a landlord's
+statement. Do not "align" those three without asking.
 
 ## API conventions (`apps/api`)
 
@@ -108,7 +126,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 061). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 066). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —
