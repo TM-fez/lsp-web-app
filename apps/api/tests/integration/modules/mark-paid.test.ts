@@ -259,10 +259,34 @@ describe('Recording a desk payment (live DB)', () => {
     expect(mine[0]!.reservation_id).toBeTruthy();
   });
 
-  it('refuses a second payment on a booking that is already confirmed', async () => {
+  // This used to assert that a CONFIRMED booking could not be paid again. That rule was
+  // wrong once CONFIRMED stopped meaning "paid" (owner decision 2026-09-07): it blocked
+  // the second half of a part payment, and blocked the pay-after-the-stay guest
+  // entirely. What actually protects the guest is the FOLIO — you cannot take money
+  // that is not owed — so that is what is asserted now.
+  it('refuses a second payment once the booking owes nothing', async () => {
     const service = buildService();
+    const folio = await service.getFolio(reservationId);
+    expect(folio.outstanding_amount).toBe(0);
+
     await expect(
       service.markPaid(reservationId, { method: 'CASH' } as never, { userId } as never),
-    ).rejects.toThrow('Only a pending booking can be marked paid');
+    ).rejects.toThrow('already paid in full');
+  });
+
+  it('takes the remainder — and only the remainder — on a part-paid booking', async () => {
+    const service = buildService();
+    const before = await service.getFolio(partPaidReservationId);
+    expect(before.payment_state).toBe('PART_PAID');
+    expect(before.outstanding_amount).toBeGreaterThan(0);
+
+    await service.markPaid(partPaidReservationId, { method: 'CASH' } as never, { userId } as never);
+
+    const after = await service.getFolio(partPaidReservationId);
+    expect(after.outstanding_amount).toBe(0);
+    expect(after.payment_state).toBe('PAID');
+    // Capping against the whole stay rather than the outstanding balance would have
+    // charged the guest the full amount a second time.
+    expect(after.paid_amount).toBe(before.total_amount);
   });
 });

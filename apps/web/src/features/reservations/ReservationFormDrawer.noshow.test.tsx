@@ -30,6 +30,10 @@ vi.mock('./hooks', () => ({
   useMarkNoShow: () => ({ mutateAsync: noShowMutate, isPending: false }),
   useAvailability: () => ({ data: undefined, isFetching: false }),
   useReservationPricing: () => ({ isLoading: false, data: undefined }),
+  // Folio (migration 067): the drawer reads a booking's money separately from its
+  // status now, because CONFIRMED no longer implies paid.
+  useFolio: () => ({ isLoading: false, isError: false, data: undefined, refetch: vi.fn() }),
+  useConfirmReservation: () => idle,
 }));
 
 import { ReservationFormDrawer } from './ReservationFormDrawer';

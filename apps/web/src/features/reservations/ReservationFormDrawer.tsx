@@ -20,10 +20,12 @@ import {
   useClaimOtaBooking,
   useMarkPaid,
   useMarkNoShow,
+  useFolio,
+  useConfirmReservation,
 } from './hooks';
-import { nights, statusLabel, statusTone, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
+import { nights, statusLabel, statusTone, paymentTone, paymentLabel, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
-import { formatMoney } from '@/lib/utils/money';
+import { formatMoney, pulaToThebe } from '@/lib/utils/money';
 import { useAuthStore } from '@/store/auth';
 import type { Reservation, ReservationSource, Room, PaymentMethod } from '@/types';
 
@@ -65,13 +67,32 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const removeDisc = useRemoveDiscount();
   const markPaid = useMarkPaid();
   const markNoShow = useMarkNoShow();
-  // Amount-due breakdown — only meaningful for an existing pending booking.
-  const showDiscountTools = isEdit && reservation!.status === 'PENDING' && canRequestDiscount;
+  const confirmNoPay = useConfirmReservation();
+  // The booking's money. Fetched for any existing booking — staff should be able to see
+  // what is owed even on a cancelled one, where it decides whether a refund is due.
+  const folio = useFolio(reservation?.id, open && isEdit);
+  const outstanding = folio.data?.outstanding_amount ?? 0;
+
+  // Discounts stay available while the stay is still open, not only while it is unpaid.
+  // A CONFIRMED booking that nobody has paid for can still be discounted — before the
+  // decoupling, confirming meant paying, so PENDING was a fair proxy for "still
+  // negotiable". It no longer is.
+  const showDiscountTools =
+    isEdit && canRequestDiscount && ['PENDING', 'CONFIRMED'].includes(reservation!.status);
   // Recording a payment needs BOTH: raising the intent and settling it are separate
   // permissions, and reception holds only the first — so the button stays hidden
   // rather than showing them an action that 403s halfway through.
   const canTakePayment = hasPerm('payments.create') && hasPerm('payments.update');
-  const showPayment = isEdit && reservation!.status === 'PENDING' && canTakePayment;
+  // Money can arrive at any point in a live stay, INCLUDING after it — that is the
+  // whole point of pay-later, since a guest who settles afterwards is CHECKED_OUT by
+  // then. Mirrors the server's own whitelist in markPaid.
+  const isPayableStatus = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(
+    reservation?.status ?? ''
+  );
+  const showPayment = isEdit && canTakePayment && isPayableStatus && outstanding > 0;
+  // Confirm a stay with no money in hand. PENDING only — anything further along is
+  // already confirmed or is over.
+  const showConfirm = isEdit && !!canUpdate && reservation!.status === 'PENDING';
   // No-show: only a CONFIRMED booking whose arrival day has already passed. Mirrors the
   // server's rule (markNoShow) so the button never offers something the API refuses.
   const showNoShow =
@@ -79,7 +100,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     !!canUpdate &&
     reservation!.status === 'CONFIRMED' &&
     toDateInput(reservation!.check_in_date) < todayISO();
-  const pricing = useReservationPricing(reservation?.id, open && (showDiscountTools || showPayment));
+  const pricing = useReservationPricing(reservation?.id, open && showDiscountTools);
   const busy =
     create.isPending ||
     update.isPending ||
@@ -88,7 +109,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     approveDisc.isPending ||
     removeDisc.isPending ||
     markPaid.isPending ||
-    markNoShow.isPending;
+    markNoShow.isPending ||
+    confirmNoPay.isPending;
 
   const [guest, setGuest] = useState<PickedGuest | null>(null);
   // CRM (A4): who arranged the booking + who the invoice goes to (both optional).
@@ -105,6 +127,17 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const [payMethod, setPayMethod] = useState<PaymentMethod>('CASH');
   const [payReference, setPayReference] = useState('');
   const [confirmPay, setConfirmPay] = useState(false);
+  // Kept as a STRING, like every other field here: parsing on each keystroke would
+  // fight the user mid-type ("1." is not a number yet). Converted to thebe once, below.
+  const [payAmount, setPayAmount] = useState('');
+  const [confirmNoPayStep, setConfirmNoPayStep] = useState(false);
+  const [confirmNote, setConfirmNote] = useState('');
+
+  // Pula in the box, thebe on the wire (invariant 1 — money never travels as a float).
+  // An empty box means "all of it", which is the common case at the desk.
+  const payAmountThebe = payAmount.trim() === '' ? null : pulaToThebe(payAmount);
+  const payAmountValid =
+    payAmountThebe === null || (payAmountThebe > 0 && payAmountThebe <= outstanding);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
@@ -132,7 +165,10 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setConfirmCancel(false);
     setPayMethod('CASH');
     setPayReference('');
+    setPayAmount('');
     setConfirmPay(false);
+    setConfirmNoPayStep(false);
+    setConfirmNote('');
     setConfirmNoShow(false);
     setDiscType('PERCENT');
     setDiscValue('');
@@ -402,121 +438,241 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
             />
           </div>
 
-          {(!isEdit || reservation!.status === 'PENDING') && !showPayment && (
+          {!isEdit && (
             <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Bookings stay <strong>pending</strong> until payment is received — payment is what confirms a
-              reservation.
-              {isEdit && !canTakePayment && ' Ask an admin or Accounts to record the payment.'}
+              New bookings start <strong>pending</strong>. A pending booking already holds the unit — nobody
+              else can be booked into it — so you can take the details now and settle the money later.
             </p>
+          )}
+
+          {/* ── The money on this booking ─────────────────────────────────────────
+              Shown for any existing booking, including cancelled ones, where what was
+              received decides whether a refund is owed. Deliberately separate from the
+              STATUS badge above: since 2026-09-07 a booking can be confirmed, or the
+              guest already in the unit, with nothing paid. */}
+          {isEdit && (
+            <div className="flex flex-col gap-3 border-t border-line pt-4">
+              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Money</Label>
+
+              {folio.isLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Spinner className="h-3.5 w-3.5" /> Working out what’s been paid…
+                </div>
+              ) : folio.isError ? (
+                <div className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  Couldn’t load this booking’s payments, so the amounts below are unknown — don’t quote a
+                  balance from this screen until it loads.{' '}
+                  <button type="button" onClick={() => folio.refetch()} className="underline">
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                folio.data && (
+                  <div className="rounded-md border border-line bg-cream-2/40 px-3 py-2.5">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-display text-lg text-ink">
+                        {formatMoney(folio.data.paid_amount)} of {formatMoney(folio.data.total_amount)} paid
+                      </span>
+                      <Badge tone={paymentTone[folio.data.payment_state]} className="shrink-0">
+                        {paymentLabel[folio.data.payment_state]}
+                      </Badge>
+                    </div>
+
+                    {folio.data.outstanding_amount > 0 && (
+                      <p className="mt-1 text-sm text-terra">
+                        {formatMoney(folio.data.outstanding_amount)} still outstanding
+                      </p>
+                    )}
+
+                    {/* A price that was never agreed on the booking is a live estimate,
+                        not a debt. Saying so stops staff quoting a figure the booking
+                        does not stand behind. */}
+                    {folio.data.total_source === 'PRICED' && (
+                      <p className="mt-2 text-[11px] text-muted">
+                        No price has been agreed on this booking yet — this is today’s rate for the unit, so it
+                        will move if rates do. It is fixed the moment you confirm it or take a payment.
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
+
+              {showConfirm && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!confirmNoPayStep) {
+                          setConfirmNoPayStep(true);
+                          return;
+                        }
+                        try {
+                          await confirmNoPay.mutateAsync({
+                            id: reservation!.id,
+                            note: confirmNote.trim() || undefined,
+                          });
+                          setConfirmNoPayStep(false);
+                        } catch {
+                          /* hook surfaces the error toast */
+                          setConfirmNoPayStep(false);
+                        }
+                      }}
+                    >
+                      {confirmNoPay.isPending ? (
+                        <Spinner className="h-4 w-4" />
+                      ) : confirmNoPayStep ? (
+                        'Yes — confirm, money still owed'
+                      ) : (
+                        'Confirm without payment'
+                      )}
+                    </Button>
+                    {confirmNoPayStep && !confirmNoPay.isPending && (
+                      <Button variant="outline" disabled={busy} onClick={() => setConfirmNoPayStep(false)}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+
+                  {confirmNoPayStep ? (
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="res-confirm-note">Why? (optional, but it helps)</Label>
+                      <Input
+                        id="res-confirm-note"
+                        placeholder="Corporate account, settles monthly…"
+                        value={confirmNote}
+                        onChange={(e) => setConfirmNote(e.target.value)}
+                        disabled={busy}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted">
+                      For a guest who pays after their stay. The booking is confirmed and can be checked in;
+                      the balance stays outstanding until it is paid.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {isEdit && !canTakePayment && outstanding > 0 && (
+                <p className="text-[11px] text-muted">
+                  Ask an admin or Accounts to record a payment against this booking.
+                </p>
+              )}
+            </div>
           )}
 
           {showPayment && (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
-              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Payment</Label>
+              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Record a payment</Label>
 
               <p className="text-xs text-muted">
-                This booking is <strong className="text-ink">pending</strong> — it holds the unit but is not
-                confirmed. Record the payment here once the guest has paid and the booking is confirmed
-                immediately.
-                {reservation!.source === 'WEBSITE' && (
+                Enter what the guest has actually handed over. Paying part of it is fine — the rest stays
+                outstanding on the booking.
+                {reservation!.status === 'PENDING' && (
+                  <> Paying in full also confirms the booking.</>
+                )}
+                {reservation!.source === 'WEBSITE' && reservation!.status === 'PENDING' && (
                   <> Website bookings are cancelled automatically if they stay unpaid for 24 hours.</>
                 )}
               </p>
 
-              {pricing.isLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted">
-                  <Spinner className="h-3.5 w-3.5" /> Working out the amount due…
-                </div>
-              ) : pricing.data?.priceable === false ? (
-                <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                  This booking can’t be priced ({pricing.data.reason}), so payment can’t be recorded. Set a rate
-                  plan for the unit type first.
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="res-pay-amount">How much did they pay?</Label>
+                <Input
+                  id="res-pay-amount"
+                  inputMode="decimal"
+                  value={payAmount}
+                  onChange={(e) => {
+                    setPayAmount(e.target.value);
+                    setConfirmPay(false);
+                  }}
+                  disabled={busy}
+                />
+                <p className="text-[11px] text-muted">
+                  In pula. Outstanding: {formatMoney(outstanding)}.
                 </p>
-              ) : (
-                pricing.data?.priceable && (
-                  <>
-                    <div className="flex items-center justify-between rounded-md border border-line bg-cream-2/40 px-3 py-2.5">
-                      <span className="text-sm text-muted">Amount due</span>
-                      <span className="font-display text-lg text-ink">
-                        {formatMoney(pricing.data.total_amount)}
-                      </span>
-                    </div>
+                {payAmountThebe !== null && payAmountThebe > outstanding && (
+                  <p className="text-[11px] text-terra">
+                    That is more than this booking still owes.
+                  </p>
+                )}
+              </div>
 
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="res-pay-method">How did they pay?</Label>
-                      <Select
-                        id="res-pay-method"
-                        value={payMethod}
-                        onChange={(e) => {
-                          setPayMethod(e.target.value as PaymentMethod);
-                          setConfirmPay(false);
-                        }}
-                        disabled={busy}
-                      >
-                        {PAY_METHODS.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="res-pay-method">How did they pay?</Label>
+                <Select
+                  id="res-pay-method"
+                  value={payMethod}
+                  onChange={(e) => {
+                    setPayMethod(e.target.value as PaymentMethod);
+                    setConfirmPay(false);
+                  }}
+                  disabled={busy}
+                >
+                  {PAY_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
 
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="res-pay-ref">Reference (optional)</Label>
-                      <Input
-                        id="res-pay-ref"
-                        placeholder="Bank reference, receipt number…"
-                        value={payReference}
-                        onChange={(e) => setPayReference(e.target.value)}
-                        disabled={busy}
-                      />
-                    </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="res-pay-ref">Reference (optional)</Label>
+                <Input
+                  id="res-pay-ref"
+                  placeholder="Bank reference, receipt number…"
+                  value={payReference}
+                  onChange={(e) => setPayReference(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="primary"
-                        disabled={busy}
-                        onClick={async () => {
-                          if (!confirmPay) {
-                            setConfirmPay(true);
-                            return;
-                          }
-                          try {
-                            await markPaid.mutateAsync({
-                              id: reservation!.id,
-                              input: {
-                                method: payMethod,
-                                reference: payReference.trim() || null,
-                              },
-                            });
-                            onOpenChange(false);
-                          } catch {
-                            /* hook surfaces the error toast */
-                            setConfirmPay(false);
-                          }
-                        }}
-                      >
-                        {markPaid.isPending ? (
-                          <Spinner className="h-4 w-4" />
-                        ) : confirmPay ? (
-                          `Yes — record ${formatMoney(pricing.data.total_amount)} and confirm`
-                        ) : (
-                          'Guest has paid'
-                        )}
-                      </Button>
-                      {confirmPay && !markPaid.isPending && (
-                        <Button variant="outline" disabled={busy} onClick={() => setConfirmPay(false)}>
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="primary"
+                  disabled={busy || !payAmountValid}
+                  onClick={async () => {
+                    if (!confirmPay) {
+                      setConfirmPay(true);
+                      return;
+                    }
+                    try {
+                      await markPaid.mutateAsync({
+                        id: reservation!.id,
+                        input: {
+                          method: payMethod,
+                          amount: payAmountThebe ?? undefined,
+                          reference: payReference.trim() || null,
+                        },
+                      });
+                      onOpenChange(false);
+                    } catch {
+                      /* hook surfaces the error toast */
+                      setConfirmPay(false);
+                    }
+                  }}
+                >
+                  {markPaid.isPending ? (
+                    <Spinner className="h-4 w-4" />
+                  ) : confirmPay ? (
+                    `Yes — record ${formatMoney(payAmountThebe ?? outstanding)}`
+                  ) : (
+                    'Record payment'
+                  )}
+                </Button>
+                {confirmPay && !markPaid.isPending && (
+                  <Button variant="outline" disabled={busy} onClick={() => setConfirmPay(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
 
-                    <p className="text-[11px] text-muted">
-                      Records the payment against this booking and confirms it. This can’t be undone here.
-                    </p>
-                  </>
-                )
-              )}
+              <p className="text-[11px] text-muted">
+                Records the payment against this booking. This can’t be undone here.
+              </p>
             </div>
           )}
 
