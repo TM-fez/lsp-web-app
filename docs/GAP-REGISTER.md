@@ -183,7 +183,13 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 - **Today** — no bank account, statement import or reconciliation. Reconciliation happens by hand every Monday.
 - **Needed** — at minimum import a bank statement and match against invoices. The board's Cash/POS Reconciliation and Payment Verification arrows have no counterpart in the software.
 
-### G32 · Little Hotelier · `OUT` · Decide · S
+### G32 · Little Hotelier · `OUT` · Build · M
+- **Owner decision 2026-09-07** — replace the Little Hotelier **calendar** in LSP. It is the last screen keeping the subscription alive, so the calendar's deadline should be set backwards from the renewal date.
+- **A walk-in taking several apartments is ONE bill, not one per apartment.** That is a real constraint on the build: `reservations` has no `booking_group_id`, so four units today means four bookings, four folios and four invoices. Grouping them needs a migration and must be designed in, not bolted on afterwards.
+- **Evidence gathered** — the owner does not have access to pull a screenshot of their own calendar, so the vendor's published product illustration was used instead. Its legend is the useful part: **Confirmed · Checked-in · Checked-out · Room closed · Incomplete payment**. Two things follow. (1) *Incomplete payment* is a first-class state on their calendar, which is exactly the pay-later work in G27/G28 — the folio feeds it directly. (2) *Room closed* is a date-ranged maintenance block, which LSP cannot express at all (**D07**). Parity needs it.
+- ⚠️ **Treat that legend as indicative, not specified.** It is marketing artwork, not a screenshot of the owner's account, and everything else about their calendar (rate rows, an unassigned tray, whether a drag confirms) remains unknown. Ask before building anything that depends on it.
+
+### G32 · Little Hotelier (original board entry) · `OUT` · Decide · S
 - **Today** — drawn on the board as a live step, now clearly out of date. The guest list is already migrated off (~1,300 contacts, stay counts preserved, migrations 061/062). The app still has no integration, by design.
 - **Needed** — a date, not a build. The data rescue is done and as complete as it will ever be: the export carried no dates or amounts and the owner can no longer pull them. Decide when the subscription stops; take the box off the map.
 
