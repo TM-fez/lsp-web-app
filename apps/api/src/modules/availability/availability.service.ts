@@ -22,7 +22,10 @@ export class AvailabilityService {
   ): { available: boolean; reason: BlockReason | null } {
     if (status === 'MAINTENANCE') return { available: false, reason: 'MAINTENANCE' };
     if (status === 'OUT_OF_SERVICE') return { available: false, reason: 'OUT_OF_SERVICE' };
-    if (status === 'OCCUPIED' || activeOccupancy > 0) return { available: false, reason: 'OCCUPIED' };
+    // r.status OCCUPIED is deliberately NOT consulted (D06): it is a "right now" flag
+    // with no dates, so it used to make an in-house unit unbookable for every future
+    // range. activeOccupancy carries the same fact and IS date-bounded by the repository.
+    if (activeOccupancy > 0) return { available: false, reason: 'OCCUPIED' };
     if (overlappingReservations > 0) return { available: false, reason: 'RESERVED' };
     return { available: true, reason: null };
   }
