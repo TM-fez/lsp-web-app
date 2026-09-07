@@ -51,6 +51,10 @@ export function createReservationsRouter(dbInstance = db): Router {
   router.get('/:id', authorize('reservations.read'), controller.getReservationById);
   // Amount-due breakdown: prices the stay + applies the (approved) discount.
   router.get('/:id/pricing', authorize('reservations.read'), controller.getPricing);
+  // The money axis (migration 067): total / paid / outstanding, derived from invoices.
+  // Gated on reservations.read, not a payments permission — this REPORTS money, it
+  // never moves any, and anyone who can see a booking can see what it owes.
+  router.get('/:id/folio', authorize('reservations.read'), controller.getFolio);
 
   router.post('/', authorize('reservations.create'), validateBody(CreateReservationSchema), controller.createReservation);
 

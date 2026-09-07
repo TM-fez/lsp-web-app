@@ -137,6 +137,24 @@ export interface ReservationsTable {
   discount_requested_by: string | null;
   discount_approved_by: string | null;
   discount_approved_at: Date | null;
+  // Folio (migration 067) — the MONEY axis, orthogonal to `status`.
+  // folio_total_amount is the AGREED price of the stay in thebe, frozen when the
+  // booking is first confirmed or paid, so a later rate-plan change cannot rewrite
+  // history (LSP is the book of record for revenue — G30). NULL means "not yet
+  // frozen": the folio read falls back to live pricing via priceReservation().
+  // Paid / outstanding are NOT stored — they are derived from invoices at read time,
+  // because a second writable source of "how much has been paid" would drift from the
+  // invoices exactly the way D01's two definitions of "blocked" drifted.
+  // ⚠️ No availability, overlap or channel-export query may reference these columns.
+  folio_total_amount: number | null;
+  folio_currency: Generated<string>;
+  // Who said "the stay is on", and whether they said it with money in hand.
+  // CONFIRMED is decoupled from paid (owner decision 2026-09-07, amends invariant 3):
+  // settlePaid() sets this false, confirmWithoutPayment() sets it true.
+  confirmed_at: Date | null;
+  confirmed_by: string | null;
+  confirmed_without_payment: Generated<boolean>;
+  confirmation_note: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;

@@ -22,7 +22,8 @@ import type {
   SetDiscountDTO,
   ClaimOtaBookingDTO,
   MarkPaidDTO,
-  ReservationListRow
+  ReservationListRow,
+  ReservationFolio
 } from './reservations.types.js';
 
 /**
@@ -91,6 +92,55 @@ export class ReservationsService {
             }
           : null,
     });
+  }
+
+  /**
+   * The booking's MONEY axis (migration 067): what the stay costs, what has arrived,
+   * what is still owed — all in integer thebe.
+   *
+   * Orthogonal to `status` by design. Nothing this method returns may be used to
+   * decide whether the booking holds the room (invariant 7): an unpaid booking holds
+   * it, and so does a part-paid one.
+   *
+   * The total prefers the FROZEN folio_total_amount, because rate plans have no
+   * effective dating and re-pricing an old stay at today's rates would quietly
+   * restate history. It falls back to live pricing only when nothing was ever frozen,
+   * and says so via `total_source` so the UI can be honest about which it is showing.
+   */
+  async getFolio(id: string, activePropertyId?: string): Promise<ReservationFolio> {
+    const reservation = await this.getReservationById(id, activePropertyId);
+
+    let total = reservation.folio_total_amount;
+    let source: ReservationFolio['total_source'] = 'FOLIO';
+    let currency = reservation.folio_currency;
+
+    if (total == null) {
+      source = 'PRICED';
+      const priced = await this.priceReservation(id, activePropertyId);
+      // A stay whose room type has no active rate plan cannot be priced at all. Report
+      // a zero total rather than throwing: the folio is also how staff SEE that a
+      // booking has no price yet, and a 500 here would blank the whole drawer.
+      total = 'priceable' in priced && priced.priceable === false ? 0 : priced.total_amount;
+      if ('currency' in priced && priced.currency) currency = priced.currency;
+    }
+
+    const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
+    const invoices = await this.repository.folioInvoices(id);
+
+    // Clamped at zero: an overpayment is a refund waiting to happen, not a negative
+    // debt. The invoice lines below still show the full story.
+    const outstanding = Math.max(0, total - paid);
+
+    return {
+      reservation_id: id,
+      currency,
+      total_amount: total,
+      paid_amount: paid,
+      outstanding_amount: outstanding,
+      payment_state: paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
+      total_source: source,
+      invoices,
+    };
   }
 
   /**
