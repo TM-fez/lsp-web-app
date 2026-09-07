@@ -460,9 +460,22 @@ export class ReservationsService {
       updated_by: meta.userId,
     };
     
+    // Moving an IN-HOUSE guest has to carry the occupancy row and both units' statuses
+    // with it, or the cockpit contradicts itself: its in-house/departures cards join
+    // rooms through OCCUPANCY (which was never updated) while the unit tiles join
+    // through the reservation (which was). The repository does all of it inside the one
+    // transaction the reservation update already opened.
+    const movingInHouse =
+      existing.status === 'CHECKED_IN' && !!dto.room_id && dto.room_id !== existing.room_id;
+
     let updated: ReservationRow | undefined;
     try {
-      updated = await this.repository.update(id, updatePayload, meta);
+      updated = await this.repository.update(
+        id,
+        updatePayload,
+        meta,
+        movingInHouse ? { fromRoomId: existing.room_id, toRoomId: roomId } : undefined
+      );
     } catch (e) {
       if (isReservationOverlapError(e)) {
         throw AppError.conflict('Room is not available for the updated dates/room');

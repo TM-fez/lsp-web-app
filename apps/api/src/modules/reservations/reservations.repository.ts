@@ -243,7 +243,32 @@ export class ReservationsRepository {
     return Boolean(row);
   }
 
-  async update(id: string, update: UpdateReservation, meta: ReservationRequestMeta): Promise<ReservationRow | undefined> {
+  /**
+   * `roomMove` moves an IN-HOUSE guest to a different unit, and exists because
+   * `occupancy` does not follow `reservations.room_id` on its own.
+   *
+   * The bug it fixes: occupancy.room_id is written once at check-in and was never
+   * touched again. The cockpit's in-house and departures cards join rooms through
+   * OCCUPANCY, while the unit tiles join through the reservation — so moving a
+   * checked-in guest left the board showing them still in the old unit AND showed the
+   * new unit as empty. Two screens, two answers, neither of them true.
+   *
+   * It all rides the ONE transaction the reservation update already had (invariant 6),
+   * because a half-applied move is worse than no move: a guest with no room, or a room
+   * with two guests, either of which the cockpit would then present as fact.
+   *
+   * The vacated unit is marked DIRTY as well as AVAILABLE. A unit someone has just
+   * moved out of is not ready for the next guest, and leaving housekeeping_status
+   * READY would let it be handed over uncleaned. Whether the move should also RAISE a
+   * housekeeping task (as check-out does via openTaskOnCheckout) is a real question and
+   * deliberately not answered here — see the PR.
+   */
+  async update(
+    id: string,
+    update: UpdateReservation,
+    meta: ReservationRequestMeta,
+    roomMove?: { fromRoomId: string; toRoomId: string }
+  ): Promise<ReservationRow | undefined> {
     return this.db.transaction().execute(async (trx) => {
       const updated = await trx
         .updateTable('reservations')
@@ -263,6 +288,55 @@ export class ReservationsRepository {
           diff: update,
           ip_address: meta.ip ?? null,
         }).execute();
+      }
+
+      if (updated && roomMove) {
+        const occupancy = await trx
+          .updateTable('occupancy')
+          .set({ room_id: roomMove.toRoomId, updated_by: meta.userId, updated_at: sql`now()` })
+          .where('reservation_id', '=', id)
+          .where('status', '=', 'CHECKED_IN')
+          .where('deleted_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst();
+
+        await trx.updateTable('rooms')
+          .set({
+            status: 'AVAILABLE',
+            housekeeping_status: 'DIRTY',
+            updated_by: meta.userId,
+            updated_at: sql`now()`,
+          })
+          .where('id', '=', roomMove.fromRoomId)
+          .execute();
+
+        await trx.updateTable('rooms')
+          .set({ status: 'OCCUPIED', updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', '=', roomMove.toRoomId)
+          .execute();
+
+        await trx.insertInto('audit_logs').values([
+          ...(occupancy
+            ? [{
+                request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+                entity: 'occupancy', entity_id: occupancy.id,
+                diff: { room_id: roomMove.toRoomId, moved_from: roomMove.fromRoomId },
+                ip_address: meta.ip ?? null,
+              }]
+            : []),
+          {
+            request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+            entity: 'rooms', entity_id: roomMove.fromRoomId,
+            diff: { status: 'AVAILABLE', housekeeping_status: 'DIRTY', guest_moved_out: id },
+            ip_address: meta.ip ?? null,
+          },
+          {
+            request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+            entity: 'rooms', entity_id: roomMove.toRoomId,
+            diff: { status: 'OCCUPIED', guest_moved_in: id },
+            ip_address: meta.ip ?? null,
+          },
+        ]).execute();
       }
 
       return updated;
