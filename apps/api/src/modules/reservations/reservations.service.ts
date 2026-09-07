@@ -22,6 +22,7 @@ import type {
   SetDiscountDTO,
   ClaimOtaBookingDTO,
   MarkPaidDTO,
+  ConfirmReservationDTO,
   ReservationListRow,
   ReservationFolio
 } from './reservations.types.js';
@@ -300,6 +301,82 @@ export class ReservationsService {
    * reservations_no_overlap constraint never covered it — so a stay abandoned halfway
    * frees its remaining nights for someone else.
    */
+  /**
+   * Confirm a stay with no money in hand.
+   *
+   * Why this exists (owner decision 2026-09-07, amending invariant 3): CONFIRMED used
+   * to be reachable only through settlePaid(), so "the stay is on" and "the money
+   * arrived" were the same fact. Some clients settle after the stay. Staff worked
+   * around it by not booking at all — which is how a walk-in ends up with no record
+   * anywhere, and how the room they are sleeping in reads as free.
+   *
+   * PENDING only. A booking that is already CONFIRMED or CHECKED_IN needs nothing from
+   * this; a CANCELLED / CHECKED_OUT / NO_SHOW one is over, and BLOCKED belongs to the
+   * Booking.com importer (claim it instead).
+   *
+   * Deliberately gated on reservations.update, NOT a new permission and NOT a payments
+   * one. Reception already holds payments.create + payments.update (migration 064) and
+   * could therefore already reach CONFIRMED by recording a P1 payment — a new gate
+   * would be theatre. Migration 064's own argument applies verbatim: the audit trail is
+   * the control, not the permission. `confirmed_without_payment` makes it greppable,
+   * and the note says why.
+   *
+   * The agreed price is frozen here if it was not already, because this is the moment
+   * the stay is agreed. Leaving it NULL would let a later rate change silently restate
+   * what this guest owes — see migration 067.
+   */
+  async confirmWithoutPayment(
+    id: string,
+    dto: ConfirmReservationDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string
+  ): Promise<ReservationRow> {
+    const reservation = await this.getReservationById(id, activePropertyId);
+
+    if (reservation.status !== 'PENDING') {
+      const already = reservation.status === 'CONFIRMED' || reservation.status === 'CHECKED_IN';
+      throw AppError.conflict(
+        reservation.status === 'BLOCKED'
+          ? 'This is an imported Booking.com block — claim it to a guest instead of confirming it.'
+          : already
+            ? `This booking is already ${reservation.status.toLowerCase().replace('_', ' ')}.`
+            : `A ${reservation.status.toLowerCase().replace('_', ' ')} booking cannot be confirmed.`
+      );
+    }
+
+    // Freeze the agreed price if nothing has yet. Best-effort: a room type with no
+    // active rate plan is not a reason to refuse the confirmation — staff can still
+    // vouch for a stay they have not priced, and the folio falls back to live pricing
+    // and says so. Better an unpriced confirmed booking than an unrecorded guest.
+    let folioTotal: number | null = reservation.folio_total_amount;
+    if (folioTotal == null) {
+      try {
+        const priced = await this.priceReservation(id, activePropertyId);
+        if (!('priceable' in priced) || priced.priceable !== false) {
+          folioTotal = priced.total_amount;
+        }
+      } catch (err) {
+        logger.warn({ err, reservationId: id }, '[reservations] confirmed without a priced folio');
+      }
+    }
+
+    const updated = await this.repository.update(
+      id,
+      {
+        status: 'CONFIRMED',
+        confirmed_at: new Date(),
+        confirmed_by: meta.userId,
+        confirmed_without_payment: true,
+        confirmation_note: dto.note ?? null,
+        ...(folioTotal != null ? { folio_total_amount: folioTotal } : {}),
+        updated_by: meta.userId,
+      },
+      meta
+    );
+    if (!updated) throw AppError.notFound(`Reservation with id ${id} not found`);
+    return updated;
+  }
+
   async markNoShow(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     const reservation = await this.getReservationById(id, activePropertyId);
 

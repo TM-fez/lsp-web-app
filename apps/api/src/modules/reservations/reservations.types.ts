@@ -124,6 +124,16 @@ export interface ReservationListRow extends ReservationRow {
 }
 
 /**
+ * Confirming a stay WITHOUT money in hand (owner decision 2026-09-07, invariant 3).
+ * The note is optional but encouraged — it is the "why" a manager reads later when the
+ * guest has left without paying, and it lands in the audit diff alongside who did it.
+ */
+export const ConfirmReservationSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+export type ConfirmReservationDTO = z.infer<typeof ConfirmReservationSchema>;
+
+/**
  * One invoice as it appears on a booking's folio — enough to explain the arithmetic
  * on screen ("what made up the P500 we've received?") without a second request.
  */
