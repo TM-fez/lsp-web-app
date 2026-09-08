@@ -330,7 +330,7 @@ async function main(): Promise<void> {
       console.log(`    ${c.type.padEnd(10)} ${c.name.slice(0, 30).padEnd(32)} ` +
                   `${(c.phone ?? '—').padEnd(18)} ${String(c.stays).padStart(3)} stays  ${c.email ?? ''}`);
     }
-    console.log('\n  Dry run complete — nothing changed. Re-run with `--yes` to apply.\n');
+    console.log('\n  Dry run complete — nothing changed. Apply with `npm run db:import-guests:apply`.\n');
     await client.end();
     return;
   }
