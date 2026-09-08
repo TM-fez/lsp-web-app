@@ -21,6 +21,33 @@ remaining Start-here items were each confirmed still undone in the code.
 
 ---
 
+## The pace this is being built at
+
+**Confirmed by the owner 2026-09-08: the app is not carrying real bookings yet.** It is being tested
+slowly and deliberately while the business works out how it fits. Production holds **two** bookings
+(four nights, both priced by reconstruction) — they are test bookings. Little Hotelier is still the
+live system; see G32.
+
+This is context, not a problem, and it changes how everything below should be read:
+
+- **Nothing here is urgent.** The priorities are advisory. There is no deadline being missed and no
+  blocker to clear — the slow pace is the plan, not a symptom of one.
+- **Reporting gaps are the least urgent of all.** G13, G15, G03 and the revenue half of G30 all
+  report over transaction data that does not exist yet. They will be correct when volume arrives;
+  building more of them now is measuring an empty room.
+- **Slow real use is what finds the defects.** Every item in the defect section below came from
+  someone using the app, not from reading it: D01 was a real "looked free, got 409"; the three bugs
+  fixed while building G30 were found by running the backfill against real data, one of which was
+  recognising 3,027 nights at P0.00 because *cannot price it* was being read as *it earned nothing*.
+  That is the pace working, and it argues for keeping it.
+
+⚠️ **Do not infer urgency from a number reading zero.** On 2026-09-08 an empty revenue ledger was
+briefly read as a broken P&L, and a case was built for an emergency backfill; the real answer was
+that there is no revenue in the system yet, by design. Before treating a low figure as a defect,
+check whether anything has been entered that should have produced it.
+
+---
+
 ## Start here
 
 Small, unblocked, needs nobody's permission. Clearing these closes eight of the thirty-two.

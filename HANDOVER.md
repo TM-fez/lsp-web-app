@@ -132,6 +132,13 @@ Shipped and live:
 **Live data is real:** 25 real apartments (Village blocks B / D / G / I / J / T). The owner has changed
 the admin password. The **budget is approved.** Schema is at **migration 069**.
 
+⚠️ **But the app is not carrying real bookings yet** (confirmed 2026-09-08). It is being tested slowly
+and deliberately while the business works out how it fits; Little Hotelier is still the live system.
+Production holds **two** test bookings. The apartments, users and property structure are real — the
+transaction data is not, and reports over it will read near-empty because there is nothing in them
+yet, not because they are broken. See the pace note at the top of `docs/GAP-REGISTER.md` before
+treating any zero as a defect.
+
 ---
 
 ## 5. Switch-on checklist (owner setup + operational chores)
