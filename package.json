@@ -17,7 +17,9 @@
     "db:seed": "npm run db:seed --workspace=@lsp/api",
     "db:purge-test": "npm run db:purge-test --workspace=@lsp/api",
     "db:import-guests": "npm run db:import-guests --workspace=@lsp/api",
-    "db:import-guests:apply": "npm run db:import-guests:apply --workspace=@lsp/api"
+    "db:import-guests:apply": "npm run db:import-guests:apply --workspace=@lsp/api",
+    "db:backfill-revenue": "npm run db:backfill-revenue --workspace=@lsp/api",
+    "db:backfill-revenue:apply": "npm run db:backfill-revenue:apply --workspace=@lsp/api"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

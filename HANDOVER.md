@@ -146,16 +146,21 @@ ledger and `/reports/pnl` now defaults to the accrual basis. **The ledger starts
 freshly-deployed database the P&L reads near-zero revenue until the backfill runs. It is not silent —
 the Reports page says how many earning stays are missing — but the sequence matters:
 
+Run it from a **Render shell on the `lsp-api` service** — it lands in the repo root, `DATABASE_URL`
+is already in the environment, and `tsx` is present because the service runs on it:
+
 ```bash
-npm run db:backfill-revenue                                # dry run: writes nothing
-npx tsx apps/api/src/db/backfill-revenue.ts --yes          # apply
-npx tsx apps/api/src/db/backfill-revenue.ts --from 2026-01-01   # bound it by stay date
+npm run db:backfill-revenue          # dry run: writes nothing, reports what it would do
+npm run db:backfill-revenue:apply    # apply
 ```
 
-⚠️ **`npm run db:backfill-revenue -- --yes` does not apply anything.** npm has its own `--yes` and
-eats the flag before the script sees it, so that form is a dry run wearing an apply's clothes. It does
-say `DRY RUN` in its output — read the mode line before believing it worked. Use the `npx tsx` form.
-Safe to re-run either way: `reconcile()` leaves an already-agreeing booking alone.
+Read the **`Mode:`** line the script prints before believing either one — it says `DRY RUN` or
+`APPLY` explicitly. Applying is a separate *script*, not a flag, because `npm run … -- --yes` never
+reaches the script (npm has its own `--yes` and eats it); same reason `db:import-guests:apply`
+exists. To bound the run by stay date, call the file directly from the root:
+`npx tsx apps/api/src/db/backfill-revenue.ts --from 2026-01-01`.
+
+Safe to re-run: `reconcile()` leaves an already-agreeing booking alone.
 
 Check the reconstruction share on the dry run first. Stays with no agreed total are priced at
 *today's* rates, because rate plans have no effective dating — those figures are a reconstruction, not
