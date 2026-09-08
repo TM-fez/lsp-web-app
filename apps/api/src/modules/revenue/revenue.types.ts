@@ -82,6 +82,19 @@ export interface RecogniseResult {
   /** Bookings whose total had to be reconstructed at today's rates (total_source PRICED). */
   reconstructed: number;
   /**
+   * Nights and gross thebe written from a RECONSTRUCTED total, as a subset of
+   * nights_written / amount_written.
+   *
+   * Reported separately because it is the figure the owner was warned about: rate
+   * plans have no effective dating, so a reconstructed stay is priced at TODAY's rates
+   * and is a reconstruction, not a recovery. "How much of what I am about to claim is
+   * guesswork" has to be answerable before the backfill is applied, not after.
+   */
+  nights_reconstructed: number;
+  amount_reconstructed: number;
+  /** Gross (VAT-inclusive) thebe across every night written this pass. */
+  amount_written: number;
+  /**
    * Bookings with no agreed total and no pricer to reconstruct one — skipped entirely,
    * earning nothing.
    *

@@ -49,7 +49,8 @@ export class RevenueService {
    */
   async reconcile(
     window?: { from?: string; toExcl?: string },
-    meta: RevenueRequestMeta = { userId: SWEEP_ACTOR }
+    meta: RevenueRequestMeta = { userId: SWEEP_ACTOR },
+    options: { dryRun?: boolean } = {}
   ): Promise<RecogniseResult> {
     const result: RecogniseResult = {
       reservations_examined: 0,
@@ -57,6 +58,9 @@ export class RevenueService {
       nights_written: 0,
       nights_superseded: 0,
       reconstructed: 0,
+      nights_reconstructed: 0,
+      amount_reconstructed: 0,
+      amount_written: 0,
       unpriced: 0,
     };
 
@@ -81,22 +85,34 @@ export class RevenueService {
       const reason = supersedeReason(live, desired.slices, reservation.room_id);
       if (reason === null) continue; // already agrees — leave it entirely alone
 
-      const written = await this.repository.replaceNights(
-        {
-          reservationId: reservation.id,
-          roomId: reservation.room_id,
-          currency: reservation.folio_currency,
-          taxRateBps: reservation.tax_rate_bps,
-          totalSource: desired.totalSource,
-          slices: desired.slices,
-          reason,
-        },
-        meta
-      );
+      const amount = desired.slices.reduce((sum, slice) => sum + slice.amount, 0);
+
+      // A dry run counts exactly what an apply would write, and writes nothing. Each
+      // booking is measured against the live ledger independently, so skipping the
+      // write cannot skew the ones that follow.
+      const written = options.dryRun
+        ? { written: desired.slices.length, superseded: live.length }
+        : await this.repository.replaceNights(
+            {
+              reservationId: reservation.id,
+              roomId: reservation.room_id,
+              currency: reservation.folio_currency,
+              taxRateBps: reservation.tax_rate_bps,
+              totalSource: desired.totalSource,
+              slices: desired.slices,
+              reason,
+            },
+            meta
+          );
 
       result.reservations_changed += 1;
       result.nights_written += written.written;
       result.nights_superseded += written.superseded;
+      result.amount_written += amount;
+      if (desired.totalSource === 'PRICED') {
+        result.nights_reconstructed += written.written;
+        result.amount_reconstructed += amount;
+      }
     }
 
     // The other half of agreement: bookings that still have live nights but have
@@ -106,18 +122,20 @@ export class RevenueService {
       const live = await this.repository.liveNights(reservationId);
       if (!live.length) continue;
 
-      const written = await this.repository.replaceNights(
-        {
-          reservationId,
-          roomId: live[0]!.room_id,
-          currency: live[0]!.currency,
-          taxRateBps: live[0]!.tax_rate_bps,
-          totalSource: live[0]!.total_source,
-          slices: [],
-          reason: 'NO_LONGER_EARNING',
-        },
-        meta
-      );
+      const written = options.dryRun
+        ? { written: 0, superseded: live.length }
+        : await this.repository.replaceNights(
+            {
+              reservationId,
+              roomId: live[0]!.room_id,
+              currency: live[0]!.currency,
+              taxRateBps: live[0]!.tax_rate_bps,
+              totalSource: live[0]!.total_source,
+              slices: [],
+              reason: 'NO_LONGER_EARNING',
+            },
+            meta
+          );
 
       result.reservations_changed += 1;
       result.nights_superseded += written.superseded;
@@ -159,16 +177,24 @@ export class RevenueService {
     if (!this.pricer) return { slices: [], totalSource: 'PRICED', unpriced: true };
 
     const priced = await this.pricer.priceReservation(reservation.id);
-    // A unit type with no active rate plan cannot be priced at all. Same choice as
-    // the folio makes: report nothing rather than throw, so one unpriceable booking
-    // cannot take the whole sweep down with it.
-    const total = priced.priceable === false ? 0 : (priced.total_amount ?? 0);
+
+    // A unit type with no active rate plan cannot be priced by any route — and that
+    // is UNPRICED, not zero. The distinction is the whole difference between "we do
+    // not know what this stay earned" and "this stay earned nothing", and only the
+    // second is a statement the book of record is allowed to make. Writing a night at
+    // zero would put a confirmed stay in the P&L as free.
+    //
+    // getFolio() answers 0 for the same case on purpose, but that is a DISPLAY
+    // fallback so the drawer does not blank — nobody reconciles a month from it.
+    if (priced.priceable === false || priced.total_amount == null) {
+      return { slices: [], totalSource: 'PRICED', unpriced: true };
+    }
 
     return {
       slices: splitStayAcrossNights(
         reservation.check_in_date,
         reservation.check_out_date,
-        total,
+        priced.total_amount,
         reservation.tax_rate_bps
       ),
       totalSource: 'PRICED',

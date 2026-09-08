@@ -63,6 +63,9 @@ export const NO_RECOGNITION: RecogniseResult = {
   nights_written: 0,
   nights_superseded: 0,
   reconstructed: 0,
+  nights_reconstructed: 0,
+  amount_reconstructed: 0,
+  amount_written: 0,
   unpriced: 0,
 };
 
