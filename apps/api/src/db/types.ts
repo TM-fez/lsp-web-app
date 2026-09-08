@@ -475,6 +475,24 @@ export interface InvoicesTable {
   updated_at: Generated<Date>;
 }
 
+export interface RevenueRecognitionTable {
+  id: Generated<string>;
+  reservation_id: string;
+  room_id: string;
+  stay_date: Date | string;
+  currency: Generated<string>;
+  amount: number;
+  tax_amount: number;
+  tax_rate_bps: number;
+  total_source: 'FOLIO' | 'PRICED';
+  version: Generated<number>;
+  superseded_at: Date | null;
+  superseded_by: string | null;
+  superseded_reason: string | null;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface DocumentNumberSeriesTable {
   prefix: string;
   year: number;
@@ -568,6 +586,7 @@ export interface Database {
   payment_attempts: PaymentAttemptsTable;
   invoices: InvoicesTable;
   document_number_series: DocumentNumberSeriesTable;
+  revenue_recognition: RevenueRecognitionTable;
   operating_expenses: OperatingExpensesTable;
   recurring_operating_costs: RecurringOperatingCostsTable;
   staff_compensation: StaffCompensationTable;
@@ -657,6 +676,9 @@ export type NewInvoice     = Insertable<InvoicesTable>;
 export type UpdateInvoice  = Updateable<InvoicesTable>;
 
 export type DocumentNumberSeriesRow = Selectable<DocumentNumberSeriesTable>;
+
+export type RevenueRecognitionRow = Selectable<RevenueRecognitionTable>;
+export type NewRevenueRecognition = Insertable<RevenueRecognitionTable>;
 
 export type OperatingExpenseRow    = Selectable<OperatingExpensesTable>;
 export type NewOperatingExpense    = Insertable<OperatingExpensesTable>;
