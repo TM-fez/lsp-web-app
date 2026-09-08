@@ -57,6 +57,7 @@ export class RevenueService {
       nights_written: 0,
       nights_superseded: 0,
       reconstructed: 0,
+      unpriced: 0,
     };
 
     const earning = await this.repository.findRecognisable(window);
@@ -64,6 +65,16 @@ export class RevenueService {
 
     for (const reservation of earning) {
       const desired = await this.desiredNights(reservation);
+
+      // No agreed total and nothing to reconstruct one from: leave the booking
+      // completely alone, rather than treating "we cannot price it" as "it earns
+      // nothing". The difference matters — falling through would supersede real
+      // recognised nights the moment a pricer went missing, destroying a month of
+      // ledger because of a wiring change.
+      if (desired.unpriced) {
+        result.unpriced += 1;
+        continue;
+      }
       if (desired.totalSource === 'PRICED') result.reconstructed += 1;
 
       const live = await this.repository.liveNights(reservation.id);
@@ -126,7 +137,7 @@ export class RevenueService {
    */
   private async desiredNights(
     reservation: RecognisableReservation
-  ): Promise<{ slices: NightlySlice[]; totalSource: 'FOLIO' | 'PRICED' }> {
+  ): Promise<{ slices: NightlySlice[]; totalSource: 'FOLIO' | 'PRICED'; unpriced: boolean }> {
     if (reservation.folio_total_amount != null) {
       return {
         slices: splitStayAcrossNights(
@@ -136,13 +147,16 @@ export class RevenueService {
           reservation.tax_rate_bps
         ),
         totalSource: 'FOLIO',
+        unpriced: false,
       };
     }
 
-    // No pricer wired (unit tests, and any caller that only wants frozen totals):
-    // recognise nothing rather than guess a total. A missing night is visible in a
-    // report; an invented one is not.
-    if (!this.pricer) return { slices: [], totalSource: 'PRICED' };
+    // No pricer wired. That is the DAILY SWEEP's deliberate configuration, not an
+    // oversight: reconstructing at today's rates every night would restate every
+    // unfrozen booking each time a rate moved, churning the ledger for figures that
+    // were never agreed. Reconstruction belongs to the backfill, which is run once and
+    // announced. The caller counts these and moves on.
+    if (!this.pricer) return { slices: [], totalSource: 'PRICED', unpriced: true };
 
     const priced = await this.pricer.priceReservation(reservation.id);
     // A unit type with no active rate plan cannot be priced at all. Same choice as
@@ -158,6 +172,7 @@ export class RevenueService {
         reservation.tax_rate_bps
       ),
       totalSource: 'PRICED',
+      unpriced: false,
     };
   }
 }

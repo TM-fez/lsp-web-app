@@ -46,6 +46,17 @@ export function nightsOf(checkIn: string, checkOut: string): string[] {
 }
 
 /**
+ * Shift a 'YYYY-MM-DD' date by whole days, staying a calendar date throughout.
+ *
+ * Walked in UTC for the same reason as nightsOf: a stay date has no time of day, so
+ * introducing the process's local zone would only invent an offset the data does not
+ * have — and, near midnight, an off-by-one.
+ */
+export function addDaysIso(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
  * Spread `total` over `count` nights in whole thebe, giving the indivisible
  * remainder to the EARLIEST nights.
  *

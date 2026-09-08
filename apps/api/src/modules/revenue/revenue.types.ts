@@ -81,6 +81,16 @@ export interface RecogniseResult {
   nights_superseded: number;
   /** Bookings whose total had to be reconstructed at today's rates (total_source PRICED). */
   reconstructed: number;
+  /**
+   * Bookings with no agreed total and no pricer to reconstruct one — skipped entirely,
+   * earning nothing.
+   *
+   * Counted rather than swallowed because it is the one way this ledger can quietly
+   * under-report. Both confirmation paths freeze `folio_total_amount`, so in practice
+   * this is a historic booking awaiting the backfill, or the deliberate gap
+   * `confirmWithoutPayment` leaves when a unit type has no active rate plan.
+   */
+  unpriced: number;
 }
 
 export interface RevenueRequestMeta {

@@ -386,6 +386,49 @@ describe('restating a stay', () => {
   });
 });
 
+describe('a booking with no agreed total', () => {
+  it('earns nothing, and is counted rather than swallowed', async () => {
+    await makeBooking('unpriced', {
+      checkIn: '2035-10-10',
+      checkOut: '2035-10-13',
+      total: null,
+    });
+
+    const result = await service().reconcile(WINDOW);
+
+    expect(result.unpriced).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * The dangerous case, and the reason "cannot price it" and "it earns nothing" must
+   * stay different answers. Treating them as one would supersede a month of real
+   * recognised nights the moment a pricer went missing — a wiring change quietly
+   * erasing revenue that had already been reported.
+   */
+  it('keeps the nights it already earned rather than withdrawing them', async () => {
+    const { reservationId } = await makeBooking('unpriced-existing', {
+      checkIn: '2035-10-20',
+      checkOut: '2035-10-23',
+      total: 300_000,
+    });
+
+    await service().reconcile(WINDOW);
+    const earned = await repository().liveNights(reservationId);
+    expect(earned).toHaveLength(3);
+
+    // The total goes away; the booking stays CONFIRMED and still earning.
+    await db
+      .updateTable('reservations')
+      .set({ folio_total_amount: null })
+      .where('id', '=', reservationId)
+      .execute();
+    await service().reconcile(WINDOW);
+
+    const after = await repository().liveNights(reservationId);
+    expect(after.map((night) => night.id)).toEqual(earned.map((night) => night.id));
+  });
+});
+
 describe('the ledger defends itself', () => {
   it('refuses a second live row for a night the booking already earns', async () => {
     const { reservationId, roomId } = await makeBooking('double', {
