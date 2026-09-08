@@ -2,6 +2,7 @@ import { buildNudges, type Nudge } from './reports.nudges.js';
 import { ReportsRepository, type RepoWindow } from './reports.repository.js';
 import type {
   ReportWindow, ReportsResponse, MonthlyPoint, PropertyPnl,
+  RevenueBasis, AccrualDisclosure, RevenueReconciliation, EarnedReceivedPoint,
   OperationsWindow, OperationsResponse, OpsKpis, OpsDeltas, OpsMonthlyPoint, OpsPropertyRow,
   OwnerStatementWindow, OwnersResponse, OwnerStatement, OwnerUnitLine,
 } from './reports.types.js';
@@ -18,7 +19,7 @@ function parseISO(s: string): Date {
 }
 
 /** Resolve the request window: explicit from/to, else the trailing 12 months. */
-function normalize(req: ReportWindow): RepoWindow & { from: string; to: string } {
+function normalize(req: ReportWindow): RepoWindow & { from: string; to: string; basis: RevenueBasis } {
   const now = new Date();
   const defFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
   const defToExcl = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
@@ -28,7 +29,26 @@ function normalize(req: ReportWindow): RepoWindow & { from: string; to: string }
   // exclusive upper bound = day after `to`
   const toExcl = new Date(parseISO(to).getTime() + DAY).toISOString().slice(0, 10);
 
-  return { from, to, toExcl, propertyId: req.propertyId, accessiblePropertyIds: req.accessiblePropertyIds };
+  return {
+    from,
+    to,
+    toExcl,
+    propertyId: req.propertyId,
+    accessiblePropertyIds: req.accessiblePropertyIds,
+    // Accrual unless the caller explicitly asks for cash. Owner decision 2026-09-07:
+    // LSP is the book of record for revenue, so "what did we earn" is the default
+    // question and "what did we collect" is the one you opt into.
+    basis: req.basis ?? 'ACCRUAL',
+  };
+}
+
+/** Reconstructed share of a revenue figure, rounded for display. */
+function disclose(revenue: number, reconstructed: number, unrecognisedStays: number): AccrualDisclosure {
+  return {
+    reconstructed,
+    reconstructed_pct: revenue > 0 ? round1((reconstructed / revenue) * 100) : 0,
+    unrecognised_stays: unrecognisedStays,
+  };
 }
 
 function monthsBetween(from: string, toExcl: string): string[] {
@@ -109,24 +129,91 @@ export class ReportsService {
     return buildNudges(rows);
   }
 
+  /**
+   * Earned vs received, month by month — the reconciliation the accrual switch makes
+   * necessary.
+   *
+   * The gap between the two columns is the point, not an error to chase. A guest who
+   * stays in September and settles in October earns in the September row and pays in
+   * the October one; the running difference is what the house is owed for nights it
+   * has already provided. Before the ledger this question could not be asked at all,
+   * because both numbers were the same number.
+   *
+   * Months come from the window, not from the data, so a month that earned nothing and
+   * collected nothing still appears as a zero row. A missing month reads as an outage;
+   * an explicit zero reads as a quiet month, which is what it is.
+   */
+  async getRevenue(reqWindow: ReportWindow): Promise<RevenueReconciliation> {
+    const w = normalize(reqWindow);
+
+    const [earnedMonth, cashMonth, unrecognised] = await Promise.all([
+      this.repo.earnedByMonth(w),
+      this.repo.revenueByMonth(w),
+      this.repo.unrecognisedStays(w),
+    ]);
+
+    const earnedByM = new Map(earnedMonth.map((r) => [r.month, r]));
+    const cashByM = new Map(cashMonth.map((r) => [r.month, num(r.amount)]));
+
+    const monthly: EarnedReceivedPoint[] = monthsBetween(w.from, w.toExcl).map((month) => {
+      const earned = num(earnedByM.get(month)?.amount);
+      const received = cashByM.get(month) ?? 0;
+      return {
+        month,
+        earned,
+        received,
+        difference: earned - received,
+        reconstructed: num(earnedByM.get(month)?.reconstructed),
+      };
+    });
+
+    const earned = monthly.reduce((sum, m) => sum + m.earned, 0);
+    const received = monthly.reduce((sum, m) => sum + m.received, 0);
+    const reconstructed = monthly.reduce((sum, m) => sum + m.reconstructed, 0);
+
+    return {
+      from: w.from,
+      to: w.to,
+      monthly,
+      totals: {
+        earned,
+        received,
+        difference: earned - received,
+        earned_tax: earnedMonth.reduce((sum, row) => sum + num(row.tax), 0),
+      },
+      disclosure: disclose(earned, reconstructed, unrecognised),
+    };
+  }
+
   async getReports(reqWindow: ReportWindow): Promise<ReportsResponse> {
     const w = normalize(reqWindow);
 
+    const accrual = w.basis === 'ACCRUAL';
+
     const [
-      revMonth, maintMonth, opexMonth,
-      revProp, maintProp, opexProp,
-      occProp, roomCounts, vatTotal,
+      cashMonth, earnedMonth, maintMonth, opexMonth,
+      cashProp, earnedProp, maintProp, opexProp,
+      occProp, roomCounts, vatTotal, unrecognised,
     ] = await Promise.all([
       this.repo.revenueByMonth(w),
+      this.repo.earnedByMonth(w),
       this.repo.maintenanceByMonth(w),
       this.repo.opexByMonth(w),
       this.repo.revenueByProperty(w),
+      this.repo.earnedByProperty(w),
       this.repo.maintenanceByProperty(w),
       this.repo.opexByProperty(w),
       this.repo.occupancyByProperty(w),
       this.repo.roomCountByProperty(w.propertyId, w.accessiblePropertyIds),
       this.repo.vatOutput(w),
+      accrual ? this.repo.unrecognisedStays(w) : Promise.resolve(0),
     ]);
+
+    // Both bases are fetched either way — they are two cheap aggregates, and the
+    // disclosure needs the accrual side even to say how much of it is reconstructed.
+    // Which one becomes `revenue` is the only thing `basis` decides.
+    const revMonth = accrual ? earnedMonth : cashMonth;
+    const revProp = accrual ? earnedProp : cashProp;
 
     // ── Monthly series ──────────────────────────────────────────────────────────
     // month is already a UTC 'YYYY-MM' string from SQL.
@@ -158,6 +245,7 @@ export class ReportsService {
     const sumByP = (rows: Array<{ property_id: string | null; amount: string | number | null }>) =>
       new Map(rows.map((r) => [r.property_id, num(r.amount)]));
     const revP = sumByP(revProp), maintP = sumByP(maintProp), opexP = sumByP(opexProp);
+
 
     const by_property: PropertyPnl[] = [...propIds].map((pid) => {
       const revenue = revP.get(pid) ?? 0;
@@ -193,7 +281,19 @@ export class ReportsService {
       summary: {
         from: w.from,
         to: w.to,
+        revenue_basis: w.basis,
         revenue,
+        // Only on the accrual side: there is nothing reconstructed about cash, and
+        // nothing missing from it that a backfill would supply.
+        ...(accrual
+          ? {
+              disclosure: disclose(
+                revenue,
+                earnedMonth.reduce((sum, row) => sum + num(row.reconstructed), 0),
+                unrecognised
+              ),
+            }
+          : {}),
         maintenance_cost,
         operating_expenses,
         total_cost,

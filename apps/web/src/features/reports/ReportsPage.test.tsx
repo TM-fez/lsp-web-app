@@ -9,6 +9,10 @@ vi.mock('./hooks', () => ({
       summary: {
         from: '2025-07-01', to: '2026-06-30',
         revenue: 345_941_550, maintenance_cost: 12_810_000, operating_expenses: 106_488_000,
+        revenue_basis: 'ACCRUAL',
+        // A fully-agreed, fully-recognised period: nothing to warn about, so the note
+        // should say what basis it is on and stop there.
+        disclosure: { reconstructed: 0, reconstructed_pct: 0, unrecognised_stays: 0 },
         total_cost: 119_298_000, net: 226_643_550, margin_pct: 65.5, vat_output: 42_500_000,
         reservations: 246, room_nights_booked: 2777, room_nights_available: 8760, occupancy_pct: 31.7,
       },
@@ -41,5 +45,20 @@ describe('ReportsPage', () => {
     expect(screen.getAllByText('31.7%').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('P3.46M').length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('svg[role="img"]')).toBeTruthy();
+  });
+
+  // The revenue line is accrual since G30, so the same month reads differently from
+  // the cash figure the owner saw before. A page that does not say which basis it is
+  // showing is misleading, not merely terse.
+  it('says which basis the revenue is on', () => {
+    render(<ReportsPage />);
+    expect(screen.getByText('Revenue earned')).toBeInTheDocument();
+    expect(screen.getByText(/counted in the month the\s+nights were slept in/)).toBeInTheDocument();
+  });
+
+  it('stays quiet when there is nothing to disclose', () => {
+    render(<ReportsPage />);
+    expect(screen.queryByText(/reconstruction/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/understated/)).not.toBeInTheDocument();
   });
 });

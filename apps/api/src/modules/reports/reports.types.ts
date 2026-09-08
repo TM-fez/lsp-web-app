@@ -1,8 +1,28 @@
-// Accounts / Reports: revenue is recognised from PAID invoices (deposits at booking,
-// balances at check-out); costs are maintenance/contractor spend (approved) plus the
+// Accounts / Reports. Costs are maintenance/contractor spend (approved) plus the
 // operating-expenses ledger. All amounts are thebe (100 = 1 BWP).
+//
+// Revenue has TWO bases, and which one a figure is on is never left implicit:
+//
+//   ACCRUAL (default, G30) — earned per night from `revenue_recognition`. Revenue
+//     belongs to the month the night was slept in, whenever the money arrives.
+//   CASH — received, summed from PAID invoices by payment date. What actually landed.
+//
+// The P&L used to be a HYBRID: cash revenue against accrual costs (operating_expenses
+// .incurred_on and maintenance_work_orders.opened_at were already accrual). The two
+// sides of the same month were on different clocks, which is why the monthly margin
+// did not read correctly. Owner decision 2026-09-07: LSP is the book of record for
+// revenue, so ACCRUAL is the default and the cash basis stays reachable for
+// reconciliation.
+
+/**
+ * Which clock a revenue figure is on. Never inferred — every response says which it
+ * used, because the same month has two legitimate and different answers.
+ */
+export type RevenueBasis = 'ACCRUAL' | 'CASH';
 
 export interface ReportWindow {
+  /** Defaults to ACCRUAL (owner decision 2026-09-07). */
+  basis?: RevenueBasis;
   from?: string;    // YYYY-MM-DD inclusive (defaults to 11 months before `to`)
   to?: string;      // YYYY-MM-DD inclusive (defaults to today)
   propertyId?: string;
@@ -10,10 +30,33 @@ export interface ReportWindow {
   accessiblePropertyIds?: string[] | null;
 }
 
+/**
+ * How far the accrual figures can be trusted, carried on every ACCRUAL response.
+ *
+ * Two separate honesty problems, and neither may be left to a footnote someone
+ * remembers to add:
+ *
+ *   `reconstructed` — revenue whose stay total was never frozen, so the backfill
+ *     priced it at TODAY's rates (total_source PRICED). Rate plans have no effective
+ *     dating, so those figures are a reconstruction, not a recovery.
+ *   `unrecognised_stays` — stays inside the window that are earning but have no
+ *     ledger rows at all. Normally zero. Non-zero means the backfill has not been run
+ *     (or cannot price them), and the revenue figure is UNDERSTATED by whatever they
+ *     were worth. Without this a missing ledger is indistinguishable from a bad month.
+ */
+export interface AccrualDisclosure {
+  reconstructed: number;        // thebe, a subset of revenue
+  reconstructed_pct: number;    // of revenue (1dp), 0 when there is no revenue
+  unrecognised_stays: number;   // count of earning stays with no live ledger rows
+}
+
 export interface PnlSummary {
   from: string;
   to: string;
+  revenue_basis: RevenueBasis;
   revenue: number;
+  /** Present on ACCRUAL responses only — see AccrualDisclosure. */
+  disclosure?: AccrualDisclosure;
   maintenance_cost: number;
   operating_expenses: number;
   total_cost: number;
@@ -161,4 +204,39 @@ export interface OwnersResponse {
     maintenance_cost: number;
     net: number;
   };
+}
+
+
+// ── Earned vs received (G30) — the reconciliation the accrual switch makes necessary ─
+//
+// Once revenue is recognised per night, "what did September earn" and "what did
+// September collect" are different questions with different answers, and the gap
+// between them is the point rather than an error. A pay-later guest earns in
+// September and pays in October; the September row shows the earning, the October row
+// shows the cash, and the running difference is what the house is owed for nights it
+// has already provided.
+//
+// This is the accrual receivable, at the month level. Invoice-level debtor ageing —
+// who owes what and for how long — stays on /finance, which reads invoices directly.
+
+export interface EarnedReceivedPoint {
+  month: string;      // YYYY-MM
+  earned: number;     // thebe, gross — nights slept in this month
+  received: number;   // thebe, gross — payments that landed in this month
+  difference: number; // earned - received; positive = earned but not yet collected
+  reconstructed: number; // thebe, the part of `earned` priced at today's rates
+}
+
+export interface RevenueReconciliation {
+  from: string;
+  to: string;
+  monthly: EarnedReceivedPoint[];
+  totals: {
+    earned: number;
+    received: number;
+    difference: number;
+    /** VAT inside `earned` — the accrual counterpart of the P&L's cash vat_output. */
+    earned_tax: number;
+  };
+  disclosure: AccrualDisclosure;
 }

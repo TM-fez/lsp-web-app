@@ -56,6 +56,19 @@ const schema = z.object({
     .transform((v) => v === '1' || v?.toLowerCase() === 'true'),
   SCHEDULER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 
+  // Accrual revenue recognition (G30, modules/revenue). A night is earned on a
+  // calendar boundary, so this has nothing urgent about it and self-gates to a day
+  // rather than riding the 60s tick.
+  REVENUE_RECOGNITION_INTERVAL_MS: z.coerce.number().int().positive().default(24 * 60 * 60_000),
+  // The rolling window the sweep reconciles, in days either side of the property day.
+  // Settled months do not change, so rescanning years of them nightly would cost real
+  // time for a guaranteed no-op; the lookahead is generous because a booking taken a
+  // year out is ordinary here. Anything outside the window is the backfill's job.
+  // NOTE withdrawing recognition is NOT windowed — a stay cancelled long after the
+  // fact stops earning whenever that happens. See revenue.sweeper.ts.
+  REVENUE_LOOKBACK_DAYS: z.coerce.number().int().nonnegative().default(90),
+  REVENUE_LOOKAHEAD_DAYS: z.coerce.number().int().nonnegative().default(400),
+
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_PATH: z.string().default('./uploads'),
   STORAGE_MAX_FILE_SIZE_MB: z.coerce.number().default(10),

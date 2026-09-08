@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/cn';
 import { todayISO } from '@/lib/utils/date';
 import { usePnl, useNudges } from './hooks';
 import { downloadPnlCsv } from './csv';
-import type { MonthlyPoint, PropertyPnl } from '@/types';
+import type { AccrualDisclosure, MonthlyPoint, PropertyPnl, RevenueBasis } from '@/types';
 import type { Nudge } from '@/lib/api/reports';
 
 // ── palette (matches the editorial theme tokens) ──────────────────────────────
@@ -45,6 +45,62 @@ function fullPula(thebe: number): string {
 function monthLabel(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
   return new Date(Date.UTC(y!, (m ?? 1) - 1, 1)).toLocaleString('en', { month: 'short' });
+}
+
+/**
+ * What basis this page is on, and how far it can be trusted.
+ *
+ * Not optional decoration. Since G30 the revenue line is ACCRUAL — earned per night —
+ * so the same month now reads differently from the cash figure the owner saw before,
+ * and a page that does not say which one it is showing is misleading rather than
+ * merely terse.
+ *
+ * The two warnings underneath it are the ones the owner was promised in writing when
+ * the accrual decision was taken: how much of the figure is a reconstruction, and
+ * whether any stays are missing from it altogether.
+ */
+interface BasisNoteProps {
+  basis: RevenueBasis;
+  disclosure?: AccrualDisclosure;
+}
+
+function BasisNote({ basis, disclosure }: BasisNoteProps) {
+  if (basis === 'CASH') {
+    return (
+      <p className="text-xs text-muted">
+        Revenue is <strong className="font-medium text-char">money received</strong> — counted in the month
+        the payment landed. Switch to the earned basis to see revenue in the month the nights were sold.
+      </p>
+    );
+  }
+
+  const reconstructed = disclosure?.reconstructed ?? 0;
+  const missing = disclosure?.unrecognised_stays ?? 0;
+
+  return (
+    <div className="flex flex-col gap-2 text-xs text-muted">
+      <p>
+        Revenue is <strong className="font-medium text-char">earned</strong> — counted in the month the
+        nights were slept in, whenever the guest pays. Costs are on the same basis.
+      </p>
+
+      {reconstructed > 0 && (
+        <p className="text-terra">
+          {fullPula(reconstructed)} of it ({disclosure!.reconstructed_pct}%) is a{' '}
+          <strong className="font-medium">reconstruction</strong>: those stays never had a price agreed on
+          the booking, so they were valued at today’s rates. Treat them as an estimate, not a record.
+        </p>
+      )}
+
+      {missing > 0 && (
+        <p className="text-terra">
+          {missing.toLocaleString('en')} {missing === 1 ? 'stay is' : 'stays are'} missing from this figure
+          entirely — the revenue shown is <strong className="font-medium">understated</strong>. This clears
+          once the revenue backfill has been run for the period.
+        </p>
+      )}
+    </div>
+  );
 }
 
 // ── Revenue vs cost, grouped bars per month (bespoke SVG, no chart lib) ────────
@@ -172,7 +228,11 @@ export function ReportsPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <Metric label="Revenue" value={compactPula(s.revenue)} sub={fullPula(s.revenue)} />
+            <Metric
+              label={s.revenue_basis === 'CASH' ? 'Revenue received' : 'Revenue earned'}
+              value={compactPula(s.revenue)}
+              sub={fullPula(s.revenue)}
+            />
             <Metric label="Total cost" value={compactPula(s.total_cost)}
               sub={`maint ${compactPula(s.maintenance_cost)} · opex ${compactPula(s.operating_expenses)}`} />
             <Metric label="Net margin" value={compactPula(s.net)} sub={`${s.margin_pct}% of revenue`}
@@ -181,6 +241,8 @@ export function ReportsPage() {
             <Metric label="Occupancy" value={`${s.occupancy_pct}%`}
               sub={`${s.room_nights_booked.toLocaleString('en')} of ${s.room_nights_available.toLocaleString('en')} nights`} />
           </div>
+
+          <BasisNote basis={s.revenue_basis} disclosure={s.disclosure} />
 
           <section className="rounded-lg border border-line bg-paper p-5">
             <div className="mb-4 flex items-center justify-between">

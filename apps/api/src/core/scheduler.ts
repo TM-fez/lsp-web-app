@@ -16,6 +16,11 @@ import {
   NO_IMPORT,
   type ImportSummary,
 } from '../modules/channel/channel.import.service.js';
+import {
+  createRevenueSweeper,
+  NO_RECOGNITION,
+  type RevenueSweeper,
+} from '../modules/revenue/revenue.sweeper.js';
 import { createRetentionSweeper, type RetentionResult } from './retention.js';
 import { logger } from './logger.js';
 
@@ -31,6 +36,13 @@ import { logger } from './logger.js';
  * The third sweep closes the hold-less public path: a /stay booking is a PENDING
  * reservation that blocks its nights outright, so an abandoned one is auto-cancelled
  * after WEBSITE_PENDING_TTL_HOURS (see reservations.expiry.ts).
+ *
+ * (G30) Accrual revenue recognition rides here as well, self-gated to a day. It is the
+ * one sweep with nothing urgent about it — a night is earned on a calendar boundary —
+ * and it RECONCILES rather than appends, so an agreeing booking costs nothing and a
+ * missed tick corrects itself on the next one. That is the whole reason recognition is
+ * a sweep and not a hook on every booking mutation: a hook somebody forgets is a month
+ * that silently under-reports.
  *
  * (H4) The Booking.com import poll rides here too, self-gated to CHANNEL_SYNC_INTERVAL_MS
  * — the paid always-on plan made an external 15-min cron unnecessary. It is the one sweep
@@ -60,6 +72,15 @@ export interface SweepResult {
   /** OTA blocks written/revived this tick, and collisions the importer could not apply. */
   channelBlocksUpserted: number;
   channelCollisions: number;
+  /** Accrual ledger: nights recognised and nights withdrawn this tick (G30). */
+  revenueNightsWritten: number;
+  revenueNightsSuperseded: number;
+  /**
+   * Earning bookings with no agreed total, so nothing to recognise. The line worth
+   * watching: a persistently non-zero count means real stays are missing from the
+   * accrual revenue figures and are waiting on the backfill.
+   */
+  revenueUnpriced: number;
 }
 
 const NO_RETENTION: RetentionResult = { refreshTokensPruned: 0, auditLogsPruned: 0 };
@@ -75,14 +96,16 @@ export async function runSweep(
   retention: RetentionSweeper = async () => NO_RETENTION,
   reminders: RemindersSweeper = async () => NO_REMINDERS,
   channelSync: ChannelSyncSweeper = async () => NO_IMPORT,
+  revenue: RevenueSweeper = async () => NO_RECOGNITION,
 ): Promise<SweepResult> {
-  const [held, quoted, website, retained, reminded, synced] = await Promise.allSettled([
+  const [held, quoted, website, retained, reminded, synced, recognised] = await Promise.allSettled([
     holds.releaseExpired(),
     quotes.expireStaleQuotes(),
     websiteBookings(),
     retention(),
     reminders(),
     channelSync(),
+    revenue(),
   ]);
 
   if (held.status === 'rejected') logger.error({ err: held.reason }, '[scheduler] hold sweep failed');
@@ -95,10 +118,13 @@ export async function runSweep(
     logger.error({ err: reminded.reason }, '[scheduler] reminders sweep failed');
   if (synced.status === 'rejected')
     logger.error({ err: synced.reason }, '[scheduler] channel sync failed');
+  if (recognised.status === 'rejected')
+    logger.error({ err: recognised.reason }, '[scheduler] revenue recognition failed');
 
   const retentionCounts = retained.status === 'fulfilled' ? retained.value : NO_RETENTION;
   const reminderCounts = reminded.status === 'fulfilled' ? reminded.value : NO_REMINDERS;
   const syncCounts = synced.status === 'fulfilled' ? synced.value : NO_IMPORT;
+  const revenueCounts = recognised.status === 'fulfilled' ? recognised.value : NO_RECOGNITION;
 
   return {
     holdsReleased: held.status === 'fulfilled' ? held.value : 0,
@@ -110,6 +136,9 @@ export async function runSweep(
       reminderCounts.checkoutDue + reminderCounts.maintenanceStale + reminderCounts.maintenanceUnassigned,
     channelBlocksUpserted: syncCounts.upserted,
     channelCollisions: syncCounts.collisions,
+    revenueNightsWritten: revenueCounts.nights_written,
+    revenueNightsSuperseded: revenueCounts.nights_superseded,
+    revenueUnpriced: revenueCounts.unpriced,
   };
 }
 
@@ -128,7 +157,11 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
     new ChannelRepository(dbInstance),
     env.CHANNEL_SYNC_INTERVAL_MS,
   );
-  return () => runSweep(holds, quotes, websiteBookings, retention, reminders, channelSync);
+  // Self-gates to REVENUE_RECOGNITION_INTERVAL_MS (a day), not the 60s tick. Safe from
+  // the day it deploys: reconcile() leaves an agreeing booking untouched, and with no
+  // pricer wired it only ever recognises totals that were actually agreed.
+  const revenue = createRevenueSweeper(dbInstance);
+  return () => runSweep(holds, quotes, websiteBookings, retention, reminders, channelSync, revenue);
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -158,6 +191,9 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
         remindersRaised,
         channelBlocksUpserted,
         channelCollisions,
+        revenueNightsWritten,
+        revenueNightsSuperseded,
+        revenueUnpriced,
       }) => {
         if (holdsReleased > 0 || quotesExpired > 0 || websiteBookingsExpired > 0) {
           logger.info(
@@ -181,6 +217,20 @@ export function startScheduler(opts: { intervalMs?: number; dbInstance?: Kysely<
           logger.info(
             { channelBlocksUpserted, channelCollisions },
             '[scheduler] channel sync reconciled OTA blocks',
+          );
+        }
+        if (revenueNightsWritten > 0 || revenueNightsSuperseded > 0) {
+          logger.info(
+            { revenueNightsWritten, revenueNightsSuperseded },
+            '[scheduler] revenue recognition reconciled the accrual ledger',
+          );
+        }
+        // Warn, not info: these are confirmed stays earning nothing, so the accrual
+        // revenue figures are understated by however much they were worth.
+        if (revenueUnpriced > 0) {
+          logger.warn(
+            { revenueUnpriced },
+            '[scheduler] bookings with no agreed total earned nothing — awaiting the G30 backfill',
           );
         }
       })

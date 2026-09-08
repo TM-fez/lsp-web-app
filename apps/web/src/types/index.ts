@@ -319,10 +319,37 @@ export interface Expense {
 }
 
 // ── Finance → Reports (Accounts P&L dashboard) ──────────────────────────────
+export type RevenueBasis = 'ACCRUAL' | 'CASH';
+
+/**
+ * How far an accrual figure can be trusted — two separate honesty problems, neither of
+ * which may be left to a footnote someone remembers to add.
+ *
+ * `reconstructed` is revenue whose stay total was never frozen, so it was priced at
+ * TODAY's rates; rate plans have no effective dating, making those figures a
+ * reconstruction rather than a recovery. `unrecognised_stays` counts earning stays with
+ * no ledger rows at all — normally zero, and when it is not, the revenue figure is
+ * UNDERSTATED and a zero month is indistinguishable from a bad one.
+ */
+export interface AccrualDisclosure {
+  reconstructed: number;
+  reconstructed_pct: number;
+  unrecognised_stays: number;
+}
+
 export interface PnlSummary {
   from: string;
   to: string;
+  /**
+   * Which clock the revenue figure is on (G30). ACCRUAL — earned per night, the
+   * default since the owner made LSP the book of record for revenue. CASH — received,
+   * by payment date. The same month has two legitimate and different answers, so this
+   * is never inferred and must be shown wherever the number is.
+   */
+  revenue_basis: RevenueBasis;
   revenue: number;               // thebe
+  /** Accrual responses only — how far the figure above can be trusted. */
+  disclosure?: AccrualDisclosure;
   maintenance_cost: number;
   operating_expenses: number;
   total_cost: number;
@@ -354,6 +381,25 @@ export interface ReportsResponse {
   summary: PnlSummary;
   monthly: MonthlyPoint[];
   by_property: PropertyPnl[];
+}
+
+// ── Earned vs received (G30) — the reconciliation the accrual switch makes necessary.
+// The gap between the columns is the point: a guest who stays in September and settles
+// in October earns in the September row and pays in the October one, and the running
+// difference is what the house is owed for nights it has already provided.
+export interface EarnedReceivedPoint {
+  month: string;         // YYYY-MM
+  earned: number;        // thebe, gross — nights slept in this month
+  received: number;      // thebe, gross — payments that landed in this month
+  difference: number;    // earned - received; positive = earned, not yet collected
+  reconstructed: number; // thebe — the part of `earned` priced at today's rates
+}
+export interface RevenueReconciliation {
+  from: string;
+  to: string;
+  monthly: EarnedReceivedPoint[];
+  totals: { earned: number; received: number; difference: number; earned_tax: number };
+  disclosure: AccrualDisclosure;
 }
 
 // ── Finance → Financial Cockpit (P4.2 — real-time receivables) ──────────────

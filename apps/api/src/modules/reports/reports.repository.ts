@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
 import { propertyToday } from '../../core/time.js';
+import { EARNING_STATUSES } from '../revenue/revenue.types.js';
 
 export interface RepoWindow {
   from: string;     // YYYY-MM-DD inclusive
@@ -12,7 +13,9 @@ export interface RepoWindow {
 }
 
 interface MonthAmount { month: string; amount: string | number | null }
+interface EarnedRow extends MonthAmount { tax: string | number | null; reconstructed: string | number | null }
 interface PropAmount { property_id: string | null; property_name: string | null; amount: string | number | null }
+interface EarnedPropRow extends PropAmount { tax: string | number | null; reconstructed: string | number | null }
 
 // Property filters, safely parameterised: an optional "AND p.id = …" (a picked
 // property) plus the access scope ("AND p.id IN (…)", or "AND FALSE" when the
@@ -26,10 +29,20 @@ const byProp = (id?: string, accessibleIds?: string[] | null) => {
   return sql`${idFrag} ${accFrag}`;
 };
 
-// Month labels + window filters are pinned to UTC (the seed/business dates are UTC
-// midnights). The DB session timezone is Africa/Gaborone, so reading a timestamptz
-// `date_trunc` back as UTC would shift month boundaries — `AT TIME ZONE 'UTC'` keeps
-// the wall-clock in UTC on both the label and the comparison.
+// Month labels + window filters are pinned to Africa/Gaborone — the timezone of record
+// (invariant 2). `AT TIME ZONE` is applied to both the label and the comparison, so a
+// row cannot be labelled with one month and filtered by another.
+//
+// This was UTC until 2026-09-08 (defect D08), on the reasoning that the seed's business
+// dates are UTC midnights. That is true of the seed and false of the business: Gaborone
+// is UTC+2, so a payment taken at 01:00 on 1 October was bucketed into September. Two
+// hours of every month landed in the wrong one.
+//
+// WARNING this MOVES historical cash figures slightly — a handful of late-night
+// payments change month — which is why D08 said to announce it rather than slide it in.
+//
+// The accrual ledger queries below need none of this: `stay_date` is a DATE, and a
+// calendar night has no timezone to get wrong.
 
 export class ReportsRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -37,7 +50,7 @@ export class ReportsRepository {
   // ── Revenue (PAID invoices, refunds negative; recognised at invoice date) ─────
   async revenueByMonth(w: RepoWindow): Promise<MonthAmount[]> {
     const r = await sql<MonthAmount>`
-      SELECT to_char(i.created_at AT TIME ZONE 'UTC', 'YYYY-MM') AS month,
+      SELECT to_char(i.created_at AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM') AS month,
              SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
       FROM invoices i
       LEFT JOIN reservations rsv ON rsv.id = i.reservation_id
@@ -45,8 +58,8 @@ export class ReportsRepository {
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
@@ -63,8 +76,8 @@ export class ReportsRepository {
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
@@ -81,23 +94,110 @@ export class ReportsRepository {
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}`.execute(this.db);
     return r.rows[0]?.vat ?? 0;
+  }
+
+  // ── Earned revenue (G30 accrual ledger, recognised per night) ────────────────
+  //
+  // The other basis entirely, and the reason the ledger exists: revenue is counted in
+  // the month the NIGHT was slept in, not the month the money arrived. A stay running
+  // 28 Sep – 3 Oct puts three nights in September and two in October however the guest
+  // pays, and a pay-later guest (invariant 3) puts September's revenue in September
+  // even when the cash lands in October.
+  //
+  // The property chain hangs off the LEDGER's own room_id, not the reservation's. A
+  // booking moved to another unit changes reservations.room_id, and resolving the room
+  // at read time would retrospectively move already-earned nights to the new unit —
+  // putting nights on a landlord's statement for a unit that stood empty.
+  //
+  // `reconstructed` is the subset priced at TODAY's rates because no total was ever
+  // frozen (total_source PRICED). It comes back on every row so that no caller can
+  // total earned revenue without also being handed the part of it that is a guess.
+  async earnedByMonth(w: RepoWindow): Promise<EarnedRow[]> {
+    const r = await sql<EarnedRow>`
+      SELECT to_char(rr.stay_date, 'YYYY-MM') AS month,
+             SUM(rr.amount) AS amount,
+             SUM(rr.tax_amount) AS tax,
+             COALESCE(SUM(rr.amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
+      FROM revenue_recognition rr
+      JOIN rooms rm ON rm.id = rr.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE rr.superseded_at IS NULL
+        AND rr.stay_date >= ${w.from}::date
+        AND rr.stay_date <  ${w.toExcl}::date
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1 ORDER BY 1
+    `.execute(this.db);
+    return r.rows;
+  }
+
+  async earnedByProperty(w: RepoWindow): Promise<EarnedPropRow[]> {
+    const r = await sql<EarnedPropRow>`
+      SELECT p.id AS property_id, p.name AS property_name,
+             SUM(rr.amount) AS amount,
+             SUM(rr.tax_amount) AS tax,
+             COALESCE(SUM(rr.amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
+      FROM revenue_recognition rr
+      JOIN rooms rm ON rm.id = rr.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE rr.superseded_at IS NULL
+        AND rr.stay_date >= ${w.from}::date
+        AND rr.stay_date <  ${w.toExcl}::date
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+      GROUP BY 1, 2
+    `.execute(this.db);
+    return r.rows;
+  }
+
+  /**
+   * Earning stays in the window that have NO live ledger rows at all.
+   *
+   * The difference between "September was quiet" and "September has not been
+   * recognised yet". Without it an un-backfilled deployment shows a catastrophic
+   * revenue drop that looks exactly like a real one, and the accrual P&L becomes a
+   * number nobody can trust.
+   *
+   * Overlap is the same half-open test used everywhere else (invariant 4): the stay
+   * touches the window if it starts before the window ends and ends after it starts.
+   * EARNING_STATUSES is imported rather than repeated so this can never disagree with
+   * what the recogniser actually writes.
+   */
+  async unrecognisedStays(w: RepoWindow): Promise<number> {
+    const r = await sql<{ n: number }>`
+      SELECT count(*)::int AS n
+      FROM reservations r
+      JOIN rooms rm ON rm.id = r.room_id
+      LEFT JOIN buildings b ON b.id = rm.building_id
+      LEFT JOIN properties p ON p.id = b.property_id
+      WHERE r.deleted_at IS NULL
+        AND r.status IN (${sql.join(EARNING_STATUSES.map((st) => sql`${st}`))})
+        AND r.check_in_date  < ${w.toExcl}::date
+        AND r.check_out_date > ${w.from}::date
+        AND NOT EXISTS (
+          SELECT 1 FROM revenue_recognition rr
+           WHERE rr.reservation_id = r.id AND rr.superseded_at IS NULL
+        )
+        ${byProp(w.propertyId, w.accessiblePropertyIds)}
+    `.execute(this.db);
+    return r.rows[0]?.n ?? 0;
   }
 
   // ── Maintenance / contractor cost (approved spend, by opened date) ────────────
   async maintenanceByMonth(w: RepoWindow): Promise<MonthAmount[]> {
     const r = await sql<MonthAmount>`
-      SELECT to_char(wo.opened_at AT TIME ZONE 'UTC', 'YYYY-MM') AS month, SUM(wo.cost_amount) AS amount
+      SELECT to_char(wo.opened_at AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM') AS month, SUM(wo.cost_amount) AS amount
       FROM maintenance_work_orders wo
       LEFT JOIN rooms rm ON rm.id = wo.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
-        AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
@@ -112,8 +212,8 @@ export class ReportsRepository {
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
-        AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
@@ -279,8 +379,8 @@ export class ReportsRepository {
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE i.status = 'PAID' AND i.deleted_at IS NULL
         AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1
     `.execute(this.db);
@@ -315,8 +415,8 @@ export class ReportsRepository {
       LEFT JOIN properties p ON p.id = b.property_id
       WHERE wo.cost_amount IS NOT NULL AND wo.cost_approved_at IS NOT NULL AND wo.deleted_at IS NULL
         AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
-        AND (wo.opened_at AT TIME ZONE 'UTC') >= ${w.from}::timestamp
-        AND (wo.opened_at AT TIME ZONE 'UTC') <  ${w.toExcl}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (wo.opened_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1
     `.execute(this.db);

@@ -17,7 +17,8 @@
     "db:seed:demo:reset": "tsx src/db/seed-demo.ts --reset",
     "db:purge-test": "tsx src/db/purge-test-data.ts",
     "db:import-guests": "tsx src/db/import-guests.ts",
-    "db:import-guests:apply": "tsx src/db/import-guests.ts --yes"
+    "db:import-guests:apply": "tsx src/db/import-guests.ts --yes",
+    "db:backfill-revenue": "tsx src/db/backfill-revenue.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",

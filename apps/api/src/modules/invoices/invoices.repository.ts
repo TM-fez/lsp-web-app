@@ -1,7 +1,12 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, InvoiceRow, NewInvoice } from '../../db/types.js';
+import { allocateDocumentNumber } from '../../core/documents/numbering.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { InvoiceFilters, InvoiceStatus, InvoiceRequestMeta, InvoiceListRow } from './invoices.types.js';
+
+/** An invoice as the service knows it: everything but the number, which only the
+ *  repository may allocate (D09 — see create()). */
+export type UnnumberedInvoice = Omit<NewInvoice, 'number'>;
 
 export class InvoicesRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -156,11 +161,19 @@ export class InvoicesRepository {
     return { data, total: Number(total), page: pagination.page, limit: pagination.limit };
   }
 
-  async create(invoice: NewInvoice, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+  /**
+   * The number is allocated HERE rather than by the caller, inside the same
+   * transaction as the insert. That is what makes the series gapless (D09): a
+   * failed insert rolls the counter back with it. A caller-supplied number would
+   * be claimed before the row that justifies it exists.
+   */
+  async create(invoice: UnnumberedInvoice, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
     return this.db.transaction().execute(async (trx) => {
+      const number = await allocateDocumentNumber(trx, 'INV');
+
       const inserted = await trx
         .insertInto('invoices')
-        .values(invoice)
+        .values({ ...invoice, number })
         .returningAll()
         .executeTakeFirstOrThrow();
 
@@ -240,14 +253,18 @@ export class InvoicesRepository {
   // Refund: issue a REFUND invoice and flip the original to REFUNDED atomically.
   async refund(
     originalId: string,
-    refundInvoice: NewInvoice,
+    refundInvoice: UnnumberedInvoice,
     reason: string,
     meta: InvoiceRequestMeta
   ): Promise<InvoiceRow> {
     return this.db.transaction().execute(async (trx) => {
+      // A credit note takes the next number in the same series as the invoice it
+      // reverses — a hole where a refund sits reads exactly like a removed document.
+      const number = await allocateDocumentNumber(trx, 'INV');
+
       const refund = await trx
         .insertInto('invoices')
-        .values(refundInvoice)
+        .values({ ...refundInvoice, number })
         .returningAll()
         .executeTakeFirstOrThrow();
 
