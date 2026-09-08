@@ -475,6 +475,14 @@ export interface InvoicesTable {
   updated_at: Generated<Date>;
 }
 
+export interface DocumentNumberSeriesTable {
+  prefix: string;
+  year: number;
+  last_value: Generated<number>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface OperatingExpensesTable {
   id: Generated<string>;
   property_id: string | null;
@@ -559,6 +567,7 @@ export interface Database {
   payment_intents: PaymentIntentsTable;
   payment_attempts: PaymentAttemptsTable;
   invoices: InvoicesTable;
+  document_number_series: DocumentNumberSeriesTable;
   operating_expenses: OperatingExpensesTable;
   recurring_operating_costs: RecurringOperatingCostsTable;
   staff_compensation: StaffCompensationTable;
@@ -646,6 +655,8 @@ export type NewPaymentAttempt   = Insertable<PaymentAttemptsTable>;
 export type InvoiceRow     = Selectable<InvoicesTable>;
 export type NewInvoice     = Insertable<InvoicesTable>;
 export type UpdateInvoice  = Updateable<InvoicesTable>;
+
+export type DocumentNumberSeriesRow = Selectable<DocumentNumberSeriesTable>;
 
 export type OperatingExpenseRow    = Selectable<OperatingExpensesTable>;
 export type NewOperatingExpense    = Insertable<OperatingExpensesTable>;

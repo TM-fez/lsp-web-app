@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { InvoicesRepository } from './invoices.repository.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import { FilesRepository } from '../files/files.repository.js';
@@ -14,11 +13,6 @@ import type {
   InvoiceRequestMeta,
   InvoiceListRow,
 } from './invoices.types.js';
-
-function invoiceNumber(): string {
-  const rand = crypto.randomUUID().split('-')[0]!.toUpperCase();
-  return `INV-${new Date().getFullYear()}-${rand}`;
-}
 
 export class InvoicesService {
   constructor(
@@ -87,7 +81,6 @@ export class InvoicesService {
 
     return this.repository.create(
       {
-        number: invoiceNumber(),
         hold_id: dto.hold_id ?? null,
         quote_id: quote.id,
         reservation_id: reservationId,
@@ -153,7 +146,6 @@ export class InvoicesService {
     return this.repository.refund(
       id,
       {
-        number: invoiceNumber(),
         hold_id: original.hold_id,
         quote_id: original.quote_id,
         reservation_id: original.reservation_id,

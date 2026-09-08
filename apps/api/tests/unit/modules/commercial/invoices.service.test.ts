@@ -35,7 +35,9 @@ describe('InvoicesService.issueInvoice', () => {
     expect(arg.subtotal_amount).toBe(50000);
     expect(arg.tax_amount).toBe(7000);
     expect(arg.kind).toBe('DEPOSIT');
-    expect(arg.number).toMatch(/^INV-/);
+    // No number here on purpose: since D09 only the repository may allocate one, and
+    // only inside the transaction that inserts the row. See invoice-numbering.test.ts.
+    expect(arg.number).toBeUndefined();
   });
 
   it('invoices the remaining balance', async () => {
