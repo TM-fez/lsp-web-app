@@ -106,7 +106,7 @@ async function main() {
   console.warn(
     APPLY
       ? '\n  ✓ Applied.\n'
-      : '\n  Dry run complete — nothing changed. Re-run with `--yes` to apply.\n'
+      : '\n  Dry run complete — nothing changed. Apply with `npm run db:backfill-revenue:apply`.\n'
   );
 
   await db.destroy();

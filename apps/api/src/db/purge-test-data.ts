@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   console.log('');
 
   if (!APPLY) {
-    console.log('  Dry run complete — nothing changed. Re-run with `--yes` to apply.\n');
+    console.log('  Dry run complete — nothing changed. Apply with\n  `npx tsx apps/api/src/db/purge-test-data.ts --yes` (from the repo root).\n');
     await client.end();
     return;
   }
