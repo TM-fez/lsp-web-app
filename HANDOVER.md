@@ -147,9 +147,15 @@ freshly-deployed database the P&L reads near-zero revenue until the backfill run
 the Reports page says how many earning stays are missing — but the sequence matters:
 
 ```bash
-npm run db:backfill-revenue          # dry run: writes nothing, reports what it would do
-npm run db:backfill-revenue -- --yes # apply
+npm run db:backfill-revenue                                # dry run: writes nothing
+npx tsx apps/api/src/db/backfill-revenue.ts --yes          # apply
+npx tsx apps/api/src/db/backfill-revenue.ts --from 2026-01-01   # bound it by stay date
 ```
+
+⚠️ **`npm run db:backfill-revenue -- --yes` does not apply anything.** npm has its own `--yes` and
+eats the flag before the script sees it, so that form is a dry run wearing an apply's clothes. It does
+say `DRY RUN` in its output — read the mode line before believing it worked. Use the `npx tsx` form.
+Safe to re-run either way: `reconcile()` leaves an already-agreeing booking alone.
 
 Check the reconstruction share on the dry run first. Stays with no agreed total are priced at
 *today's* rates, because rate plans have no effective dating — those figures are a reconstruction, not
