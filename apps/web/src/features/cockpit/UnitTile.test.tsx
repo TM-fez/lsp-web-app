@@ -45,4 +45,20 @@ describe('UnitTile', () => {
     );
     expect(screen.getByText(/Kefilwe M\./)).toBeInTheDocument();
   });
+
+  it('prints checkout as MM-DD even when the API sent an ISO timestamp', () => {
+    render(
+      <UnitTile
+        unit={unit({
+          status: 'OCCUPIED',
+          housekeeping_status: 'READY',
+          guest_name: 'Kefilwe M.',
+          check_out_date: '2026-09-06T00:00:00.000Z',
+        })}
+        onAssign={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/out 09-06/)).toBeInTheDocument();
+    expect(screen.queryByText(/T00:00:00/)).not.toBeInTheDocument();
+  });
 });

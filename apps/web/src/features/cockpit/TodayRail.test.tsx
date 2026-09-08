@@ -65,4 +65,24 @@ describe('TodayRail', () => {
     expect(screen.getByText('3 days late')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check out' })).toBeInTheDocument();
   });
+
+  // node-pg serializes date columns as ISO timestamps. The old slice(5) printed
+  // "08-21T00:00:00.000Z" on the live board.
+  it('does not leak an ISO timestamp into the stay dates', () => {
+    render(
+      <TodayRail
+        today={TODAY}
+        arrivals={[
+          card({
+            check_in_date: '2026-08-21T00:00:00.000Z',
+            check_out_date: '2026-09-06T00:00:00.000Z',
+          }),
+        ]}
+        inHouse={[]}
+        departures={[]}
+      />
+    );
+    expect(screen.getByText(/B2 · 08-21 → 09-06/)).toBeInTheDocument();
+    expect(screen.queryByText(/T00:00:00/)).not.toBeInTheDocument();
+  });
 });

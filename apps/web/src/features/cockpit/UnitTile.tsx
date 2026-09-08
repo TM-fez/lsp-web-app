@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import type { CockpitUnit } from '@/types';
 import { housekeepingTone, roomStatusTone, isAssignable } from './status';
+import { shortDay } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
 
 export function UnitTile({ unit, onAssign }: { unit: CockpitUnit; onAssign: (unit: CockpitUnit) => void }) {
@@ -30,7 +31,7 @@ export function UnitTile({ unit, onAssign }: { unit: CockpitUnit; onAssign: (uni
       {unit.guest_name && (
         <div className="truncate rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
           {unit.guest_name}
-          {unit.check_out_date && <span className="text-slate-400"> · out {unit.check_out_date.slice(5)}</span>}
+          {unit.check_out_date && <span className="text-slate-400"> · out {shortDay(unit.check_out_date)}</span>}
         </div>
       )}
     </button>
