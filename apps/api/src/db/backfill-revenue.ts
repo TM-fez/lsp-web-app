@@ -19,11 +19,12 @@
  * alone, so a second pass changes nothing — except where rates have moved since, which
  * restates the reconstructed stays and is the same caveat again.
  *
- * Usage (with DATABASE_URL pointing at the target DB). Note `npm run … -- --yes` never
- * reaches the script — npm has its own --yes and eats it — so use npx tsx to apply:
+ * Usage (with DATABASE_URL pointing at the target DB). Both forms work from the repo
+ * root or from apps/api. Applying has its OWN script rather than a flag, because
+ * `npm run … -- --yes` never reaches us — npm has its own --yes and eats it:
  *   npm run db:backfill-revenue                                    # dry run
- *   npx tsx apps/api/src/db/backfill-revenue.ts --yes              # apply
- *   npx tsx apps/api/src/db/backfill-revenue.ts --from 2026-01-01  # bound it
+ *   npm run db:backfill-revenue:apply                              # apply
+ *   npx tsx apps/api/src/db/backfill-revenue.ts --from 2026-01-01  # bound it (from root)
  */
 import 'dotenv/config';
 import { db } from '../config/db.js';
