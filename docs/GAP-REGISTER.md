@@ -13,8 +13,11 @@ Refs `G01`–`G32` are stable — use them in commits, branches and conversation
 **Size** — `S` a day or two · `M` about a week · `L` several weeks. Rough shape, not a quote.
 
 Audited against `main` @ `2c54c41` (2026-08-20) — 31 API routers, 62 migrations, 31 web routes, 93 test files.
-Last reviewed **2026-09-01** against `main` @ `35df771` (migrations to 066, PRs to #99). The G-items below are
-unchanged from the 2026-08-24 audit except where marked; the defect section at the bottom is current.
+Re-audited **2026-09-08** against `main` @ `63a0e89` — **31 API routers, 69 migrations, 32 web routes,
+115 test files**, PRs to #111. Every G-item and D-item below was checked against the code on that
+commit, not carried forward on trust. Two things moved: **D06 was fixed in PR #105 but still read
+`OPEN` here**, and **G15 changed shape** now that the revenue ledger exists (see its entry). The
+remaining Start-here items were each confirmed still undone in the code.
 
 ---
 
@@ -23,16 +26,40 @@ unchanged from the 2026-08-24 audit except where marked; the defect section at t
 Small, unblocked, needs nobody's permission. Clearing these closes eight of the thirty-two.
 (One is already struck through — G28's standalone half shipped on 2026-09-01.)
 
-| Ref | Item | Why it's cheap |
-|---|---|---|
-| G15 | Direct vs OTA revenue | Source is already recorded on every booking |
-| G13 | Conversion rate | Leads already carry source and outcome |
-| G20 | Maintenance inspection | Copy the sign-off housekeeping already has |
-| G23 | Payment proof | Settle endpoint already accepts a receipt file |
-| G18 | Stay type | One field on the booking |
-| ~~G28~~ | ~~Discount fix~~ | ✅ done, PR #94 — the charge now uses the discounted total |
-| G12 | Stale lead alert | Reuse the existing reminder sweep |
-| G21 | Post-checkout link | Tie a departure-day repair to the departing guest |
+| Ref | Item | Why it's cheap | Verified 2026-09-08 |
+|---|---|---|---|
+| G15 | Direct vs OTA revenue | Source is on every booking — **and now on every recognised night** | no report groups by source |
+| G13 | Conversion rate | Leads already carry source and outcome | only migration 060 exists; no report |
+| G20 | Maintenance inspection | Copy the sign-off housekeeping already has | no `inspect` in `modules/maintenance` |
+| G23 | Payment proof | Settle endpoint already accepts a receipt file | `InvoicesPage.tsx:194` still settles with no file |
+| G18 | Stay type | One field on the booking | no `stay_type` anywhere in API or web |
+| ~~G28~~ | ~~Discount fix~~ | ✅ done, PR #94 — the charge now uses the discounted total | — |
+| G12 | Stale lead alert | Reuse the existing reminder sweep | sweep has stale *quotes* and *maintenance*, not leads |
+| G21 | Post-checkout link | Tie a departure-day repair to the departing guest | no guest/reservation link on a work order |
+
+### Why none of these have been done — and that being right
+
+Four consecutive work sessions (2026-08-31, 09-01, 09-07, 09-08) skipped this list entirely and went
+to the money instead: the folio (G27), pay-later (G28), the accrual ledger (G30), and nine defects.
+That looks like the list being ignored. It is worth writing down that it was not a drift — it was the
+correct call, made four times without being recorded once, which is why it *felt* like drift.
+
+The reason: every item on this list is **reporting or workflow polish that depends on nothing**, so it
+keeps. The money work was **load-bearing and ordered** — the folio has to exist before a booking can be
+confirmed unpaid, and pay-later has to exist before accrual revenue means anything. Doing G15 first
+would have built a revenue-by-source report on the cash basis, then had to rebuild it two weeks later
+on the ledger.
+
+**What follows for the next session:** this list is now genuinely next. Nothing else is queued, nothing
+above it is half-finished, and the ordering argument that outranked it has run out — the revenue book
+is closed. The one thing that legitimately jumps the queue is drawing a page for `/reports/revenue`,
+because that endpoint shipped in #111 with no consumer and an unconsumed endpoint rots.
+
+**G15 changed shape and got better.** It was "group invoices by `reservations.source`" — a cash-basis
+answer. `revenue_recognition` carries `reservation_id`, so the same report now joins through to source
+and answers it **per night on the accrual basis**, consistent with the P&L beside it. Still `S`, still
+the cheapest answer to the most commercially loaded question on the board, but no longer a number that
+disagrees with the P&L.
 
 ---
 
@@ -204,6 +231,11 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 
 ## Found in the code, not on the board
 
+**Nine defects, seven closed.** Open as of 2026-09-08: **D04** (`PARTIALLY_PAID` written by nothing —
+a deliberate hold, not a bug to fix today) and **D07** (no date-ranged maintenance block — needs a
+decision, and is a hard prerequisite for G32's calendar). Both are `Decide`, so neither is picked up
+without asking. Everything else here is resolved and kept for the reasoning, not the status.
+
 ### D01 · "Looked free, got 409" · ✅ `RESOLVED` 2026-09-01 (PR #99)
 - **Was** — two definitions of "blocked" live at once. `checkAvailability` and the `reservations_no_overlap` constraint blocked on PENDING; the availability engine counted only `('CONFIRMED','BLOCKED')` + CHECKED_IN occupancy. A unit with a PENDING booking read as free in search, then 409'd on create — worst on public `/stay` bookings, which sit PENDING up to 24h.
 - **Owner decision** — **an unpaid booking DOES hold the room.** All three now agree; the rule is recorded as invariant 7 in `CLAUDE.md` with the three places that must move together if it is ever reversed.
@@ -227,10 +259,12 @@ Small, unblocked, needs nobody's permission. Clearing these closes eight of the 
 - **Needed** — leave it or remove it. Removing means rebuilding a Postgres enum type, which is real work for no functional gain today.
 - **Annotated 2026-09-07** — **keep it, still unwritten, for now.** The owner asked for "P500 of P1,500 paid", and that is answered at the *reservation* level by the folio (derived from invoices), not by this status. Writing `PARTIALLY_PAID` today would be actively wrong: there is no part-payment amount column, so `finance.repository.ts` counts such an invoice's **full** value as outstanding — it would inflate the receivables ledger and every aging bucket. It earns its place when `payments` + `payment_allocations` land (G30 scope), at which point `outstanding = total − Σ allocations` makes the status true. Until then the folio arithmetic must live in **exactly one SQL helper**, so that swap is one query rather than a hunt.
 
-### D06 · Availability's occupancy join has no date predicate · `OPEN` · Build · S
-- **Today** — the reservation leg of `AvailabilityRepository` is correctly date-bounded, but the occupancy leg beside it is `WHERE deleted_at IS NULL AND status = 'CHECKED_IN'` with no dates (`availability.repository.ts:61-66`, `:101-106`, `:138-142`). `occupancy` carries no dates of its own; it hangs off a reservation.
-- **Effect** — a unit occupied *tonight* reads as unavailable for **every** future range. Harmless for today's walk-in (the guest really is in the room), useless for "what is free next month" — which is exactly what the booking calendar and the walk-in search ask.
-- **Needed** — the date-bounded four-status reservation set already subsumes CHECKED_IN, so the fix is to not inherit this join in the new queries, then narrow it in place. Found while planning G32's calendar.
+### D06 · Availability's occupancy join has no date predicate · ✅ `RESOLVED` 2026-09-07 (PR #105)
+- **Was** — the reservation leg of `AvailabilityRepository` was correctly date-bounded, but the occupancy leg beside it was `WHERE deleted_at IS NULL AND status = 'CHECKED_IN'` with no dates. `occupancy` carries no dates of its own; it hangs off a reservation.
+- **Effect** — a unit occupied *tonight* read as unavailable for **every** future range. Harmless for today's walk-in (the guest really is in the room), useless for "what is free next month" — which is exactly what the booking calendar and the walk-in search ask. Found while planning G32's calendar.
+- **Fixed** — the occupancy leg is now gated to a range that includes today (`availability.repository.ts:88-89`, `:133-134`, `:174`), and the whole-row EXISTS variant is narrowed to today's column only. The guest's *scheduled* nights are already covered by the reservation leg now that CHECKED_IN sits in its whitelist; what the occupancy leg adds is the **overstay**, and an overstay is only knowable as of today — which is why it is scoped to today rather than dropped outright.
+- **Guarded by** — `availability-d06.test.ts`.
+- ⚠️ **Bookkeeping note (2026-09-08 audit)** — this was fixed on 2026-09-07 but stayed marked `OPEN` here until the audit caught it. It is the only item that was wrong in this direction. Close the register entry in the same PR as the fix, not after.
 
 ### D07 · Maintenance has no date-ranged block · `OPEN` · Decide · M
 - **Today** — `rooms.status` MAINTENANCE / OUT_OF_SERVICE is a *now* flag, and `maintenance_work_orders` has no scheduled window. There is no way to say "this unit is out from the 12th to the 15th".
