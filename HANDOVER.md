@@ -4,8 +4,13 @@ This file is the single source of truth for picking the project up on a new mach
 (or in a fresh Claude session). The code lives on GitHub; the working context does not —
 so everything you need to continue is captured here.
 
-**Last updated: 2026-07-09.** Companion docs: `ROADMAP.md` (full backlog + status),
-`GO-LIVE-FAHAD.md` (plain-English owner go-live checklist), `DEPLOY.md` (deploy/env reference).
+**Last updated: 2026-09-08.** Companion docs, in the order to read them:
+- **`CLAUDE.md`** — the seven invariants. Breaking one is a production bug. Read before writing code.
+- **`docs/GAP-REGISTER.md`** — what is *not* built, measured against the client's process map, plus
+  the defect log. This is the file that answers "what next"; `ROADMAP.md` no longer does.
+- `ROADMAP.md` — the phase-0–5 backlog. ⚠️ Historical: it describes the build up to 2026-07-09 and
+  everything in it is done. It does not cover the G-items.
+- `GO-LIVE-FAHAD.md` (plain-English owner go-live checklist), `DEPLOY.md` (deploy/env reference).
 
 ---
 
@@ -84,12 +89,26 @@ Open http://localhost:5173 and log in with `admin@lsp.local` / `Admin@123!`.
 
 ---
 
-## 4. Where the project stands (all builds done + merged to `main`)
+## 4. Where the project stands
 
-As of **2026-07-09, development is complete.** Every product phase (0–5) and the hardening track
-(H1–H6) is built, tested, and merged to `main` (live on Vercel + Render). What remains is **not
-coding** — it's client/owner setup (keys, paid hosting) and a few chores (see §5). The full backlog
-with per-item status is in **`ROADMAP.md`**; the owner-facing switch-on checklist is in **`GO-LIVE-FAHAD.md`**.
+⚠️ **This section said "development is complete" from 2026-07-09 until this audit. It was wrong by
+August.** What was complete on that date was the *phase 0–5 roadmap*. Then the client's actual
+operations process map was audited against the app (`docs/GAP-REGISTER.md`, 2026-08-20) and found
+**56 process steps, 32 of them not fully covered**. Building resumed and has not stopped: PRs #86–#111,
+migrations 061–069, and nine defects found in code that was believed finished.
+
+**The correction worth carrying forward:** "every planned phase is built" and "the business can run on
+this" are different claims, and the first was mistaken for the second for about six weeks. The gap
+register exists because of that mistake — it measures the app against the client's process, not
+against our own backlog. Trust it over `ROADMAP.md`.
+
+**Where it actually stands (2026-09-08):** the phase 0–5 roadmap is done and live. On top of it, the
+revenue book is now closed — booking folio, pay-later confirmation, per-night accrual revenue
+recognition, and gapless invoice numbering all shipped between 2026-08-31 and 2026-09-08. What remains
+is the eight cheap unblocked items at the top of the gap register, two defects needing an owner
+decision (D04, D07), and the large blocked or undecided items (a payment gateway, campaigns, long-term
+leases, banking). The full backlog with per-item status is in **`docs/GAP-REGISTER.md`**; the
+owner-facing switch-on checklist is in **`GO-LIVE-FAHAD.md`**.
 
 Shipped and live:
 - Auth/RBAC, Users & Roles, CRM (Guests + Leads), Reservations, the operations Cockpit, Pricing, the
@@ -111,14 +130,37 @@ Shipped and live:
   and occupancy nudges (H6).
 
 **Live data is real:** 25 real apartments (Village blocks B / D / G / I / J / T). The owner has changed
-the admin password. The **budget is approved.** Schema is at **migration 060**.
+the admin password. The **budget is approved.** Schema is at **migration 069**.
 
 ---
 
-## 5. What's left before launch (no more building — a switch-on + launch checklist)
+## 5. Switch-on checklist (owner setup + operational chores)
 
-Development is done; what remains is client/owner setup and chores. The plain-English, owner-facing
-version of all this is **`GO-LIVE-FAHAD.md`** (parts A–D). Summary:
+⚠️ This section is **not** "what's left" any more — building continues, and the backlog lives in
+`docs/GAP-REGISTER.md`. What follows is the narrower thing it is still good for: the setup steps that
+need the *owner*, not code. The plain-English, owner-facing version is **`GO-LIVE-FAHAD.md`**
+(parts A–D). Summary:
+
+**🔴 Do this before anyone reads a P&L — the G30 revenue backfill.** Migration 069 added the accrual
+ledger and `/reports/pnl` now defaults to the accrual basis. **The ledger starts empty**, so on a
+freshly-deployed database the P&L reads near-zero revenue until the backfill runs. It is not silent —
+the Reports page says how many earning stays are missing — but the sequence matters:
+
+```bash
+npm run db:backfill-revenue          # dry run: writes nothing, reports what it would do
+npm run db:backfill-revenue -- --yes # apply
+```
+
+Check the reconstruction share on the dry run first. Stays with no agreed total are priced at
+*today's* rates, because rate plans have no effective dating — those figures are a reconstruction, not
+a recovery, and the page says so. **Unverified as of this audit: whether this has been run against
+production.** Check before trusting a live revenue figure.
+
+**🟠 Tell the owner about D08 before they notice it.** The same release moved month bucketing from UTC
+to `Africa/Gaborone`. Payments taken between 22:00 and midnight Gaborone now fall in the correct
+month, which means **some historical cash figures restate**. The shift is small and lands on month
+boundaries (it was zero on demo data), but a restated month discovered rather than announced costs
+more trust than it saves effort.
 
 **Client/owner setup — flips "dark" features on (env vars on the dashboards, not code):**
 - `ANTHROPIC_API_KEY` on Render → AI marketing + strategy brief. Slot is documented in `render.yaml`.
@@ -129,9 +171,9 @@ version of all this is **`GO-LIVE-FAHAD.md`** (parts A–D). Summary:
   real file storage + nightly DB backups.
 - Sentry `SENTRY_DSN` (Render) + `VITE_SENTRY_DSN` (Vercel); UptimeRobot pointed at `/health`.
 
-**The one deadline — Render → paid plan.** Free Postgres expires **~Sep 2026**; the free web service
-sleeps when idle. Also a hard prerequisite for Booking.com go-live (its fetcher times out on a sleeping
-service).
+**~~The one deadline — Render → paid plan.~~ ✅ Done 2026-08-31 (PR #86).** `render.yaml` is on
+`starter` (web) + `basic-256mb` (Postgres), so the free-Postgres expiry that was looming for ~Sep 2026
+is no longer a deadline, and the sleeping-service blocker on Booking.com go-live is cleared.
 
 **Booking.com channel sync (H4) — code complete, owner go-live steps** (see `GO-LIVE-FAHAD.md` Part C
 and `ROADMAP.md` H4): per unit, in the unit drawer's "Channel sync" box, paste our export URL into the
@@ -140,11 +182,13 @@ Booking.com extranet and paste their `.ics` back; set `CHANNEL_ALERT_EMAIL` + `C
 The route is mounted and refuses everyone without the secret — the schedule is the on-switch.
 
 **Parked client decisions:**
-- **DPO Pay (Phase B)** — **parked by owner on 2026-07-02** (registration deliberately stopped).
-  `settlePaid()` (`apps/api/src/modules/payments/payments.repository.ts`) is the sole writer of a
-  reservation to CONFIRMED. Resuming means: generalise it to confirm hold-less `/stay` bookings, wire
-  the approved discount into the real gateway charge, and reuse the cron secret-guarded-endpoint pattern
-  for the DPO callback.
+- **DPO Pay (Phase B)** — **parked by owner on 2026-07-02** (registration deliberately stopped);
+  tracked as **G27**, blocked on the client registering the business, opening a bank account and
+  passing KYC. `settlePaid()` (`apps/api/src/modules/payments/payments.repository.ts`) is **no longer
+  the sole writer of CONFIRMED** — see the invariant note in §6. Resuming means: generalise it to
+  confirm hold-less `/stay` bookings, and reuse the cron secret-guarded-endpoint pattern for the DPO
+  callback. (~~Wire the approved discount into the real gateway charge~~ — ✅ done in PR #94; the
+  charge already defaults to the booking's own priced total, discount applied.)
 - **OTA guest details** — Fahad decides: manual extranet copy vs full Booking.com Reservations API. The
   H6 Tier-2 auto-enrich (parse the "new booking" notification email) is blocked until a real sample email
   is forwarded.
@@ -165,9 +209,16 @@ the abandoned Vercel "-api" projects.
 - Money is stored in **thebe** (integer minor units; 100 = 1 Pula). Enter in Pula in the UI, store thebe.
 - New web feature = `features/<x>/` with TanStack Query hooks + a Radix dialog drawer; gate UI with `useAuthStore.hasPerm`.
 - "Today" is **Africa/Gaborone** — use `core/time.ts` (API) and `lib/utils/date.ts` (web), never raw `new Date()` for the property day.
-- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 060).
+- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 069).
 - Property-scoped routes go through `requireActiveProperty` (`core/scope/activeProperty.ts`); scoped queries filter by `req.activePropertyId`.
-- Commercial invariant: only `settlePaid()` confirms a reservation; create/edit can never set CONFIRMED.
+- ⚠️ **Commercial invariant — REVERSED on 2026-09-07, and this line used to say the opposite.**
+  It read "only `settlePaid()` confirms a reservation; create/edit can never set CONFIRMED". That is
+  no longer true and has not been since PR #108: **CONFIRMED means the stay is on, not that the money
+  arrived.** A guest can be confirmed, and can check in, without paying — some clients settle after
+  the stay. `POST /reservations/:id/confirm` (`reservations.routes.ts:82`) sets CONFIRMED outside
+  `settlePaid()`, recording who confirmed without payment and why. Money lives on its own axis now:
+  the **folio** (total / paid / outstanding, derived from invoices). See invariant 3 in `CLAUDE.md`,
+  which is authoritative — when this file and `CLAUDE.md` disagree, `CLAUDE.md` wins.
 
 ---
 
@@ -190,4 +241,27 @@ git clone https://github.com/TM-fez/lsp-web-app.git   # first time
 # or, if it already has the repo:
 git checkout main && git pull
 ```
-Then read `HANDOVER.md` → `ROADMAP.md` → `GO-LIVE-FAHAD.md`, and recreate the local `.env` + JWT keys (§3).
+Then read `HANDOVER.md` → `CLAUDE.md` → `docs/GAP-REGISTER.md`, and recreate the local `.env` + JWT
+keys (§3). (`ROADMAP.md` is historical — read it for how the app got here, not for what to do next.)
+
+---
+
+## 8. Keeping this file honest
+
+This file claimed "development is complete" for two months while nine migrations and eleven PRs
+landed, and §6 stated a commercial invariant that had been deliberately reversed. A stale handover is
+worse than no handover: it is confidently wrong, and it is the first thing a new session trusts.
+
+Three rules, each one earned by a specific failure found in the 2026-09-08 audit:
+
+1. **Close the register entry in the same PR as the fix.** D06 was fixed on 2026-09-07 and still read
+   `OPEN` the next day. The fix and the record are one change, not two.
+2. **When a decision reverses an invariant, grep for the old wording.** Invariant 3 was amended in
+   `CLAUDE.md` on 2026-09-07 and the contradicting sentence survived here and in §5's DPO paragraph.
+   `CLAUDE.md` is authoritative; everywhere else is a copy that can rot.
+3. **Re-audit before starting a feature, not after finishing one.** The register's value is that it
+   is measured against the *client's process map*, not our backlog — and that only holds if the
+   measurement is recent. Refresh the header's commit, migration count and PR number when you do.
+
+Both docs carry their audit date in the header. If it is more than a few weeks old and the log shows
+merged PRs since, re-audit before trusting either one.

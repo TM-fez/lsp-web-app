@@ -1,7 +1,12 @@
 # LSP Web App — Roadmap & Delivery Plan
 
+⚠️ **Historical, as of the 2026-09-08 audit.** Every phase in this file (0–5, H1–H6) is built and
+merged. It is an accurate record of how the app got here and why each piece was ordered as it was —
+keep it for that. It is **not** the backlog any more: it measures against our own plan, and the plan
+finished. What is actually left is measured against the *client's operations process map* in
+**`docs/GAP-REGISTER.md`**, which is where "what next" is answered.
+
 Companion to `HANDOVER.md`. `HANDOVER.md` = how to run + where the project stands.
-This file = the full backlog of what's left to build, plus the order to build it in.
 
 Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 blocked on client · 🧹 cleanup/tech-debt · ✅ done
 
