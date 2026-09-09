@@ -36,11 +36,16 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-0.5 px-3">
         {items.map((item, i) => {
           const no = String(i + 1).padStart(2, '0');
+          // NavLink matches on prefix, so a parent stays lit while a child route is
+          // open — '/reports' and '/reports/revenue' would both read as active. Any
+          // item another item nests under therefore matches exactly. Derived rather
+          // than listed so the next nested route does not quietly reintroduce it.
+          const exact = item.to === '/' || items.some((o) => o.to.startsWith(`${item.to}/`));
           return item.built ? (
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === '/'}
+              end={exact}
               className={({ isActive }) =>
                 cn(
                   'group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-[background-color,color] duration-300 ease-[cubic-bezier(.19,1,.22,1)]',

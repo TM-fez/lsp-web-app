@@ -48,10 +48,60 @@ check whether anything has been entered that should have produced it.
 
 ---
 
+## Build order
+
+Ordered **2026-09-09** against `main` @ `2ac888b`. The register lists gaps in *board order*, which is
+the right order to audit in and the wrong order to build in — so this is the sequence, and the reason
+for it. The entries below are pointers: the detail stays in the G-item and must not be restated here,
+because a second copy is a second thing that rots. When an item ships, close its own entry in the same
+PR (`HANDOVER.md` §8, rule 1) and strike it here.
+
+**Wave 0 — before any more code.** Neither is a build; both decide whether a live number can be
+trusted at all.
+
+1. **Confirm the G30 backfill has been run against production.** `HANDOVER.md` §5 still marks this
+   unverified. The ledger starts empty and `/reports/pnl` now defaults to accrual, so until it runs
+   the live P&L reads near-zero revenue — and reads it as a fact rather than as an absence.
+2. **Tell the owner about D08.** Some historical cash months restate. Announced beats discovered.
+
+**Wave 1 — close what is half-shipped.**
+
+3. ~~**Draw `/reports/revenue`.**~~ ✅ **done 2026-09-09** — the endpoint had shipped in #111 with no
+   consumer, and an unconsumed endpoint rots. That was a code-health reason rather than a
+   reporting-value one, which is what earned it a place above the pace note’s caution on reports.
+4. **G15** — rides the page built directly above it, on the accrual basis.
+
+**Wave 2 — pilot workflow polish.** The cheap half of *Start here*, ordered by pilot value. Slow real
+use is what finds the defects, so items that make the app *usable* outrank items that *report* on it:
+**G23** (screen only — the plumbing is already in) → **G20** → **G21** → **G12** → **G18**. G18 comes
+last of the five deliberately: the long-term leasing branch forks off it, so it is the bridge into
+Wave 5. **Put D07 to the owner while working G20/G21** — this file already says to decide it with
+them, and Wave 4 cannot start until it is decided.
+
+**Wave 3 — deferred reporting.** **G13**, **G03**, **G16**. Cheap and unblocked, but they report over
+transaction data that does not exist yet — see the pace note above. Schedule them when the pilot
+carries real bookings, not before. Building them now is measuring an empty room.
+
+**Wave 4 — the calendar.** **D07** first, as a hard prerequisite, then **G32** — whose
+`booking_group_id` migration has to be designed in rather than bolted on afterwards. This is the wave
+that ends the Little Hotelier subscription, so its deadline is set backwards from the renewal date,
+which nobody has yet (decision 3).
+
+**Wave 5 — long-term leasing.** **G22+G19** → **G26+G25** → **G24**. One lease record underneath all
+of them; build it once. Gated on decision 4.
+
+**Not schedulable** — blocked, or waiting on a decision. Listed so their absence from the waves reads
+as deliberate rather than forgotten: G27/G28 (KYC), G10 outbound (Meta template — note that *inbound*
+is buildable today and is the bigger prize), G04/G06/G07/G14 (one decision, not four builds), G08,
+G31, G09, G11, G01, G02, G05, G17, G29, and D04.
+
+---
+
 ## Start here
 
 Small, unblocked, needs nobody's permission. Clearing these closes eight of the thirty-two.
 (One is already struck through — G28's standalone half shipped on 2026-09-01.)
+Sequenced in **Build order** above: this table is *what* is cheap, that section is *when* it is done.
 
 | Ref | Item | Why it's cheap | Verified 2026-09-08 |
 |---|---|---|---|
@@ -237,7 +287,13 @@ disagrees with the P&L.
   - **The backfill** (`npm run db:backfill-revenue`, dry run by default, `--yes` to apply) is the run with no window and a pricer wired. Verified against 295 demo bookings: 3,027 nights / P3,219,645 recognised, re-running changed nothing, and doubling one rate restated exactly the 61 bookings on that plan — which is the reconstruction caveat, demonstrated rather than asserted.
   - **The reporting** (2026-09-08) — `/reports/pnl` now defaults to **ACCRUAL**, closing the hybrid: both sides of a month are finally on the same clock. The cash basis stays reachable at `?basis=cash` for reconciliation, and every response carries `revenue_basis`, so which clock a figure is on is never inferred. New `/reports/revenue` gives earned vs received month by month — the gap between the columns is the accrual receivable, and before the ledger the question could not be asked because both numbers were the same number.
   - **Said on screen, as promised** — the Reports page names the basis on the revenue tile and carries two warnings under it: how much of the figure is a reconstruction (in Pula and percent), and whether any earning stays are missing from it entirely. That second one is the difference between "a quiet month" and "the backfill has not been run" — without it an un-backfilled deployment reads as a real revenue collapse.
-  - ⏳ **Still open** — invoice-level debtor ageing stays on `/finance`, reading `invoices` directly (see D04). No web page consumes `/reports/revenue` yet; the endpoint is built and tested, the view is not drawn.
+  - ⏳ **Still open** — invoice-level debtor ageing stays on `/finance`, reading `invoices` directly (see D04).
+- ✅ **The view is drawn (2026-09-09).** `/reports/revenue` now has a page: earned vs received month by
+  month, the running difference labelled by sign (positive is a receivable, negative is cash taken for
+  nights not yet slept — both are normal and conflating them would report money that is not coming), and
+  a CSV export that carries the disclosure in its header rather than dropping it at the export boundary.
+  The two promised accrual warnings moved into a shared `AccrualWarnings` component used by both this
+  page and the P&L, so the wording cannot drift between the two screens quoting the same ledger.
 - **Found while building it** — `priceable: false` (a unit type with no active rate plan) was being read as a total of zero, which recognised every night of every such stay at zero. The first real backfill run put 3,027 nights into the demo ledger asserting that confirmed stays were free. "Cannot price it" and "it earned nothing" are now different answers: the first is skipped and counted as unpriced, and the sweep logs that count at WARN. `getFolio()` still answers 0 for the same case on purpose — it is a display fallback so the drawer does not blank, and nobody reconciles a month from it.
 
 ### G31 · Banking · `OUT` · Build · L

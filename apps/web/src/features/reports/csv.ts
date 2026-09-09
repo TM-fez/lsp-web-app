@@ -1,4 +1,4 @@
-import type { ReportsResponse } from '@/types';
+import type { ReportsResponse, RevenueReconciliation } from '@/types';
 
 const cell = (v: string | number) => {
   const s = String(v);
@@ -37,6 +37,38 @@ export function downloadPnlCsv(data: ReportsResponse, from: string, to: string):
   const a = document.createElement('a');
   a.href = url;
   a.download = `lsp-pnl-${from}-to-${to}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * G30 — earned vs received as a CSV, for the reconciliation that happens in a
+ * spreadsheet. The disclosure rides along in the header rather than being dropped at
+ * the export boundary: a reconstructed figure that leaves the app without its caveat
+ * is the one way this number gets quoted as fact.
+ */
+export function downloadRevenueCsv(data: RevenueReconciliation, from: string, to: string): void {
+  const t = data.totals;
+  const d = data.disclosure;
+  const rows: string[] = [
+    `Lifestyle Apartments — Revenue earned vs received`,
+    `Period,${from} to ${to}`,
+    `Basis,Earned = accrual (night slept); Received = cash (payment date)`,
+    `Reconstructed portion of earned,${pula(d.reconstructed)},${d.reconstructed_pct}%`,
+    `Earning stays missing from the ledger,${d.unrecognised_stays}`,
+    '',
+    'Month,Earned,Received,Difference',
+    ...data.monthly.map((m) => [m.month, pula(m.earned), pula(m.received), pula(m.difference)].join(',')),
+    '',
+    `Total,${pula(t.earned)},${pula(t.received)},${pula(t.difference)}`,
+    `VAT in earned,${pula(t.earned_tax)}`,
+  ];
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `lsp-revenue-${from}-to-${to}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

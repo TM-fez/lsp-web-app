@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ReportsResponse } from '@/types';
+import type { ReportsResponse, RevenueReconciliation } from '@/types';
 
 export interface PnlParams {
   from?: string;        // YYYY-MM-DD
@@ -9,6 +9,22 @@ export interface PnlParams {
 
 export async function getPnl(params: PnlParams): Promise<ReportsResponse> {
   const { data } = await api.get<ReportsResponse>('/reports/pnl', { params });
+  return data;
+}
+
+export interface RevenueParams {
+  from?: string;        // YYYY-MM-DD
+  to?: string;          // YYYY-MM-DD
+  property_id?: string;
+}
+
+/**
+ * G30 — earned vs received, month by month. Always accrual on the earned side, so
+ * unlike `/reports/pnl` this endpoint takes no `basis`: the whole point of the view
+ * is to hold the two clocks side by side, and a basis switch would collapse it.
+ */
+export async function getRevenue(params: RevenueParams): Promise<RevenueReconciliation> {
+  const { data } = await api.get<RevenueReconciliation>('/reports/revenue', { params });
   return data;
 }
 

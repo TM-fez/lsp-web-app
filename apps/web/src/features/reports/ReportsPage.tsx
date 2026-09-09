@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils/cn';
 import { todayISO } from '@/lib/utils/date';
 import { usePnl, useNudges } from './hooks';
+import { AccrualWarnings } from './AccrualWarnings';
 import { downloadPnlCsv } from './csv';
 import type { AccrualDisclosure, MonthlyPoint, PropertyPnl, RevenueBasis } from '@/types';
 import type { Nudge } from '@/lib/api/reports';
@@ -74,9 +75,6 @@ function BasisNote({ basis, disclosure }: BasisNoteProps) {
     );
   }
 
-  const reconstructed = disclosure?.reconstructed ?? 0;
-  const missing = disclosure?.unrecognised_stays ?? 0;
-
   return (
     <div className="flex flex-col gap-2 text-xs text-muted">
       <p>
@@ -84,21 +82,8 @@ function BasisNote({ basis, disclosure }: BasisNoteProps) {
         nights were slept in, whenever the guest pays. Costs are on the same basis.
       </p>
 
-      {reconstructed > 0 && (
-        <p className="text-terra">
-          {fullPula(reconstructed)} of it ({disclosure!.reconstructed_pct}%) is a{' '}
-          <strong className="font-medium">reconstruction</strong>: those stays never had a price agreed on
-          the booking, so they were valued at today’s rates. Treat them as an estimate, not a record.
-        </p>
-      )}
-
-      {missing > 0 && (
-        <p className="text-terra">
-          {missing.toLocaleString('en')} {missing === 1 ? 'stay is' : 'stays are'} missing from this figure
-          entirely — the revenue shown is <strong className="font-medium">understated</strong>. This clears
-          once the revenue backfill has been run for the period.
-        </p>
-      )}
+      {/* Shared with /reports/revenue so the promised wording cannot drift between them. */}
+      <AccrualWarnings disclosure={disclosure} />
     </div>
   );
 }
