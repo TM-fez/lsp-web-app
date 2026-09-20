@@ -19,7 +19,9 @@
     "db:import-guests": "tsx src/db/import-guests.ts",
     "db:import-guests:apply": "tsx src/db/import-guests.ts --yes",
     "db:backfill-revenue": "tsx src/db/backfill-revenue.ts",
-    "db:backfill-revenue:apply": "tsx src/db/backfill-revenue.ts --yes"
+    "db:backfill-revenue:apply": "tsx src/db/backfill-revenue.ts --yes",
+    "db:backfill-invoices": "tsx src/db/backfill-invoices.ts",
+    "db:backfill-invoices:apply": "tsx src/db/backfill-invoices.ts --yes"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",

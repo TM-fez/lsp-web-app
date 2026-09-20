@@ -135,19 +135,26 @@ export class InvoicesRepository {
     }
 
     if (filters.property_id) {
-      // Property via the invoice's reservation, else its hold's room/reservation.
-      const inProperty = sql<boolean>`exists (
-        select 1 from rooms r
-        join buildings b on b.id = r.building_id
-        where r.id = coalesce(
-          (select res.room_id from reservations res where res.id = invoices.reservation_id),
-          (select h.room_id from holds h where h.id = invoices.hold_id),
-          (select res2.room_id from holds h2
-             join reservations res2 on res2.id = h2.reservation_id
-           where h2.id = invoices.hold_id)
-        )
-        and b.property_id = ${filters.property_id}
-      )`;
+      // H5 + D03: walk reservation → hold → room → building, then apply the same
+      // coalesce rule the activity feed uses. A row that resolves to a property must
+      // match the active one; a row that resolves to nothing is house-wide
+      // ("Unattributed") and stays visible in every property. The old EXISTS filter
+      // dropped the null-chain rows, so Finance Cockpit (which LEFT JOINs and labels
+      // them Unattributed) counted open debt Accounts could neither see nor settle.
+      const inProperty = sql<boolean>`coalesce(
+        (
+          select b.property_id from rooms r
+          left join buildings b on b.id = r.building_id
+          where r.id = coalesce(
+            (select res.room_id from reservations res where res.id = invoices.reservation_id),
+            (select h.room_id from holds h where h.id = invoices.hold_id),
+            (select res2.room_id from holds h2
+               join reservations res2 on res2.id = h2.reservation_id
+             where h2.id = invoices.hold_id)
+          )
+        ),
+        ${filters.property_id}
+      ) = ${filters.property_id}`;
       query = query.where(inProperty);
       countQuery = countQuery.where(inProperty);
     }
