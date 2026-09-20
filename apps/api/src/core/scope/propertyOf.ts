@@ -107,12 +107,47 @@ type Resolver = (db: Db, id: string) => Promise<string | null>;
  * By-id route guard: the entity in `req.params.id` must resolve to the caller's
  * active property, else "not found" (never "forbidden" — existence outside your
  * property is not yours to learn). Mount AFTER authorize + requireActiveProperty.
+ *
+ * A null chain is refused here on purpose for most money entities (H5): a hold
+ * without a room is not yet in any property, so a scoped request must not reach
+ * it. Invoices are the exception — see `requireInActivePropertyAllowUnattributed`.
  */
 export function requireInActiveProperty(db: Db, resolve: Resolver, entityLabel: string) {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       const pid = await resolve(db, req.params.id as string);
       if (!pid || pid !== req.activePropertyId) {
+        return next(AppError.notFound(`${entityLabel} not found`));
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/**
+ * Invoice by-id guard: same as `requireInActiveProperty`, except a null property
+ * chain is allowed (house-wide / "Unattributed").
+ *
+ * Why the exception (list + settle parity): Finance Cockpit LEFT JOINs the
+ * property chain and surfaces open invoices with no room as Unattributed debt.
+ * The Invoices list used to hide those rows, and the strict H5 by-id guard then
+ * 404'd settle/refund even if you had the UUID — BWP of collectable debt that
+ * Accounts could see on the cockpit and nowhere else. Matching D03's coalesce
+ * rule here means: attributed invoices stay property-scoped; unattributed ones
+ * are visible and collectable from any active property, without leaking another
+ * property's attributed invoices.
+ */
+export function requireInActivePropertyAllowUnattributed(
+  db: Db,
+  resolve: Resolver,
+  entityLabel: string
+) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const pid = await resolve(db, req.params.id as string);
+      if (pid !== null && pid !== req.activePropertyId) {
         return next(AppError.notFound(`${entityLabel} not found`));
       }
       next();

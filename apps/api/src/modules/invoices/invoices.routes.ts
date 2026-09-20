@@ -11,7 +11,12 @@ import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
-import { requireInActiveProperty, requireBodyRefInActiveProperty, propertyOfInvoice, propertyOfHold } from '../../core/scope/propertyOf.js';
+import {
+  requireInActivePropertyAllowUnattributed,
+  requireBodyRefInActiveProperty,
+  propertyOfInvoice,
+  propertyOfHold,
+} from '../../core/scope/propertyOf.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { IssueInvoiceSchema, SettleInvoiceSchema, RefundInvoiceSchema } from './invoices.types.js';
 
@@ -25,8 +30,13 @@ export function createInvoicesRouter(dbInstance = db): Router {
 
   router.use(authenticate);
 
-  // H5 property scoping (see propertyOf.ts). Invoices resolve via reservation/hold.
-  const inProperty = requireInActiveProperty(dbInstance, propertyOfInvoice, 'Invoice');
+  // H5 property scoping (see propertyOf.ts) with the Unattributed exception so open
+  // house-wide invoices stay settleable — same coalesce rule as the list filter.
+  const inProperty = requireInActivePropertyAllowUnattributed(
+    dbInstance,
+    propertyOfInvoice,
+    'Invoice'
+  );
   const holdRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'hold_id', propertyOfHold, 'Hold');
 
   router.get('/', authorize('invoices.read'), requireActiveProperty, controller.list);
