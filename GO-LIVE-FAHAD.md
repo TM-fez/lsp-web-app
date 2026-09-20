@@ -6,7 +6,7 @@
 
 ## The big picture
 
-The app is **finished** — every feature is built, tested, and already running live on the web. Nothing below is "building." This report is a **switch-on and launch list**: connecting a few outside services, moving the hosting to a paid plan, and a couple of final housekeeping steps.
+The app is **finished** — every feature is built, tested, and already running live on the web. Nothing below is "building." This report is a **switch-on and launch list**: connecting a few outside services and a couple of final housekeeping steps. **Paid hosting is already in place (2026-09-20).**
 
 Throughout, two little markers show who does what:
 
@@ -26,13 +26,15 @@ The moment a key is in place, the feature wakes up on its own. No new developmen
 
 ---
 
-## Part A — Move to paid hosting *(do this first — it has a deadline)*
+## Part A — Paid hosting ✅ *(done 2026-09-20)*
 
-**What it is:** the app currently runs on a free hosting tier.
+**What it is:** the app runs on Render's **paid** tier for both the web service and the database (`starter` + `basic-256mb` in `render.yaml`).
 
-**Why it matters:** the free database expires around **September 2026**, and the free server "falls asleep" when no one's using it — which makes the guest website slow to wake and, critically, stops Booking.com syncing. This is the **only item with a real calendar deadline**, and several later steps depend on it.
+**Background:** before 2026-09-20 we were on the free tier — the database was due to expire around **September 2026**, and the free server "fell asleep" when no one was using it (slow wake for guests and Booking.com's iCal fetch would time out). That was the only item with a real calendar deadline; it's closed now.
 
-**Who / cost:** 🔧 we do the upgrade; 👤 you approve a small fixed monthly fee (we'll confirm the exact current amount with you before committing — it's the main recurring cost of running the app).
+**Who / cost:**
+- 👤 **Your call — ✅ done 2026-09-20.** You approved the monthly hosting fee; the service and Postgres moved to paid plans the same day.
+- 🔧 **Technical** — we applied the upgrade in Render; the live API responds in about half a second with no cold start.
 
 **Unlocks:** a server that's always awake, a database that won't expire, and the ability to turn on Booking.com sync (Part C).
 
@@ -95,7 +97,7 @@ These are the built-but-dormant features. Each just needs its access key entered
 
 **Who:** 👤 you approve the free accounts; 🔧 we connect them to the server and website.
 
-**Unlocks:** you get told promptly if a problem appears instead of hearing it from a guest — and, as a bonus, the uptime check pinging every few minutes helps keep the server awake.
+**Unlocks:** you get told promptly if a problem appears instead of hearing it from a guest.
 
 ---
 
@@ -103,7 +105,7 @@ These are the built-but-dormant features. Each just needs its access key entered
 
 **What it is:** two-way calendar sync between the app and your Booking.com listings, so bookings and blocks stay matched automatically.
 
-**Why the order:** this only works once hosting is on the **paid plan** (Part A) — Booking.com's system times out on a sleeping free server.
+**Why the order:** Booking.com's iCal fetch used to time out on the old free tier's sleeping server — that's fixed now that Part A is done (paid hosting, **2026-09-20**). Part C is ready whenever you are.
 
 **Who / how:** 👤 for each apartment, you copy our sync link into your Booking.com extranet and copy Booking.com's link back into the app (there's a "Channel sync" box on each unit's screen for exactly this). 🔧 we then set two final keys and switch on the automatic 15-minute sync.
 
@@ -137,7 +139,7 @@ These are the built-but-dormant features. Each just needs its access key entered
 
 ## Recommended order
 
-1. **Part A** — paid hosting *(deadline + unblocks Booking.com)*
+1. **Part A** — paid hosting ✅ *(done 2026-09-20 — unblocks Booking.com)*
 2. **Part B** — switch on the smart features, starting with the **AI (#2)** since it's a single key and the most visible win, then **guest emails (#3)**
 3. **Part C** — Booking.com sync
 4. **Part D** — wipe demo data, then **launch** 🎉
@@ -148,4 +150,4 @@ Parts B and the decisions can happen alongside everything else, in any order.
 
 ## What it costs to run
 
-The reassuring part: **the only meaningful recurring cost is the paid hosting (Part A).** Everything in Part B is either free (Brevo, Cloudflare R2, Sentry, UptimeRobot) or a few cents of usage (the AI). We'll confirm the exact hosting figure with you before committing to it.
+The reassuring part: **the main recurring cost is paid hosting (Part A) — live since 2026-09-20.** Everything in Part B is either free (Brevo, Cloudflare R2, Sentry, UptimeRobot) or a few cents of usage (the AI).

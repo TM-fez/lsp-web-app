@@ -189,9 +189,10 @@ more trust than it saves effort.
   real file storage + nightly DB backups.
 - Sentry `SENTRY_DSN` (Render) + `VITE_SENTRY_DSN` (Vercel); UptimeRobot pointed at `/health`.
 
-**~~The one deadline — Render → paid plan.~~ ✅ Done 2026-08-31 (PR #86).** `render.yaml` is on
-`starter` (web) + `basic-256mb` (Postgres), so the free-Postgres expiry that was looming for ~Sep 2026
-is no longer a deadline, and the sleeping-service blocker on Booking.com go-live is cleared.
+**~~The one deadline — Render → paid plan.~~ ✅ Done 2026-09-20.** Web service + Postgres are on
+paid plans (`starter` + `basic-256mb` in `render.yaml`); live API `/health` ~0.5s with no cold start.
+The free-Postgres expiry that was looming for ~Sep 2026 is historical only, and the sleeping-service
+blocker on Booking.com go-live is cleared.
 
 **Booking.com channel sync (H4) — code complete, owner go-live steps** (see `GO-LIVE-FAHAD.md` Part C
 and `ROADMAP.md` H4): per unit, in the unit drawer's "Channel sync" box, paste our export URL into the
