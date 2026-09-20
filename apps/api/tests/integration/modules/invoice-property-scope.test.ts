@@ -127,8 +127,12 @@ beforeAll(async () => {
   resA = reservations.find((r) => r.room_id === roomA)!.id;
   resB = reservations.find((r) => r.room_id === roomB)!.id;
 
+  // invoices.number is VARCHAR(40): keep the fixture short and unique. The suite
+  // `uniq` (epoch + random) is fine for emails/property names but blows past 40
+  // when prefixed with INV-SCOPE-. Match folio/reports-accrual: short random tag.
+  let invSeq = 0;
   const inv = (over: Record<string, unknown>) => ({
-    number: `INV-SCOPE-${uniq}-${Math.random().toString(36).slice(2, 8)}`,
+    number: `INV-IS-${Math.random().toString(36).slice(2, 10).toUpperCase()}-${++invSeq}`,
     subtotal_amount: 0,
     tax_rate_bps: 0,
     tax_amount: 0,
