@@ -33,4 +33,24 @@ describe('EnquirePage', () => {
 
     await waitFor(() => expect(submitEnquiry).toHaveBeenCalledWith(expect.objectContaining({ source: 'WHATSAPP' })));
   });
+
+  it('keeps Send enquiry disabled when optional email is malformed', () => {
+    renderAt('/enquire');
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Naledi' } });
+    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'A 2-bed in August' } });
+    fireEvent.change(screen.getByLabelText('Email (optional)'), { target: { value: 'not-an-email' } });
+
+    expect(screen.getByRole('button', { name: /Send enquiry/ })).toBeDisabled();
+    expect(submitEnquiry).not.toHaveBeenCalled();
+  });
+
+  it('allows submit when optional email is empty or well-formed', async () => {
+    renderAt('/enquire');
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Naledi' } });
+    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'A 2-bed in August' } });
+    fireEvent.change(screen.getByLabelText('Email (optional)'), { target: { value: 'naledi@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send enquiry/ }));
+
+    await waitFor(() => expect(submitEnquiry).toHaveBeenCalled());
+  });
 });

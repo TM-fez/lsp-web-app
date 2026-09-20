@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { errMessage } from '@/lib/api/errors';
 import { submitEnquiry, type EnquirySource } from '@/lib/api/public';
+import { isValidEmail } from '@/lib/utils/validation';
 
 /**
  * Phase 5 — public enquiry form (/enquire). Files a NEW lead automatically so a
@@ -25,7 +26,10 @@ export function EnquirePage() {
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
 
-  const valid = name.trim().length > 0 && message.trim().length > 0;
+  const valid =
+    name.trim().length > 0 &&
+    message.trim().length > 0 &&
+    (!email.trim() || isValidEmail(email));
 
   async function submit() {
     if (!valid) return;
