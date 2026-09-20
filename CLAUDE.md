@@ -205,5 +205,7 @@ Render so the browser stays same-origin and the refresh cookie is first-party. A
 no build step; migrations + seed are idempotent and run on every boot. `startScheduler()` runs
 in-process, so no external cron is needed.
 
-⚠️ **Hard deadline: the free Render Postgres expires ~Sep 2026**, and the free web service sleeps —
-which breaks Booking.com's iCal fetcher. See `DEPLOY.md` and `GO-LIVE-FAHAD.md` Part A.
+✅ **Render paid plans live 2026-09-20** — web service (`starter`) + Postgres (`basic-256mb`) in
+`render.yaml`; API is always-on (~0.5s `/health`, no cold start). Before that, free Postgres was
+due to expire ~Sep 2026 and the sleeping web tier broke Booking.com's iCal fetcher — see
+`DEPLOY.md` and `GO-LIVE-FAHAD.md` Part A for context.

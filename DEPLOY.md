@@ -12,7 +12,7 @@ This is the live setup. The app runs as **two deployed pieces**:
 
 ```
 Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  Render Postgres
-            same-origin proxy          always-on Express      (free tier)
+            same-origin proxy          always-on Express      (paid — starter + basic-256mb)
 ```
 
 **Live URLs**
@@ -64,8 +64,11 @@ Browser ──→ Vercel (web)  ──/api/*──→  Render (API)  ──→  
 ### 1. API + database — Render (Blueprint)
 In the Render dashboard → **New → Blueprint**, point it at this GitHub repo. Render reads
 `render.yaml` and provisions:
-- **`lsp-api`** — the web service (free plan), and
-- **`lsp-db`** — a free Postgres database.
+- **`lsp-api`** — the web service (`plan: starter`, paid — live **2026-09-20**), and
+- **`lsp-db`** — Postgres (`plan: basic-256mb`, paid — live **2026-09-20**).
+
+Production has been on these paid plans since 2026-09-20. If a dashboard snapshot still shows the
+old free tiers, re-sync the Blueprint from this repo so it matches `render.yaml`.
 
 `DATABASE_URL` is injected into the API automatically from `lsp-db`. Migrations + the admin
 seed run on first boot.
@@ -130,18 +133,17 @@ A new database change is a new forward-only migration in
 ---
 
 ## Honest operating notes
-- **Free Render Postgres expires ~September 2026.** Move to a paid Postgres plan **before
-  real daily use** so data isn't lost. This is the most important deadline here.
-- **Free Render web service sleeps when idle.** The first request after a quiet spell is
-  slow (cold start) while it wakes. A paid plan keeps it always warm.
+- **Render is on paid plans (2026-09-20).** `starter` web + `basic-256mb` Postgres — always on,
+  no cold starts (`/health` ~0.5s). *Historical:* free Postgres was due to expire ~September 2026,
+  and the free web service slept when idle (slow wake + Booking.com iCal timeouts) — that was the
+  reason for upgrading; it is no longer the current state.
 - **Payments are simulated.** This is a live internal tool for staff; taking real guest
   money online (DPO Pay) is a later, separate build — see `ROADMAP.md`.
 - **Nightly DB backups** exist as a GitHub Action (`.github/workflows/db-backup.yml`) but
   stay **inert until the `BACKUP_*` repo secrets are set** (Render external DB URL + an
   S3-compatible bucket). Set them — the database is the business's memory.
-- **Error tracking (Sentry)** and an **uptime monitor** on `/health` (UptimeRobot free —
-  bonus: its pings keep the free service awake) each take ~5 minutes to activate; both
-  are documented in `ROADMAP.md` Part 3 (H2/H3 owner steps).
+- **Error tracking (Sentry)** and an **uptime monitor** on `/health` (UptimeRobot free) each take
+  ~5 minutes to activate; both are documented in `ROADMAP.md` Part 3 (H2/H3 owner steps).
 - **Manual sweep, if ever needed:** with `CRON_SECRET` set, you can trigger the housekeeping
   sweep directly:
   ```bash
