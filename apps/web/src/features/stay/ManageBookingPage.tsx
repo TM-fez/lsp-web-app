@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { errMessage } from '@/lib/api/errors';
 import { lookupBooking, type PublicBookingSummary } from '@/lib/api/public';
+import { isValidEmail } from '@/lib/utils/validation';
 
 const STATUS_COPY: Record<PublicBookingSummary['status'], string> = {
   PENDING: 'Received — our team will confirm it shortly.',
@@ -32,7 +33,7 @@ export function ManageBookingPage() {
   const [loading, setLoading] = useState(false);
 
   async function find(c = code, e = email) {
-    if (!c.trim() || !e.trim()) return;
+    if (!c.trim() || !isValidEmail(e)) return;
     setLoading(true);
     setError(null);
     try {
@@ -49,7 +50,7 @@ export function ManageBookingPage() {
   // mount by design — the params are the initial state, not a reactive dependency.
   useEffect(() => {
     if (params.get('code') && params.get('email')) void find(params.get('code')!, params.get('email')!);
-  }, []); // eslint-disable-line
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -68,7 +69,7 @@ export function ManageBookingPage() {
             <Label htmlFor="mb-email">Email used for the booking</Label>
             <Input id="mb-email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <Button variant="primary" disabled={loading || !code.trim() || !email.trim()} onClick={() => find()}>
+          <Button variant="primary" disabled={loading || !code.trim() || !isValidEmail(email)} onClick={() => find()}>
             {loading && <Spinner className="text-white" />} Find my booking
           </Button>
           {error && <p className="text-sm text-rose-600">{error}</p>}

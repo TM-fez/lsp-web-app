@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { formatMoney } from '@/lib/utils/money';
 import { todayISO } from '@/lib/utils/date';
+import { isValidEmail } from '@/lib/utils/validation';
 import { errMessage } from '@/lib/api/errors';
 import { getStayInfo, createBooking, type StayUnitOption, type BookingConfirmation } from '@/lib/api/public';
 
@@ -77,12 +78,22 @@ export function StayPage() {
   }, []);
 
   const valid = useMemo(
-    () => !!(checkIn && checkOut && checkOut > checkIn && unitType && name.trim() && email.trim() && phone.trim()),
-    [checkIn, checkOut, unitType, name, email, phone],
+    () =>
+      !!(
+        checkIn &&
+        checkOut &&
+        checkOut > checkIn &&
+        unitType &&
+        name.trim() &&
+        isValidEmail(email) &&
+        phone.trim() &&
+        guests >= 1
+      ),
+    [checkIn, checkOut, unitType, name, email, phone, guests],
   );
 
   async function submit() {
-    if (!valid) return;
+    if (!valid || guests < 1) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -258,7 +269,7 @@ export function StayPage() {
                   {units.map((u) => <option key={u.unit_type} value={u.unit_type}>{unitLabel(u.unit_type)} — from {formatMoney(u.nightly_rate, u.currency)}/night</option>)}
                 </Select>
               </div>
-              <div className="flex flex-col gap-1"><Label htmlFor="g">Guests</Label><Input id="g" type="number" min={1} max={20} value={guests} onChange={(e) => setGuests(Math.max(1, Number(e.target.value) || 1))} /></div>
+              <div className="flex flex-col gap-1"><Label htmlFor="g">Guests</Label><Input id="g" type="number" min={1} max={20} value={guests} onChange={(e) => setGuests(Number(e.target.value))} /></div>
             </div>
             <div className="flex flex-col gap-1"><Label htmlFor="nm">Full name</Label><Input id="nm" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Naledi Moeng" /></div>
             <div className="grid grid-cols-2 gap-3">
