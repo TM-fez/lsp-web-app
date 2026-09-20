@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Request, Response } from 'express';
 import {
   requireInActiveProperty,
+  requireInActivePropertyAllowUnattributed,
   requireBodyRefInActiveProperty,
 } from '../../../src/core/scope/propertyOf.js';
 import { AppError } from '../../../src/core/errors/AppError.js';
@@ -31,6 +32,42 @@ describe('requireInActiveProperty', () => {
   it('404s for an entity outside every property (null chain)', async () => {
     const mw = requireInActiveProperty(db, vi.fn().mockResolvedValue(null), 'Hold');
     const err = await run(mw, { params: { id: 'h1' }, activePropertyId: 'prop-1' } as never);
+    expect((err as AppError).statusCode).toBe(404);
+  });
+});
+
+describe('requireInActivePropertyAllowUnattributed', () => {
+  // Invoices only: Unattributed (null chain) must stay settleable from any
+  // active property, matching the list-filter coalesce rule. Attributed
+  // invoices in another property still 404.
+  it('passes for a null property chain (house-wide / Unattributed)', async () => {
+    const mw = requireInActivePropertyAllowUnattributed(
+      db,
+      vi.fn().mockResolvedValue(null),
+      'Invoice'
+    );
+    const err = await run(mw, { params: { id: 'inv1' }, activePropertyId: 'prop-1' } as never);
+    expect(err).toBeUndefined();
+  });
+
+  it('passes when the invoice resolves to the active property', async () => {
+    const mw = requireInActivePropertyAllowUnattributed(
+      db,
+      vi.fn().mockResolvedValue('prop-1'),
+      'Invoice'
+    );
+    const err = await run(mw, { params: { id: 'inv1' }, activePropertyId: 'prop-1' } as never);
+    expect(err).toBeUndefined();
+  });
+
+  it('404s for an invoice attributed to another property', async () => {
+    const mw = requireInActivePropertyAllowUnattributed(
+      db,
+      vi.fn().mockResolvedValue('prop-2'),
+      'Invoice'
+    );
+    const err = await run(mw, { params: { id: 'inv1' }, activePropertyId: 'prop-1' } as never);
+    expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).statusCode).toBe(404);
   });
 });
