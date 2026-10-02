@@ -41,6 +41,11 @@ const schema = z.object({
   // the sweep auto-cancels it and notifies the property. 0 disables the expiry.
   WEBSITE_PENDING_TTL_HOURS: z.coerce.number().default(24),
 
+  // Payment terms, in days, added to the later of an invoice's issue day and its stay's
+  // check-in day to get its due date (modules/invoices/invoices.due.ts). Only NEW
+  // invoices use it — existing ones were given a 7-day due date by migration 071.
+  INVOICE_TERMS_DAYS: z.coerce.number().int().min(0).max(365).default(7),
+
   // Retention (core/retention.ts, runs at most daily inside the sweep).
   // Dead refresh tokens (expired/revoked) are pruned after this many days; 0 disables.
   REFRESH_TOKEN_RETENTION_DAYS: z.coerce.number().default(30),
