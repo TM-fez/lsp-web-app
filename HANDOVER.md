@@ -130,7 +130,7 @@ Shipped and live:
   and occupancy nudges (H6).
 
 **Live data is real:** 25 real apartments (Village blocks B / D / G / I / J / T). The owner has changed
-the admin password. The **budget is approved.** Schema is at **migration 069**.
+the admin password. The **budget is approved.** Schema is at **migration 071**.
 
 ⚠️ **But the app is not carrying real bookings yet** (confirmed 2026-09-08). It is being tested slowly
 and deliberately while the business works out how it fits; Little Hotelier is still the live system.
@@ -147,6 +147,25 @@ treating any zero as a defect.
 `docs/GAP-REGISTER.md`. What follows is the narrower thing it is still good for: the setup steps that
 need the *owner*, not code. The plain-English, owner-facing version is **`GO-LIVE-FAHAD.md`**
 (parts A–D). Summary:
+
+**🔴 Do this after deploying Stage 1 — the invoice/receivables backfill (owner runs it; nobody else, not from a dev box).**
+Stage 1 (`fix/lsp-stage1-money-invoices`; migrations 070–071) changed how money is recorded: a booking now
+has at most one open invoice and it equals the folio outstanding; part-payments leave a `PARTIALLY_PAID`
+balance; every flow that creates money owed/received raises an invoice. Data written *before* the deploy
+does not satisfy that (stale open balance invoices, wizard deposits with no receipt, pay-later/public/
+checkout bookings with no invoice). Order matters:
+
+1. Deploy the API (it runs `db:migrate` — 071 adds `invoices.due_date`, back-filled from issue date + terms).
+2. From a Render shell on `lsp-api`: `npm run db:backfill-invoices` — **dry run**, writes nothing. Read the
+   `Mode:` line and the counts. `needs price` / `overpaid` bookings are *reported*, never guessed.
+3. If the plan looks right: `npm run db:backfill-invoices:apply`. Safe to re-run (idempotent).
+4. Bookings reported as `needs price` have no agreed total anywhere (no folio, no paid quote, no invoice).
+   Decide per booking, or re-run with `npm run db:backfill-invoices -- --reconstruct-prices` (dry) then
+   `npm run db:backfill-invoices:apply -- --reconstruct-prices`, which prices them at **today's** rates —
+   a reconstruction, not a recovery. `--reservation=<uuid>` (repeatable) limits a run to named bookings.
+5. Spot-check `/finance`: total outstanding should now equal the sum of folio outstanding for open bookings.
+
+`INVOICE_TERMS_DAYS` (default 7) sets the due date: later of issue day / check-in, plus N days.
 
 **🔴 Do this before anyone reads a P&L — the G30 revenue backfill.** Migration 069 added the accrual
 ledger and `/reports/pnl` now defaults to the accrual basis. **The ledger starts empty**, so on a
@@ -228,7 +247,7 @@ the abandoned Vercel "-api" projects.
 - Money is stored in **thebe** (integer minor units; 100 = 1 Pula). Enter in Pula in the UI, store thebe.
 - New web feature = `features/<x>/` with TanStack Query hooks + a Radix dialog drawer; gate UI with `useAuthStore.hasPerm`.
 - "Today" is **Africa/Gaborone** — use `core/time.ts` (API) and `lib/utils/date.ts` (web), never raw `new Date()` for the property day.
-- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 069).
+- A new DB change = a new forward-only migration in `apps/api/src/db/migrations/NNN_*.sql` (currently up to 071).
 - Property-scoped routes go through `requireActiveProperty` (`core/scope/activeProperty.ts`); scoped queries filter by `req.activePropertyId`.
 - ⚠️ **Commercial invariant — REVERSED on 2026-09-07, and this line used to say the opposite.**
   It read "only `settlePaid()` confirms a reservation; create/edit can never set CONFIRMED". That is
