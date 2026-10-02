@@ -99,6 +99,11 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    `invoices.due_date` = later of (issue day, check-in) + `INVOICE_TERMS_DAYS`; "overdue" is computed
    against the Gaborone day, server-side.
 
+   ✅ **Owner decisions 2026-10-02:** (a) **a refund never puts the guest back in debt** — refunding
+   lowers the agreed total by the same amount, so outstanding is unchanged (`InvoicesRepository.refund`);
+   (b) **no-shows are not charged** — NO_SHOW, like CANCELLED, voids the open invoice;
+   (c) **payment terms are 7 days** (`INVOICE_TERMS_DAYS` default). Do not change any of these without asking.
+
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
 **Forward view only.** `occupancyByProperty`, `occupancyByMonth` and `occupancyByOwnedRoom` are

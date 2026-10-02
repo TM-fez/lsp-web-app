@@ -527,18 +527,33 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     expect(attempts).toEqual([{ outcome: 'SUCCESS', method: 'EFT' }]);
   });
 
-  it('returns a refunded booking’s balance to the receivable (folio and invoices stay one story)', async () => {
+  it('a refund does not put the guest back in debt (owner decision 2026-10-02)', async () => {
     const b = await booking();
     await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
     const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
 
-    await invoices.refundInvoice(receipt.id, 100_000, 'guest asked for a partial refund', meta());
+    await invoices.refundInvoice(receipt.id, 100_000, 'goodwill after a noisy night', meta());
 
     const folio = await reservations.getFolio(b.id);
     expect(folio.paid_amount).toBe(STAY - 100_000);
+    expect(folio.total_amount).toBe(STAY - 100_000);
+    expect(folio.outstanding_amount).toBe(0);
+    expect(await openOf(b.id)).toHaveLength(0);
+  });
+
+  it('a refund on a part-paid booking leaves what is still owed unchanged', async () => {
+    const b = await booking();
+    await reservations.markPaid(b.id, { method: 'CASH', amount: 100_000 } as never, meta());
+    const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
+    const before = await reservations.getFolio(b.id);
+
+    await invoices.refundInvoice(receipt.id, 30_000, 'partial goodwill', meta());
+
+    const after = await reservations.getFolio(b.id);
+    expect(after.outstanding_amount).toBe(before.outstanding_amount);
     const open = await openOf(b.id);
     expect(open).toHaveLength(1);
-    expect(open[0]!.total_amount).toBe(folio.outstanding_amount);
+    expect(open[0]!.total_amount).toBe(after.outstanding_amount);
   });
 
   it('refunds once when the same receipt is refunded twice at the same moment', async () => {
@@ -618,6 +633,17 @@ describe('3. Every flow that creates money owed or received leaves a consistent 
     const all = await invoicesOf(b.id);
     expect(all).toHaveLength(1);
     expect(all[0]!.status).toBe('VOID');
+  });
+
+  it('a no-show owes nothing — its open invoice is voided (owner decision 2026-10-02)', async () => {
+    const b = await booking();
+    await reservations.confirmWithoutPayment(b.id, {} as never, meta());
+    expect(await openOf(b.id)).toHaveLength(1);
+
+    await new ReservationsRepository(db).update(b.id, { status: 'NO_SHOW', updated_by: userId }, meta());
+
+    expect(await openOf(b.id)).toHaveLength(0);
+    expect((await invoicesOf(b.id)).map((i) => i.status)).toEqual(['VOID']);
   });
 
   it('the cockpit wizard’s deposit lands in the folio, raises a receipt, and is not collected twice', async () => {

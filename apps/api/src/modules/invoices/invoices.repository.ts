@@ -436,9 +436,13 @@ export class InvoicesRepository {
   }
 
   // Refund: issue a REFUND invoice and flip the original to REFUNDED atomically.
-  // Afterwards the booking's receivable is reconciled in the same transaction: a refund
-  // lowers what has been received, so a live booking may owe money again — and the folio
-  // and the open invoices must keep telling the same story.
+  //
+  // Owner decision 2026-10-02: a refund does NOT put the guest back in debt. Money handed
+  // back is money the house has chosen to give up (goodwill, a discount, a shortened
+  // stay), so the agreed total comes down by the same amount as what was received:
+  // outstanding is unchanged by a refund. An earlier draft left the total alone, which
+  // re-raised the refunded sum as a new open invoice for Accounts to chase.
+  // The receivable is then reconciled in the same transaction so folio and invoices agree.
   async refund(
     originalId: string,
     refundInvoice: UnnumberedInvoice,
@@ -480,6 +484,27 @@ export class InvoicesRepository {
       ]).execute();
 
       if (refundInvoice.reservation_id) {
+        const reservation = (await lockReservation(trx, refundInvoice.reservation_id))!;
+        // Read BEFORE lowering: agreedTotal falls back to the invoices when nothing is
+        // frozen, and those still include the original at full value.
+        const total = await agreedTotal(trx, reservation);
+        if (total != null) {
+          const lowered = Math.max(0, total - refundInvoice.total_amount);
+          await trx
+            .updateTable('reservations')
+            .set({ folio_total_amount: lowered, updated_by: meta.userId, updated_at: sql`now()` })
+            .where('id', '=', reservation.id)
+            .execute();
+          await trx.insertInto('audit_logs').values({
+            request_id: meta.requestId ?? null,
+            user_id: meta.userId,
+            action: 'UPDATE',
+            entity: 'reservations',
+            entity_id: reservation.id,
+            diff: { folio_total_amount: { from: total, to: lowered }, reason: 'refund lowers the agreed total' },
+            ip_address: meta.ip ?? null,
+          }).execute();
+        }
         await reconcileReceivable(trx, refundInvoice.reservation_id, meta);
       }
 
