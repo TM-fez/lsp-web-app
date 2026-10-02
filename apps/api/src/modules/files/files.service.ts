@@ -97,14 +97,25 @@ export class FilesService {
     }
   }
 
-  async getMetadata(id: string): Promise<FileRow> {
+  /**
+   * `viewer` is optional so internal callers (invoice documents, etc.) keep reading by id.
+   * A contractor asking for a file outside their own work gets the same 404 as a missing
+   * one — a 403 would confirm the id exists.
+   */
+  async getMetadata(id: string, viewer?: { userId: string; role: string }): Promise<FileRow> {
     const file = await this.repository.findById(id);
     if (!file) throw AppError.notFound(`File ${id} not found`);
+    if (viewer?.role === 'contractor' && !(await this.repository.contractorCanRead(id, viewer.userId))) {
+      throw AppError.notFound(`File ${id} not found`);
+    }
     return file;
   }
 
-  async getDownloadStream(id: string): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
-    const file = await this.getMetadata(id);
+  async getDownloadStream(
+    id: string,
+    viewer?: { userId: string; role: string }
+  ): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
+    const file = await this.getMetadata(id, viewer);
     try {
       const stream = await this.storageAdapter.getStream(file.path);
       return { stream, file };

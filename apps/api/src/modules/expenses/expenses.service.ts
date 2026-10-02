@@ -11,8 +11,12 @@ function statusOf(row: { cost_approved_at: Date | null; cost_reconciled_at: Date
 export class ExpensesService {
   constructor(private readonly repo: ExpensesRepository) {}
 
-  async list(status?: ExpenseStatus): Promise<Expense[]> {
-    const rows = await this.repo.list(status);
+  propertyOf(id: string): Promise<string | null> {
+    return this.repo.propertyOf(id);
+  }
+
+  async list(status?: ExpenseStatus, propertyIds?: string[] | null): Promise<Expense[]> {
+    const rows = await this.repo.list(status, propertyIds);
     return rows.map((r) => ({
       id: r.id,
       room_id: r.room_id,

@@ -9,6 +9,7 @@ router.use(authenticate);
 router.use(authorize('dashboard:read'));
 
 router.get('/stats',    dashboardController.stats);
-router.get('/activity', dashboardController.activity);
+// (H6) GET /activity was removed: it returned every property's audit log. The scoped
+// feed is GET /api/v1/activity.
 
 export { router as dashboardRouter };

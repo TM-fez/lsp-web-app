@@ -1,7 +1,6 @@
 import * as dashboardRepo from './dashboard.repository.js';
 import type {
   DashboardStats,
-  DashboardActivityResponse,
   StatsCacheEntry,
 } from './dashboard.types.js';
 
@@ -51,27 +50,4 @@ export async function getStats(): Promise<DashboardStats> {
 
   setCachedStats(stats);
   return stats;
-}
-
-/**
- * Returns the most recent audit log entries.
- * Always fetches live — activity is intentionally not cached.
- */
-export async function getRecentActivity(
-  limit = 20
-): Promise<DashboardActivityResponse> {
-  const clampedLimit = Math.min(Math.max(1, limit), 50);
-  const rows = await dashboardRepo.getRecentAuditActivity(clampedLimit);
-
-  return {
-    data: rows.map((r) => ({
-      id:        r.id,
-      action:    r.action as 'CREATE' | 'UPDATE' | 'DELETE',
-      entity:    r.entity,
-      entityId:  r.entityId,
-      userId:    r.userId,
-      userName:  r.userName,
-      createdAt: r.createdAt.toISOString(),
-    })),
-  };
 }

@@ -31,7 +31,7 @@ export class RoomsController {
       const building_id = (req.query.building_id as string) || undefined;
 
       const result = await this.service.getRooms({ search, status, type, property_id, building_id }, { page, limit });
-      res.json(result);
+      res.json({ ...result, data: result.data.map((r) => withoutSecrets(req, r)) });
     } catch (err) {
       next(err);
     }
@@ -40,7 +40,7 @@ export class RoomsController {
   listAvailable = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const rooms = await this.service.listAvailable(req.activePropertyId);
-      res.json({ data: rooms });
+      res.json({ data: rooms.map((r) => withoutSecrets(req, r)) });
     } catch (err) {
       next(err);
     }
@@ -49,7 +49,7 @@ export class RoomsController {
   getRoomById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const room = await this.service.getRoomById(req.params.id as string);
-      res.json(room);
+      res.json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -144,4 +144,18 @@ export class RoomsController {
       next(err);
     }
   };
+}
+
+/**
+ * (H6) A unit's iCal feed token publishes its calendar to anyone holding it, and its QR
+ * token checks a guest in. Both rode along on every rooms read, so housekeeping,
+ * maintenance and accounts could lift them. Only someone who can manage the unit (and
+ * rotate the tokens — rooms.update) sees them; everyone else gets the room without.
+ */
+function withoutSecrets<T extends object>(req: Request, room: T): T {
+  if (req.user?.permissions.includes('rooms.update')) return room;
+  const rest = { ...room } as Record<string, unknown>;
+  delete rest.ical_token;
+  delete rest.guest_qr_token;
+  return rest as T;
 }
