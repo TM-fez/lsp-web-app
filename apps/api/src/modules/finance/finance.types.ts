@@ -3,9 +3,11 @@
 // BALANCE. REFUND invoices flow the other way (money owed back to the guest) and are
 // surfaced separately as `refunds_payable`, never netted into receivables.
 //
-// Invoices carry no due date, so ageing is measured from the issue date (created_at)
-// as of "now". There is also no part-payment amount column — a PARTIALLY_PAID invoice
-// counts its full total_amount as outstanding (settle() jumps straight to PAID today).
+// Ageing buckets are measured from the issue date (created_at) as of "now"; OVERDUE is a
+// separate question, answered from invoices.due_date (migration 071) against the
+// property's calendar day. A PARTIALLY_PAID invoice is an open invoice on a booking that
+// has received money; its total_amount is already only what is STILL owed (the invoice is
+// re-sized on every payment — invoices.receivable.ts), so summing totals is correct.
 // All amounts are thebe (100 = 1 BWP).
 
 export type AgingBucketKey = '0-30' | '31-60' | '61-90' | '90+';
@@ -35,6 +37,8 @@ export interface OutstandingInvoice {
   property_name: string | null;
   created_at: string;    // ISO
   days_outstanding: number;
+  due_date: string | null; // YYYY-MM-DD, Africa/Gaborone
+  days_overdue: number;    // 0 when not past due
 }
 
 export interface FinanceCockpit {
@@ -44,6 +48,8 @@ export interface FinanceCockpit {
     open_invoices: number;
     oldest_days: number;      // age of the oldest open receivable (0 when none)
     refunds_payable: number;  // thebe — open REFUND invoices (we owe the guest)
+    overdue_amount: number;   // thebe — the part of total_receivable past its due date
+    overdue_count: number;
   };
   aging: AgingBucket[];       // always the four buckets, in order
   by_property: PropertyReceivable[];
@@ -51,8 +57,8 @@ export interface FinanceCockpit {
 }
 
 export interface FinanceQuery {
-  // A picked property (active-property narrowing), optional.
-  propertyId?: string;
-  // Access scope: null = no restriction (admin); array = the caller's properties.
-  accessiblePropertyIds?: string[] | null;
+  // The ACTIVE property (X-Property-Id, validated by requireActiveProperty). Required:
+  // the cockpit shows one property's books, the same scope as the Invoices list. (It used
+  // to default to "everything this user can reach", so the two screens disagreed.)
+  propertyId: string;
 }
