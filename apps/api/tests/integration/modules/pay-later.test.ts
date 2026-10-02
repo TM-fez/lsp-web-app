@@ -20,6 +20,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../src/config/db.js';
+import { lockUnitType } from '../helpers/unitTypeLock.js';
+
+// SUITE is claimed by two files; this serialises them (see the helper).
+let releaseUnitType: (() => Promise<void>) | undefined;
 import { ReservationsService } from '../../../src/modules/reservations/reservations.service.js';
 import { ReservationsRepository } from '../../../src/modules/reservations/reservations.repository.js';
 import { RoomsRepository } from '../../../src/modules/rooms/rooms.repository.js';
@@ -103,6 +107,7 @@ async function makeBooking(
 }
 
 beforeAll(async () => {
+  releaseUnitType = await lockUnitType('SUITE');
   const role = await db.selectFrom('roles').select('id').limit(1).executeTakeFirstOrThrow();
   userId = (
     await db.insertInto('users')
@@ -134,6 +139,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  try {
+    await cleanup();
+  } finally {
+    await releaseUnitType?.();
+  }
+});
+
+async function cleanup() {
   await db.deleteFrom('audit_logs').where('user_id', '=', userId).execute();
   if (reservationIds.length > 0) {
     await db.deleteFrom('occupancy').where('reservation_id', 'in', reservationIds).execute();
@@ -148,7 +161,7 @@ afterAll(async () => {
   await db.deleteFrom('buildings').where('id', '=', buildingId).execute();
   await db.deleteFrom('properties').where('id', '=', propertyId).execute();
   await db.deleteFrom('users').where('id', '=', userId).execute();
-});
+}
 
 describe('confirming without payment', () => {
   it('confirms a PENDING booking, records who and why, and freezes the price', async () => {
