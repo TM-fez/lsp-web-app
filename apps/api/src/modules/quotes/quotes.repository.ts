@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, QuoteRow, NewQuote } from '../../db/types.js';
+import { inTransaction } from '../../core/db/transaction.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { QuoteFilters, QuoteStatus, QuoteRequestMeta } from './quotes.types.js';
 
@@ -37,7 +38,7 @@ export class QuotesRepository {
 
   // Quotes are immutable: only creation writes the figures.
   async create(quote: NewQuote, meta: QuoteRequestMeta): Promise<QuoteRow> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
       const inserted = await trx
         .insertInto('quotes')
         .values(quote)
