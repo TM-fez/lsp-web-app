@@ -7,13 +7,9 @@ import { PricingService } from '../pricing/pricing.service.js';
 import { PricingRepository } from '../pricing/pricing.repository.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import { QuotesRepository } from '../quotes/quotes.repository.js';
-import { HoldsService } from '../holds/holds.service.js';
 import { HoldsRepository } from '../holds/holds.repository.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { PaymentsRepository } from '../payments/payments.repository.js';
-import { InvoicesService } from '../invoices/invoices.service.js';
-import { InvoicesRepository } from '../invoices/invoices.repository.js';
-import { FilesRepository } from '../files/files.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
@@ -26,20 +22,11 @@ export function createReservationsRouter(dbInstance = db): Router {
   const repository = new ReservationsRepository(dbInstance);
   const rooms = new RoomsRepository(dbInstance);
   const pricing = new PricingService(new PricingRepository(dbInstance));
-  // The money loop, wired the same way the quotes/holds/payments routers wire it —
-  // POST /:id/mark-paid drives quote -> hold -> intent -> settlePaid for a booking
-  // that already exists (see service.markPaid).
+  // POST /:id/mark-paid takes the payment atomically inside PaymentsRepository
+  // (quote + hold + intent + receipt + the re-sized open invoice, under the booking's lock).
   const quotes = new QuotesService(new QuotesRepository(dbInstance), pricing);
-  const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
   const payments = new PaymentsService(new PaymentsRepository(dbInstance), new HoldsRepository(dbInstance), quotes);
-  // Invoices too: a recorded payment raises its own paid-up receipt, so the Finance
-  // screens show who paid instead of staying empty (see service.markPaid).
-  const invoices = new InvoicesService(
-    new InvoicesRepository(dbInstance),
-    quotes,
-    new FilesRepository(dbInstance),
-  );
-  const service = new ReservationsService(repository, rooms, pricing, quotes, holds, payments, invoices);
+  const service = new ReservationsService(repository, rooms, pricing, payments);
   const controller = new ReservationsController(service);
 
   router.use(authenticate);
