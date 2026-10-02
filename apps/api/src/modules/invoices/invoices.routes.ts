@@ -16,6 +16,7 @@ import {
   requireBodyRefInActiveProperty,
   propertyOfInvoice,
   propertyOfHold,
+  propertyOfReservation,
 } from '../../core/scope/propertyOf.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { IssueInvoiceSchema, SettleInvoiceSchema, RefundInvoiceSchema } from './invoices.types.js';
@@ -38,12 +39,16 @@ export function createInvoicesRouter(dbInstance = db): Router {
     'Invoice'
   );
   const holdRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'hold_id', propertyOfHold, 'Hold');
+  // A reservation_id in the body must exist AND sit in the active property (a missing
+  // one resolves to no property, so it is the same clean 404). A reservation DERIVED from
+  // the quote is checked again in the service.
+  const reservationRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'reservation_id', propertyOfReservation, 'Reservation');
 
   router.get('/', authorize('invoices.read'), requireActiveProperty, controller.list);
   router.get('/:id/document', authorize('invoices.read'), requireActiveProperty, inProperty, controller.document);
   router.post('/:id/send', authorize('invoices.update'), requireActiveProperty, inProperty, controller.send);
   router.get('/:id', authorize('invoices.read'), requireActiveProperty, inProperty, controller.get);
-  router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), requireActiveProperty, holdRefInProperty, controller.issue);
+  router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), requireActiveProperty, holdRefInProperty, reservationRefInProperty, controller.issue);
   router.post('/:id/settle', authorize('invoices.update'), requireActiveProperty, inProperty, validateBody(SettleInvoiceSchema), controller.settle);
   router.post('/:id/refund', authorize('invoices.refund'), requireActiveProperty, inProperty, validateBody(RefundInvoiceSchema), controller.refund);
 

@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import { InvoicesService } from './invoices.service.js';
-import { InvoiceKindEnum, InvoiceStatusEnum } from './invoices.types.js';
+import { AppError } from '../../core/errors/AppError.js';
+import { userCanAccessProperty } from '../../core/scope/activeProperty.js';
+import { InvoiceListQuerySchema } from './invoices.types.js';
 import type { IssueInvoiceDTO, SettleInvoiceDTO, RefundInvoiceDTO } from './invoices.types.js';
 
 export class InvoicesController {
@@ -12,13 +14,26 @@ export class InvoicesController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
-      const status = req.query.status ? InvoiceStatusEnum.parse(req.query.status) : undefined;
-      const kind = req.query.kind ? InvoiceKindEnum.parse(req.query.kind) : undefined;
-      const quote_id = req.query.quote_id as string | undefined;
-      const hold_id = req.query.hold_id as string | undefined;
-      res.json(await this.service.listInvoices({ status, kind, quote_id, hold_id , property_id: req.activePropertyId }, { page, limit }));
+      // Every query-string filter is validated and then ACTUALLY APPLIED. This used to
+      // read page/limit/status/kind/ids by hand and drop everything else on the floor —
+      // outstanding, search, dates and a property_id all returned an unfiltered list.
+      const parsed = InvoiceListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        throw AppError.badRequest(parsed.error.errors.map((e) => e.message).join('; '));
+      }
+      const { page, limit, property_id: requested, ...filters } = parsed.data;
+
+      // The active property (X-Property-Id, already validated by requireActiveProperty)
+      // is the default scope. An explicit property_id is honoured when the caller may
+      // enter that property — never silently overridden, never a way past membership.
+      let property_id = req.activePropertyId;
+      if (requested && requested !== req.activePropertyId) {
+        const allowed = await userCanAccessProperty(req.user!.sub, req.user!.role, requested);
+        if (!allowed) throw AppError.forbidden('You do not have access to this property');
+        property_id = requested;
+      }
+
+      res.json(await this.service.listInvoices({ ...filters, property_id }, { page, limit }));
     } catch (err) {
       next(err);
     }
@@ -51,7 +66,7 @@ export class InvoicesController {
   issue = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as IssueInvoiceDTO;
-      res.status(201).json(await this.service.issueInvoice(dto, this.getRequestMeta(req)));
+      res.status(201).json(await this.service.issueInvoice(dto, this.getRequestMeta(req), req.activePropertyId));
     } catch (err) {
       next(err);
     }
@@ -60,7 +75,7 @@ export class InvoicesController {
   settle = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as SettleInvoiceDTO;
-      res.json(await this.service.settleInvoice(req.params.id as string, dto.receipt_file_id, this.getRequestMeta(req)));
+      res.json(await this.service.settleInvoice(req.params.id as string, dto.receipt_file_id, this.getRequestMeta(req), dto.method));
     } catch (err) {
       next(err);
     }

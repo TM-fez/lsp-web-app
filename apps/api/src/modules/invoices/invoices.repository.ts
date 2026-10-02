@@ -1,8 +1,25 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, InvoiceRow, NewInvoice } from '../../db/types.js';
-import { allocateDocumentNumber } from '../../core/documents/numbering.js';
-import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { InvoiceFilters, InvoiceStatus, InvoiceRequestMeta, InvoiceListRow } from './invoices.types.js';
+import { AppError } from '../../core/errors/AppError.js';
+import { inTransaction } from '../../core/db/transaction.js';
+import { propertyToday } from '../../core/time.js';
+import { invoiceVisibleInProperty } from '../../core/scope/invoiceProperty.js';
+import {
+  agreedTotal,
+  describeThebe,
+  lockReservation,
+  paidToDate,
+  OPEN_INVOICE_STATUSES,
+} from '../../core/money/folio.js';
+import type { PaginationOptions } from '../crm/crm.types.js';
+import { insertInvoice, reconcileReceivable } from './invoices.receivable.js';
+import type {
+  InvoiceFilters,
+  InvoiceStatus,
+  InvoiceRequestMeta,
+  InvoiceListResult,
+  InvoiceListTotals,
+} from './invoices.types.js';
 
 /** An invoice as the service knows it: everything but the number, which only the
  *  repository may allocate (D09 — see create()). */
@@ -34,6 +51,7 @@ export class InvoicesRepository {
       .select([
         'i.id', 'i.number', 'i.kind', 'i.status', 'i.currency',
         'i.subtotal_amount', 'i.tax_rate_bps', 'i.tax_amount', 'i.total_amount', 'i.created_at',
+        sql<string | null>`to_char(i.due_date, 'YYYY-MM-DD')`.as('due_date'),
         'c.name as guest_name', 'c.email as guest_email', 'c.phone as guest_phone',
         sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
         sql<string | null>`coalesce(bc.email, c.email)`.as('bill_to_email'),
@@ -65,6 +83,21 @@ export class InvoicesRepository {
     return row?.reservation_id ?? null;
   }
 
+  /** A booking and the property its unit sits in, or undefined if it does not exist. */
+  async findReservationProperty(
+    reservationId: string
+  ): Promise<{ id: string; property_id: string | null } | undefined> {
+    const row = await this.db
+      .selectFrom('reservations as r')
+      .leftJoin('rooms as rm', 'rm.id', 'r.room_id')
+      .leftJoin('buildings as b', 'b.id', 'rm.building_id')
+      .select(['r.id', 'b.property_id'])
+      .where('r.id', '=', reservationId)
+      .where('r.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row ?? undefined;
+  }
+
   // Audit trail for an invoice emailed to the guest.
   async recordEmailSent(id: string, email: string, meta: InvoiceRequestMeta): Promise<void> {
     await this.db.insertInto('audit_logs').values({
@@ -81,17 +114,17 @@ export class InvoicesRepository {
   async findPaginated(
     filters: InvoiceFilters,
     pagination: PaginationOptions
-  ): Promise<PaginatedResult<InvoiceRow & InvoiceListRow>> {
+  ): Promise<InvoiceListResult> {
     // Who + which stay, resolved the same way the printable document resolves them:
     // the invoice's own reservation when it has one, else the reservation behind its
     // hold. Bill-to coalesces to the billing/accounts contact (A4) before the guest,
     // so the name shown is the name that owes the money.
     //
     // Every join is LEFT and lands on a primary key, so none of them can multiply a
-    // row — the count query below stays correct without repeating them.
+    // row — the count and totals below reuse the same base query unchanged.
     // Alias `ih` (not `h`): the property filter opens its own `holds h` subquery, and
     // an outer `h` shadowed by an inner one is legal SQL that reads like a bug.
-    let query = this.db
+    let base = this.db
       .selectFrom('invoices')
       .leftJoin('holds as ih', 'ih.id', 'invoices.hold_id')
       .leftJoin('reservations as rsv', (join) =>
@@ -100,140 +133,285 @@ export class InvoicesRepository {
       .leftJoin('contacts as c', 'c.id', 'rsv.contact_id')
       .leftJoin('contacts as bc', 'bc.id', 'rsv.billing_contact_id')
       .leftJoin('rooms as rm', 'rm.id', 'rsv.room_id')
-      .selectAll('invoices')
-      .select([
-        sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
-        sql<string | null>`c.name`.as('guest_name'),
-        sql<string | null>`rm.code`.as('unit_code'),
-        sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
-        sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
-      ])
       .where('invoices.deleted_at', 'is', null);
 
-    let countQuery = this.db
-      .selectFrom('invoices')
-      .select(this.db.fn.count<number>('id').as('total'))
-      .where('deleted_at', 'is', null);
-
-    // Filters are qualified on the joined query: `status` and `quote_id` now exist on
-    // more than one table in scope, so an unqualified name is ambiguous to Postgres.
-    if (filters.status) {
-      query = query.where('invoices.status', '=', filters.status);
-      countQuery = countQuery.where('status', '=', filters.status);
-    }
-    if (filters.kind) {
-      query = query.where('invoices.kind', '=', filters.kind);
-      countQuery = countQuery.where('kind', '=', filters.kind);
-    }
-    if (filters.quote_id) {
-      query = query.where('invoices.quote_id', '=', filters.quote_id);
-      countQuery = countQuery.where('quote_id', '=', filters.quote_id);
-    }
-    if (filters.hold_id) {
-      query = query.where('invoices.hold_id', '=', filters.hold_id);
-      countQuery = countQuery.where('hold_id', '=', filters.hold_id);
-    }
-
+    // Every filter the API accepts is applied here — a filter that is accepted and then
+    // ignored is worse than one that does not exist, because the screen reads as
+    // filtered and is not (stage-1 finding: outstanding/search/dates/property all fell
+    // on the floor and the Invoices page counted rows it was not showing).
+    // Qualified throughout: `status`, `quote_id` and `hold_id` exist on several joined tables.
+    if (filters.kind) base = base.where('invoices.kind', '=', filters.kind);
+    if (filters.quote_id) base = base.where('invoices.quote_id', '=', filters.quote_id);
+    if (filters.hold_id) base = base.where('invoices.hold_id', '=', filters.hold_id);
     if (filters.property_id) {
-      // H5 + D03: walk reservation → hold → room → building, then apply the same
-      // coalesce rule the activity feed uses. A row that resolves to a property must
-      // match the active one; a row that resolves to nothing is house-wide
-      // ("Unattributed") and stays visible in every property. The old EXISTS filter
-      // dropped the null-chain rows, so Finance Cockpit (which LEFT JOINs and labels
-      // them Unattributed) counted open debt Accounts could neither see nor settle.
-      const inProperty = sql<boolean>`coalesce(
-        (
-          select b.property_id from rooms r
-          left join buildings b on b.id = r.building_id
-          where r.id = coalesce(
-            (select res.room_id from reservations res where res.id = invoices.reservation_id),
-            (select h.room_id from holds h where h.id = invoices.hold_id),
-            (select res2.room_id from holds h2
-               join reservations res2 on res2.id = h2.reservation_id
-             where h2.id = invoices.hold_id)
-          )
-        ),
-        ${filters.property_id}
-      ) = ${filters.property_id}`;
-      query = query.where(inProperty);
-      countQuery = countQuery.where(inProperty);
+      // One shared resolution with the Finance cockpit — see invoiceProperty.ts.
+      base = base.where(invoiceVisibleInProperty(filters.property_id));
+    }
+    if (filters.search) {
+      const pat = `%${filters.search.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+      base = base.where((eb) =>
+        eb.or([
+          eb('invoices.number', 'ilike', pat),
+          eb('c.name', 'ilike', pat),
+          eb('bc.name', 'ilike', pat),
+          eb('rm.code', 'ilike', pat),
+          eb('rm.name', 'ilike', pat),
+        ])
+      );
+    }
+    // Dates are Africa/Gaborone calendar days (invariant 2), not UTC days.
+    if (filters.from) {
+      base = base.where(sql<boolean>`(invoices.created_at AT TIME ZONE 'Africa/Gaborone')::date >= ${filters.from}::date`);
+    }
+    if (filters.to) {
+      base = base.where(sql<boolean>`(invoices.created_at AT TIME ZONE 'Africa/Gaborone')::date <= ${filters.to}::date`);
+    }
+
+    // The status-shaped filters apply to the rows AND the count, but not to `totals`,
+    // which always answers "what is owed / overdue in this view" regardless of which
+    // status tab is open.
+    let listed = base;
+    if (filters.status) listed = listed.where('invoices.status', '=', filters.status);
+    if (filters.outstanding) {
+      listed = listed.where('invoices.status', 'in', [...OPEN_INVOICE_STATUSES]).where('invoices.kind', '<>', 'REFUND');
+    }
+    if (filters.overdue) {
+      listed = listed
+        .where('invoices.status', 'in', [...OPEN_INVOICE_STATUSES])
+        .where('invoices.kind', '<>', 'REFUND')
+        .where(sql<boolean>`invoices.due_date < ${propertyToday()}`);
     }
 
     const offset = (pagination.page - 1) * pagination.limit;
-    const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('invoices.created_at', 'desc').execute(),
-      countQuery.execute(),
+    const [data, [{ total }], [totals]] = await Promise.all([
+      listed
+        .selectAll('invoices')
+        .select([
+          sql<string | null>`to_char(invoices.due_date, 'YYYY-MM-DD')`.as('due_date'),
+          sql<boolean>`(invoices.status IN ('ISSUED','PARTIALLY_PAID') AND invoices.kind <> 'REFUND'
+                        AND invoices.due_date < ${propertyToday()})`.as('is_overdue'),
+          sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
+          sql<string | null>`c.name`.as('guest_name'),
+          sql<string | null>`rm.code`.as('unit_code'),
+          sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
+          sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
+        ])
+        .orderBy('invoices.created_at', 'desc')
+        .orderBy('invoices.id', 'desc')
+        .limit(pagination.limit)
+        .offset(offset)
+        .execute(),
+      listed.select(this.db.fn.countAll<number>().as('total')).execute(),
+      base
+        .select([
+          sql<string>`COALESCE(SUM(invoices.total_amount) FILTER (WHERE invoices.status IN ('ISSUED','PARTIALLY_PAID') AND invoices.kind <> 'REFUND'), 0)`.as('outstanding_amount'),
+          sql<string>`COUNT(*) FILTER (WHERE invoices.status IN ('ISSUED','PARTIALLY_PAID') AND invoices.kind <> 'REFUND')`.as('outstanding_count'),
+          sql<string>`COALESCE(SUM(invoices.total_amount) FILTER (WHERE invoices.status IN ('ISSUED','PARTIALLY_PAID') AND invoices.kind <> 'REFUND' AND invoices.due_date < ${propertyToday()}), 0)`.as('overdue_amount'),
+          sql<string>`COUNT(*) FILTER (WHERE invoices.status IN ('ISSUED','PARTIALLY_PAID') AND invoices.kind <> 'REFUND' AND invoices.due_date < ${propertyToday()})`.as('overdue_count'),
+        ])
+        .execute(),
     ]);
 
-    return { data, total: Number(total), page: pagination.page, limit: pagination.limit };
+    const t: InvoiceListTotals = {
+      outstanding_amount: Number(totals!.outstanding_amount),
+      outstanding_count: Number(totals!.outstanding_count),
+      overdue_amount: Number(totals!.overdue_amount),
+      overdue_count: Number(totals!.overdue_count),
+    };
+
+    return {
+      data: data as unknown as InvoiceListResult['data'],
+      total: Number(total),
+      page: pagination.page,
+      limit: pagination.limit,
+      totals: t,
+    };
   }
 
   /**
-   * The number is allocated HERE rather than by the caller, inside the same
-   * transaction as the insert. That is what makes the series gapless (D09): a
-   * failed insert rolls the counter back with it. A caller-supplied number would
-   * be claimed before the row that justifies it exists.
+   * Raise an OPEN invoice (ISSUED / PARTIALLY_PAID) — the manual "New invoice" path.
+   *
+   * The number is allocated inside insertInvoice(), in the same transaction as the
+   * insert, which is what makes the series gapless (D09): a failed insert rolls the
+   * counter back with it.
+   *
+   * When the invoice belongs to a booking it takes that booking's lock first, and
+   * refuses to bill more than the booking still owes MINUS what is already invoiced and
+   * unpaid. Without it, "New invoice" on a booking with an open balance double-counted
+   * the debt: Finance's open receivables then no longer equalled the folio.
    */
   async create(invoice: UnnumberedInvoice, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
-    return this.db.transaction().execute(async (trx) => {
-      const number = await allocateDocumentNumber(trx, 'INV');
+    return inTransaction(this.db, async (trx) => {
+      let checkInDay: string | null = null;
+      let status = invoice.status;
 
-      const inserted = await trx
-        .insertInto('invoices')
-        .values({ ...invoice, number })
-        .returningAll()
-        .executeTakeFirstOrThrow();
+      if (invoice.reservation_id) {
+        const reservation = await lockReservation(trx, invoice.reservation_id);
+        if (!reservation) throw AppError.notFound('That booking could not be found.');
+        checkInDay = reservation.check_in_day;
 
-      await trx.insertInto('audit_logs').values({
-        request_id: meta.requestId ?? null,
-        user_id: meta.userId,
-        action: 'CREATE',
-        entity: 'invoices',
-        entity_id: inserted.id,
-        diff: inserted,
-        ip_address: meta.ip ?? null,
-      }).execute();
+        if (invoice.kind !== 'REFUND' && (invoice.status ?? 'ISSUED') !== 'PAID') {
+          const total = await agreedTotal(trx, reservation);
+          const paid = (await paidToDate(trx, [reservation.id])).get(reservation.id) ?? 0;
+          if (total != null) {
+            const outstanding = Math.max(0, total - paid);
+            const invoiced = await openInvoicedTotal(trx, reservation.id);
+            if (invoiced + invoice.total_amount > outstanding) {
+              throw AppError.conflict(
+                outstanding === 0
+                  ? 'This booking is already paid in full, so there is nothing left to invoice.'
+                  : `This booking only owes ${describeThebe(outstanding)}` +
+                      (invoiced > 0 ? ` and ${describeThebe(invoiced)} of that is already invoiced and unpaid` : '') +
+                      `, so a new invoice for ${describeThebe(invoice.total_amount)} would bill it twice. ` +
+                      'Settle or amend the open invoice instead.'
+              );
+            }
+          }
+          // PARTIALLY_PAID has one meaning: an open invoice on a booking that has
+          // already had money received against it (see invoices.receivable.ts).
+          status = paid > 0 ? 'PARTIALLY_PAID' : 'ISSUED';
+        }
+      }
 
-      return inserted;
+      return insertInvoice(trx, { ...invoice, status }, meta, { checkInDay });
     });
   }
 
+  /**
+   * Mark an open invoice paid, ATOMICALLY with everything that follows from it.
+   *
+   * Inside one transaction: lock the booking, lock the invoice, refuse to collect more
+   * than the booking still owes, flip the status (guarded on the row still being open, so
+   * a double click or a race can only ever win once), record the payment itself so the
+   * Payments page agrees with the Invoices page, and re-size whatever is still owed.
+   *
+   * "Never collect more than owed": an open invoice larger than the folio's outstanding
+   * is STALE (left behind by the old per-payment invoicing) and settling it would collect
+   * the money a second time — so it is refused with the numbers in the message, and the
+   * invoice backfill is what retires it.
+   */
   async settle(
     id: string,
-    receiptFileId: string | null,
+    opts: { receiptFileId: string | null; method: PaymentMethodValue; note?: string | null },
     meta: InvoiceRequestMeta
   ): Promise<InvoiceRow | undefined> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
+      const peek = await trx
+        .selectFrom('invoices')
+        .select(['id', 'reservation_id'])
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst();
+      if (!peek) return undefined;
+
+      // Booking lock first, invoice lock second — the same order every other money
+      // writer uses (settlePaid, refund), so two of them cannot deadlock each other.
+      if (peek.reservation_id) await lockReservation(trx, peek.reservation_id);
+
+      const invoice = await trx
+        .selectFrom('invoices')
+        .selectAll()
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!invoice) return undefined;
+
+      if (invoice.status === 'PAID') throw AppError.conflict('Invoice is already paid');
+      if (invoice.status === 'REFUNDED' || invoice.status === 'VOID') {
+        throw AppError.conflict(`Cannot settle a ${invoice.status} invoice`);
+      }
+      if (invoice.kind === 'REFUND') throw AppError.conflict('A refund invoice cannot be settled.');
+
+      if (invoice.reservation_id) {
+        const reservation = (await lockReservation(trx, invoice.reservation_id))!;
+        const total = await agreedTotal(trx, reservation);
+        const paid = (await paidToDate(trx, [reservation.id])).get(reservation.id) ?? 0;
+        if (total != null) {
+          const outstanding = Math.max(0, total - paid);
+          if (invoice.total_amount > outstanding) {
+            throw AppError.conflict(
+              outstanding === 0
+                ? 'This booking is already paid in full, so there is nothing left to collect on this invoice. ' +
+                    'It is a leftover from an earlier part payment — run the invoice backfill to retire it.'
+                : `This invoice is for ${describeThebe(invoice.total_amount)} but the booking only owes ` +
+                    `${describeThebe(outstanding)}, so settling it would collect too much. ` +
+                    'It is a leftover from an earlier part payment — run the invoice backfill to correct it.'
+            );
+          }
+        }
+      }
+
       const updated = await trx
         .updateTable('invoices')
         .set({
           status: 'PAID',
-          ...(receiptFileId !== null ? { receipt_file_id: receiptFileId } : {}),
+          ...(opts.receiptFileId !== null ? { receipt_file_id: opts.receiptFileId } : {}),
           updated_by: meta.userId,
           updated_at: sql`now()`,
         })
         .where('id', '=', id)
         .where('deleted_at', 'is', null)
+        .where('status', 'in', [...OPEN_INVOICE_STATUSES])
         .returningAll()
         .executeTakeFirst();
+      if (!updated) throw AppError.conflict('Invoice is already paid');
 
-      if (updated) {
-        await trx.insertInto('audit_logs').values({
-          request_id: meta.requestId ?? null,
-          user_id: meta.userId,
-          action: 'UPDATE',
-          entity: 'invoices',
-          entity_id: id,
-          diff: { status: 'PAID', receipt_file_id: receiptFileId },
+      // The payment itself. Without a row here the Payments page — which lists payment
+      // intents — never heard about money collected from the Invoices screen.
+      const intent = await trx
+        .insertInto('payment_intents')
+        .values({
+          hold_id: invoice.hold_id,
+          quote_id: invoice.quote_id,
+          invoice_id: invoice.id,
+          purpose: invoice.kind === 'DEPOSIT' ? 'DEPOSIT' : 'BALANCE',
+          amount: invoice.total_amount,
+          currency: invoice.currency,
+          method: opts.method,
+          status: 'PAID',
+          attempts: 1,
+          paid_at: sql`now()`,
+          created_by: meta.userId,
+          updated_by: meta.userId,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx.insertInto('payment_attempts').values({
+        payment_intent_id: intent.id,
+        attempt_no: 1,
+        outcome: 'SUCCESS',
+        method: opts.method,
+        reference: null,
+        note: opts.note ?? 'Marked paid from the invoice',
+        created_by: meta.userId,
+      }).execute();
+
+      await trx.insertInto('audit_logs').values([
+        {
+          request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE',
+          entity: 'invoices', entity_id: id,
+          diff: { status: 'PAID', receipt_file_id: opts.receiptFileId },
           ip_address: meta.ip ?? null,
-        }).execute();
+        },
+        {
+          request_id: meta.requestId ?? null, user_id: meta.userId, action: 'CREATE',
+          entity: 'payment_intents', entity_id: intent.id,
+          diff: { status: 'PAID', invoice_id: id, amount: invoice.total_amount, method: opts.method },
+          ip_address: meta.ip ?? null,
+        },
+      ]).execute();
+
+      // What is still owed after this payment (nothing, or a smaller balance).
+      if (invoice.reservation_id) {
+        await reconcileReceivable(trx, invoice.reservation_id, meta);
       }
       return updated;
     });
   }
 
   async markStatus(id: string, status: InvoiceStatus, meta: InvoiceRequestMeta): Promise<InvoiceRow | undefined> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
       const updated = await trx
         .updateTable('invoices')
         .set({ status, updated_by: meta.userId, updated_at: sql`now()` })
@@ -258,22 +436,21 @@ export class InvoicesRepository {
   }
 
   // Refund: issue a REFUND invoice and flip the original to REFUNDED atomically.
+  // Afterwards the booking's receivable is reconciled in the same transaction: a refund
+  // lowers what has been received, so a live booking may owe money again — and the folio
+  // and the open invoices must keep telling the same story.
   async refund(
     originalId: string,
     refundInvoice: UnnumberedInvoice,
     reason: string,
     meta: InvoiceRequestMeta
   ): Promise<InvoiceRow> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
+      if (refundInvoice.reservation_id) await lockReservation(trx, refundInvoice.reservation_id);
+
       // A credit note takes the next number in the same series as the invoice it
       // reverses — a hole where a refund sits reads exactly like a removed document.
-      const number = await allocateDocumentNumber(trx, 'INV');
-
-      const refund = await trx
-        .insertInto('invoices')
-        .values({ ...refundInvoice, number })
-        .returningAll()
-        .executeTakeFirstOrThrow();
+      const refund = await insertInvoice(trx, refundInvoice, meta);
 
       await trx
         .updateTable('invoices')
@@ -282,11 +459,29 @@ export class InvoicesRepository {
         .execute();
 
       await trx.insertInto('audit_logs').values([
-        { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'CREATE', entity: 'invoices', entity_id: refund.id, diff: { ...refund, reason }, ip_address: meta.ip ?? null },
         { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'invoices', entity_id: originalId, diff: { status: 'REFUNDED', reason }, ip_address: meta.ip ?? null },
       ]).execute();
+
+      if (refundInvoice.reservation_id) {
+        await reconcileReceivable(trx, refundInvoice.reservation_id, meta);
+      }
 
       return refund;
     });
   }
+}
+
+type PaymentMethodValue = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER';
+
+/** Sum of a booking's open (ISSUED / PARTIALLY_PAID) non-refund invoices. */
+async function openInvoicedTotal(trx: Kysely<Database>, reservationId: string): Promise<number> {
+  const row = await trx
+    .selectFrom('invoices')
+    .select(sql<string>`COALESCE(SUM(total_amount), 0)`.as('total'))
+    .where('reservation_id', '=', reservationId)
+    .where('deleted_at', 'is', null)
+    .where('kind', '<>', 'REFUND')
+    .where('status', 'in', [...OPEN_INVOICE_STATUSES])
+    .executeTakeFirstOrThrow();
+  return Number(row.total);
 }
