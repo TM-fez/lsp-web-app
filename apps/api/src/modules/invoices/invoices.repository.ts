@@ -333,10 +333,10 @@ export class InvoicesRepository {
             throw AppError.conflict(
               outstanding === 0
                 ? 'This booking is already paid in full, so there is nothing left to collect on this invoice. ' +
-                    'It is a leftover from an earlier part payment — run the invoice backfill to retire it.'
+                    'It is a leftover from an earlier part payment — ask an admin to correct this booking’s invoices.'
                 : `This invoice is for ${describeThebe(invoice.total_amount)} but the booking only owes ` +
                     `${describeThebe(outstanding)}, so settling it would collect too much. ` +
-                    'It is a leftover from an earlier part payment — run the invoice backfill to correct it.'
+                    'It is a leftover from an earlier part payment — ask an admin to correct this booking’s invoices.'
             );
           }
         }
@@ -447,6 +447,23 @@ export class InvoicesRepository {
   ): Promise<InvoiceRow> {
     return inTransaction(this.db, async (trx) => {
       if (refundInvoice.reservation_id) await lockReservation(trx, refundInvoice.reservation_id);
+
+      // The service checks "is it PAID?" before this transaction opens, so two parallel
+      // refund clicks both passed it and each wrote a credit note. Re-check under the
+      // invoice's own row lock (taken after the booking's — the same order settle uses);
+      // the loser waits here and then sees REFUNDED. Invoices with no booking are covered
+      // too: they never took the reservation lock above.
+      const original = await trx
+        .selectFrom('invoices')
+        .select(['status'])
+        .where('id', '=', originalId)
+        .where('deleted_at', 'is', null)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!original) throw AppError.notFound(`Invoice ${originalId} not found`);
+      if (original.status !== 'PAID') {
+        throw AppError.conflict(`Only a PAID invoice can be refunded (current: ${original.status})`);
+      }
 
       // A credit note takes the next number in the same series as the invoice it
       // reverses — a hole where a refund sits reads exactly like a removed document.

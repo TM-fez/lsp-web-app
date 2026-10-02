@@ -174,6 +174,15 @@ export class PaymentsRepository {
       const reservation = params.reservationId
         ? await lockReservation(trx, params.reservationId)
         : undefined;
+      if (params.reservationId && !reservation) {
+        throw AppError.notFound(`Reservation ${params.reservationId} not found`);
+      }
+      // A cancelled or no-show booking owes nothing (reconcile voids its invoice), so money
+      // landing on it afterwards — an online payment completing late — would be recorded
+      // against a stay that is not happening. Only recordDeskPayment refused this before.
+      if (reservation && (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(reservation.status)) {
+        throw AppError.conflict(`A ${reservation.status.toLowerCase().replace('_', ' ')} booking can’t take payment.`);
+      }
 
       const current = await trx
         .selectFrom('payment_intents')

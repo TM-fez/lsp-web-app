@@ -378,6 +378,17 @@ describe('1. Parallel payments cannot overpay (real concurrency)', () => {
     expect(await paidIntentsTotal(b.id)).toBe(quote.deposit_amount);
     expect((await invoicesOf(b.id)).filter((i) => i.status === 'PAID')).toHaveLength(1);
   });
+
+  it('refuses a payment that completes after the booking was cancelled', async () => {
+    const b = await booking();
+    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(210), check_out: dateOnly(212), guests: 1 }, meta());
+    const hold = await holds.createHold({ quote_id: quote.id, room_id: b.roomId, reservation_id: b.id } as never, meta());
+    const intent = await payments.createIntent({ hold_id: hold.id, method: 'CASH', purpose: 'DEPOSIT' } as never, meta());
+    await db.updateTable('reservations').set({ status: 'CANCELLED' }).where('id', '=', b.id).execute();
+
+    await expect(payments.attempt(intent.id, { outcome: 'SUCCESS' } as never, meta())).rejects.toThrow(/cancelled booking/);
+    expect(await paidIntentsTotal(b.id)).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────
@@ -528,6 +539,22 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     const open = await openOf(b.id);
     expect(open).toHaveLength(1);
     expect(open[0]!.total_amount).toBe(folio.outstanding_amount);
+  });
+
+  it('refunds once when the same receipt is refunded twice at the same moment', async () => {
+    const b = await booking();
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+    const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
+
+    const results = await Promise.allSettled([
+      invoices.refundInvoice(receipt.id, 100_000, 'double click', meta()),
+      invoices.refundInvoice(receipt.id, 100_000, 'double click', meta()),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const refunds = (await invoicesOf(b.id)).filter((i) => i.kind === 'REFUND');
+    expect(refunds).toHaveLength(1);
+    expect((await reservations.getFolio(b.id)).paid_amount).toBe(STAY - 100_000);
   });
 
   it('POST /invoices cannot invoice more than the booking owes, or a booking that is not in scope', async () => {
