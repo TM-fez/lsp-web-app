@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceForPath, landingRoute } from './nav';
+import { workspaceForPath, landingRoute, homePathFor } from './nav';
 
 describe('workspaceForPath', () => {
   it('maps built routes to their workspace', () => {
@@ -63,5 +63,26 @@ describe('landingRoute', () => {
 
   it('still resolves a built route even with no permissions', () => {
     expect(landingRoute('OPERATIONS', none)).toBe('/');
+  });
+});
+
+describe('homePathFor', () => {
+  const perms = (...p: string[]) => (perm: string) => p.includes(perm);
+
+  it('keeps the Operations cockpit for anyone who may open it', () => {
+    expect(homePathFor(perms('cockpit.read', 'invoices.read'))).toBe('/');
+  });
+
+  it('sends accounts (no cockpit.read) to Finance, where most of their screens are', () => {
+    expect(homePathFor(perms('reports.read', 'invoices.read', 'payments.read', 'expenses.read'))).toBe('/finance');
+    expect(homePathFor(perms('invoices.read', 'payments.read'))).toBe('/invoices');
+  });
+
+  it('sends housekeeping to their own screen, not an admin list', () => {
+    expect(homePathFor(perms('housekeeping.read', 'maintenance.read', 'rooms.read'))).toBe('/housekeeping');
+  });
+
+  it('returns null when no built screen is permitted', () => {
+    expect(homePathFor(perms())).toBeNull();
   });
 });

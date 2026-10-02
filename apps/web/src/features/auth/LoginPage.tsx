@@ -27,7 +27,11 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: 'admin@lsp.local', password: 'Admin@123!' },
+    // Seed credentials pre-filled for local development only. They used to ship in the
+    // production bundle too — the admin login, one click away on the public sign-in page.
+    defaultValues: import.meta.env.DEV
+      ? { email: 'admin@lsp.local', password: 'Admin@123!' }
+      : { email: '', password: '' },
   });
 
   async function onSubmit(values: FormValues) {

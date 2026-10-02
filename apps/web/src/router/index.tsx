@@ -33,11 +33,22 @@ import { StayPage } from '@/features/stay/StayPage';
 import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
 import { EnquirePage } from '@/features/stay/EnquirePage';
+import { homePathFor } from '@/components/layout/nav';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
   if (!token) return <Navigate to="/login" replace />;
   return <Outlet />;
+}
+
+/**
+ * `/` is the Operations cockpit, but not every role may open it. Send anyone without
+ * cockpit.read to the first screen they can use instead of a forbidden page.
+ */
+function HomeRoute() {
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const home = homePathFor(hasPerm);
+  return home && home !== '/' ? <Navigate to={home} replace /> : <CockpitPage />;
 }
 
 export const router = createBrowserRouter([
@@ -63,7 +74,7 @@ export const router = createBrowserRouter([
           {
             element: <AppShell />,
             children: [
-          { path: '/', element: <CockpitPage /> },
+          { path: '/', element: <HomeRoute /> },
           { path: '/reservations', element: <ReservationsPage /> },
           { path: '/leads', element: <LeadsPage /> },
           { path: '/guests', element: <GuestsPage /> },

@@ -87,6 +87,16 @@ export class PublicService {
    * money-loop invariant — only payment confirms it). Returns a confirmation.
    */
   async createBooking(dto: CreateBookingDTO, meta: PublicRequestMeta) {
+    // Refuse a layout we can't price BEFORE writing anything. With no active rate plan
+    // (or a zero rate) the booking used to be created anyway — a P0 stay holding a real
+    // unit, which then publishes to Booking.com as busy (invariant 7).
+    const plan = (await this.repository.activePlans()).find((p) => p.unit_type === dto.unit_type);
+    if (!plan || plan.nightly_rate <= 0) {
+      throw AppError.badRequest(
+        `${unitLabel(dto.unit_type)} bookings aren’t open online right now. Please send us an enquiry instead.`,
+      );
+    }
+
     const actorId = await this.repository.systemActorId();
     const actorMeta = { userId: actorId, ip: meta.ip, requestId: meta.requestId };
 
