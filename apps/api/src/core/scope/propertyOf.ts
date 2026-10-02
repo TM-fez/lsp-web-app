@@ -64,9 +64,12 @@ export function propertyOfPaymentIntent(db: Db, intentId: string): Promise<strin
     db,
     sql<{ property_id: string | null }>`
       SELECT b.property_id FROM payment_intents pi
-      JOIN holds h ON h.id = pi.hold_id
+      LEFT JOIN holds h ON h.id = pi.hold_id
       LEFT JOIN reservations res ON res.id = h.reservation_id
-      LEFT JOIN rooms r ON r.id = coalesce(h.room_id, res.room_id)
+      -- A payment recorded by settling an invoice has no hold: it hangs off the invoice.
+      LEFT JOIN invoices iv ON iv.id = pi.invoice_id
+      LEFT JOIN reservations ires ON ires.id = iv.reservation_id
+      LEFT JOIN rooms r ON r.id = coalesce(h.room_id, res.room_id, ires.room_id)
       LEFT JOIN buildings b ON b.id = r.building_id
       WHERE pi.id = ${intentId}
     `,
