@@ -62,6 +62,9 @@ export interface FilesTable {
   bucket: string | null;
   path: string;
   is_public: Generated<boolean>;
+  // (P6, migration 073) Only for standalone library uploads; linked files derive theirs.
+  category: 'CONTRACTS' | 'COMPLIANCE' | 'OTHER' | null;
+  property_id: string | null;
   created_by: string;
   deleted_at: Date | null;
   deleted_by: string | null;

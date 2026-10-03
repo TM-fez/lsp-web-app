@@ -23,6 +23,29 @@ export const FileQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// (P6) The Files library.
+export const LibraryQuerySchema = z.object({
+  category: z
+    .enum(['GUEST_DOCUMENTS', 'INCOME_RECEIPTS', 'EXPENSE_RECEIPTS', 'REPAIR_PHOTOS', 'UNIT_PHOTOS',
+      'PROFILE_PICTURES', 'CONTRACTS', 'COMPLIANCE', 'OTHER', 'UNFILED'])
+    .optional(),
+  property_id: z.string().uuid().optional(),
+  uploaded_by: z.string().uuid().optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  search: z.string().trim().max(100).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50),
+});
+export type LibraryQueryDTO = z.infer<typeof LibraryQuerySchema>;
+
+/** Only a standalone upload can be filed by hand; linked files take their record's category. */
+export const ClassifyFileSchema = z.object({
+  category: z.enum(['CONTRACTS', 'COMPLIANCE', 'OTHER']).nullable(),
+  property_id: z.string().uuid().nullable().default(null),
+});
+export type ClassifyFileDTO = z.infer<typeof ClassifyFileSchema>;
+
 export const DeleteFileSchema = z.object({
   id: z.string().uuid(),
 });

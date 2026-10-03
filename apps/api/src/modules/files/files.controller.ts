@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { FilesService } from './files.service.js';
-import { FileQuerySchema, MAX_FILE_SIZE_BYTES } from './files.types.js';
+import { FileQuerySchema, LibraryQuerySchema, MAX_FILE_SIZE_BYTES, type ClassifyFileDTO } from './files.types.js';
+import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
+import type { LibraryViewer } from './files.library.js';
 
 export class FilesController {
   public readonly uploadMiddleware: any;
@@ -54,9 +56,41 @@ export class FilesController {
     };
   }
 
-  private viewer(req: Request): { userId: string; role: string } {
-    return { userId: req.user!.sub, role: req.user!.role };
+  /** Who is looking, in the terms the library's visibility rules need. */
+  private async viewer(req: Request): Promise<LibraryViewer> {
+    const user = req.user!;
+    return {
+      userId: user.sub,
+      canSeeGuestDocuments: user.permissions.includes('files.guest_documents.read'),
+      isContractor: user.role === 'contractor',
+      accessiblePropertyIds: await accessiblePropertyIdsForUser(user.sub, user.role),
+    };
   }
+
+  library = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const query = LibraryQuerySchema.parse(req.query);
+      res.json(await this.service.library(await this.viewer(req), query));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  classify = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const canManage = req.user!.permissions.includes('files.delete');
+      const file = await this.service.classify(
+        req.params.id as string,
+        req.body as ClassifyFileDTO,
+        await this.viewer(req),
+        canManage,
+        this.getRequestMeta(req)
+      );
+      res.json(file);
+    } catch (err) {
+      next(err);
+    }
+  };
 
   uploadFile = (req: Request, res: Response, _next: NextFunction) => {
     // The actual upload is handled by multer storage engine
@@ -82,7 +116,7 @@ export class FilesController {
 
   getFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await this.service.getMetadata(req.params.id as string, this.viewer(req));
+      const result = await this.service.getMetadata(req.params.id as string, await this.viewer(req));
       res.json(result);
     } catch (err) {
       next(err);
@@ -91,7 +125,7 @@ export class FilesController {
 
   downloadFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { stream, file } = await this.service.getDownloadStream(req.params.id as string, this.viewer(req));
+      const { stream, file } = await this.service.getDownloadStream(req.params.id as string, await this.viewer(req));
       res.setHeader('Content-Type', file.mime_type);
       res.setHeader('Content-Disposition', `inline; filename="${file.original_name}"`);
       stream.pipe(res);

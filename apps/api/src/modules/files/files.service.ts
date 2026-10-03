@@ -7,6 +7,8 @@ import { FilesRepository } from './files.repository.js';
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, type FileRequestMeta, type FileQueryDTO } from './files.types.js';
 import type { StorageAdapter } from './files.storage.js';
 import type { FileRow } from '../../db/types.js';
+import type { LibraryViewer } from './files.library.js';
+import type { LibraryQueryDTO, ClassifyFileDTO } from './files.types.js';
 
 // Drivers + factory live in files.storage.ts; re-exported so existing imports keep working.
 export { LocalStorageDriver, S3StorageDriver, createStorageAdapter, type StorageAdapter } from './files.storage.js';
@@ -99,21 +101,53 @@ export class FilesService {
 
   /**
    * `viewer` is optional so internal callers (invoice documents, etc.) keep reading by id.
-   * A contractor asking for a file outside their own work gets the same 404 as a missing
-   * one — a 403 would confirm the id exists.
+   * A file outside the viewer's rules (another contractor's photo, a guest ID copy without
+   * files.guest_documents.read, another property's document) gets the same 404 as a
+   * missing one — a 403 would confirm the id exists.
    */
-  async getMetadata(id: string, viewer?: { userId: string; role: string }): Promise<FileRow> {
+  async getMetadata(id: string, viewer?: LibraryViewer): Promise<FileRow> {
     const file = await this.repository.findById(id);
     if (!file) throw AppError.notFound(`File ${id} not found`);
-    if (viewer?.role === 'contractor' && !(await this.repository.contractorCanRead(id, viewer.userId))) {
+    if (viewer && !(await this.repository.canOpen(viewer, id))) {
       throw AppError.notFound(`File ${id} not found`);
     }
     return file;
   }
 
+  library(viewer: LibraryViewer, q: LibraryQueryDTO) {
+    return this.repository.library(viewer, {
+      category: q.category,
+      propertyId: q.property_id,
+      uploadedBy: q.uploaded_by,
+      from: q.from,
+      to: q.to,
+      search: q.search || undefined,
+      page: q.page,
+      limit: q.limit,
+    });
+  }
+
+  /**
+   * File a standalone upload. Linked files are refused: their category IS their record, and
+   * letting someone relabel a passport copy as "Other" would walk it out of its restriction.
+   * Only the uploader or someone who can delete files may do it.
+   */
+  async classify(id: string, dto: ClassifyFileDTO, viewer: LibraryViewer, canManage: boolean, meta: FileRequestMeta): Promise<FileRow> {
+    const file = await this.getMetadata(id, viewer);
+    if (!canManage && file.created_by !== viewer.userId) {
+      throw AppError.forbidden('Only the person who uploaded this file can file it.');
+    }
+    if (await this.repository.isLinked(id)) {
+      throw AppError.conflict('This file belongs to a booking, invoice, repair or unit, so it’s filed there already.');
+    }
+    const updated = await this.repository.classify(id, dto, meta);
+    if (!updated) throw AppError.notFound(`File ${id} not found`);
+    return updated;
+  }
+
   async getDownloadStream(
     id: string,
-    viewer?: { userId: string; role: string }
+    viewer?: LibraryViewer
   ): Promise<{ stream: NodeJS.ReadableStream, file: FileRow }> {
     const file = await this.getMetadata(id, viewer);
     try {

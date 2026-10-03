@@ -33,6 +33,7 @@ import { StayPage } from '@/features/stay/StayPage';
 import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
 import { EnquirePage } from '@/features/stay/EnquirePage';
+import { FilesPage } from '@/features/files/FilesPage';
 import { homePathFor } from '@/components/layout/nav';
 
 function ProtectedRoute() {
@@ -96,6 +97,7 @@ export const router = createBrowserRouter([
           { path: '/operating-expenses', element: <OperatingExpensesPage /> },
           { path: '/payroll', element: <PayrollPage /> },
           { path: '/finance', element: <FinanceCockpitPage /> },
+          { path: '/files', element: <FilesPage /> },
             ],
           },
         ],
