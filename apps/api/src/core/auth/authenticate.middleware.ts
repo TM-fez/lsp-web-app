@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
-import { verifyAccessToken } from '../../modules/auth/auth.service.js';
+import { assertSessionLive, verifyAccessToken } from '../../modules/auth/auth.service.js';
 import type { JwtPayload } from '@lsp/shared-types';
 
 declare global {
@@ -18,10 +18,20 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     return;
   }
 
+  let payload: JwtPayload;
   try {
-    req.user = verifyAccessToken(authHeader.slice(7));
-    next();
+    payload = verifyAccessToken(authHeader.slice(7));
   } catch (err) {
     next(err);
+    return;
   }
+
+  // (H7) A valid signature is not enough: the session must still be open and the user
+  // still who the token says. See assertSessionLive.
+  assertSessionLive(payload)
+    .then(() => {
+      req.user = payload;
+      next();
+    })
+    .catch(next);
 }

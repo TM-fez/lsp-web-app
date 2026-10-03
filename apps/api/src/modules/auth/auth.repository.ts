@@ -93,6 +93,7 @@ export async function saveRefreshToken(data: {
   userId: string;
   tokenHash: string;
   expiresAt: Date;
+  sessionId: string;
 }): Promise<void> {
   await db
     .insertInto('refresh_tokens')
@@ -100,6 +101,7 @@ export async function saveRefreshToken(data: {
       user_id: data.userId,
       token_hash: data.tokenHash,
       expires_at: data.expiresAt,
+      session_id: data.sessionId,
     })
     .execute();
 }
@@ -109,7 +111,7 @@ export async function findRefreshTokenByHash(
 ): Promise<RefreshTokenRecord | null> {
   const row = await db
     .selectFrom('refresh_tokens')
-    .select(['id', 'user_id', 'token_hash', 'expires_at', 'revoked'])
+    .select(['id', 'user_id', 'token_hash', 'expires_at', 'revoked', 'session_id'])
     .where('token_hash', '=', hash)
     .executeTakeFirst();
 
@@ -121,7 +123,31 @@ export async function findRefreshTokenByHash(
     tokenHash: row.token_hash,
     expiresAt: row.expires_at,
     revoked: row.revoked,
+    sessionId: row.session_id,
   };
+}
+
+/**
+ * (H7) Is this login session still open, and who is the user now? Null when the session
+ * has ended (logged out, all refresh tokens revoked or expired) or the user is gone.
+ * One indexed query per authenticated request — the price of logout meaning logout.
+ */
+export async function findLiveSession(
+  sessionId: string,
+  userId: string
+): Promise<{ active: boolean; role: string; roleId: number } | null> {
+  const row = await db
+    .selectFrom('refresh_tokens as rt')
+    .innerJoin('users as u', 'u.id', 'rt.user_id')
+    .innerJoin('roles as r', 'r.id', 'u.role_id')
+    .select(['u.active', 'r.name as role', 'u.role_id'])
+    .where('rt.session_id', '=', sessionId)
+    .where('rt.user_id', '=', userId)
+    .where('rt.revoked', '=', false)
+    .where('rt.expires_at', '>', new Date())
+    .limit(1)
+    .executeTakeFirst();
+  return row ? { active: row.active, role: row.role, roleId: row.role_id } : null;
 }
 
 export async function revokeRefreshToken(id: string): Promise<void> {

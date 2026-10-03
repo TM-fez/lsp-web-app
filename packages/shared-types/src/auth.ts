@@ -12,6 +12,8 @@ export interface JwtPayload {
   email: string;
   role: Role;
   permissions: string[];
+  /** (H7) Login session id — the token is honoured only while the session is open. */
+  sid?: string;
   iat?: number;
   exp?: number;
 }

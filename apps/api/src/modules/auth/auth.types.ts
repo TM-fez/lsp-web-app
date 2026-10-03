@@ -42,4 +42,5 @@ export interface RefreshTokenRecord {
   tokenHash: string;
   expiresAt: Date;
   revoked: boolean;
+  sessionId: string;
 }

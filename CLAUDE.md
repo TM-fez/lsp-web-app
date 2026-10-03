@@ -152,11 +152,13 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   201 on create, 204 on delete.
 - **Repositories:** wrap the mutation + its `audit_logs` insert in one `db.transaction().execute()`.
 - **Auth:** JWT RS256 access token (15m) + opaque refresh token in an httpOnly cookie. User id is the
-  JWT **`sub`** claim, not `id`. Permissions are dotted verbs: `crm.leads.read`,
+  JWT **`sub`** claim, not `id`. (H7) The token also carries **`sid`** (its login session); `authenticate`
+  refuses it once that session has no live refresh token, the user is inactive, or the role/permissions
+  it claims have changed — so logout, deactivation and demotion bite on the next request. Permissions are dotted verbs: `crm.leads.read`,
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 071). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 072). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —
