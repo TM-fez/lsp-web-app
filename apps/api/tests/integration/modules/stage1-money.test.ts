@@ -701,13 +701,19 @@ describe('3. Every flow that creates money owed or received leaves a consistent 
   });
 
   it('a public /stay booking is on the books at creation, and expiry voids it', async () => {
+    // Offer only THIS file's units. reports-accrual.test.ts also creates CONFERENCE rooms
+    // and runs in parallel, so the "first free unit of the type" was sometimes its room —
+    // which that suite then deleted mid-test (an intermittent failure, ~1 run in 7).
+    const publicRepo = new PublicRepository(db);
+    const ownRooms = async (unitType: Parameters<PublicRepository['bookableRoomsByType']>[0]) =>
+      (await PublicRepository.prototype.bookableRoomsByType.call(publicRepo, unitType)).filter((r) => roomIds.includes(r.id));
+    publicRepo.bookableRoomsByType = ownRooms;
     const service = new PublicService(
-      new PublicRepository(db),
+      publicRepo,
       reservations,
       new ContactsRepository(db),
       new LeadsRepository(db),
     );
-    // The only CONFERENCE units in the database are this file’s own.
     const result = await service.createBooking(
       {
         unit_type: 'CONFERENCE', check_in: dateOnly(500), check_out: dateOnly(502), guests: 2,
