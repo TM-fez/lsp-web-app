@@ -166,8 +166,8 @@ export function OperationalCockpitPage() {
 
           <section>
             <h2 className="mb-3 font-display text-xl text-ink">By property</h2>
-            <div className="overflow-hidden rounded-lg border border-line bg-paper">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-line bg-paper">
+              <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
                 <thead>
                   <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                     <th className="px-4 py-3.5 font-medium">Property</th>

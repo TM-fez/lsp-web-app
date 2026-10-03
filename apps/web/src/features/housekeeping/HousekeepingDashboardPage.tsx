@@ -66,7 +66,7 @@ export function HousekeepingDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-end flex-wrap justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl text-ink">Housekeeping</h1>
           <p className="text-sm text-slate-500">

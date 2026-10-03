@@ -137,7 +137,7 @@ export function PaymentsPage() {
         />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line bg-paper">
-          <table className="w-full text-sm">
+          <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Guest</th>

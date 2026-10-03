@@ -113,8 +113,8 @@ export function PayrollPage() {
         <EmptyState icon={<Users className="h-8 w-8" />} title="No staff yet"
           description="Add staff in Admin → Users & Roles, then set their pay here." />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-line bg-paper">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-line bg-paper">
+          <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Employee</th>

@@ -213,8 +213,8 @@ export function InvoicesPage() {
           description="Recording a payment on a booking raises a paid receipt here automatically. You can also raise one by hand against a quote when a deposit or balance is due, then settle it here once the guest pays."
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-line bg-paper">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-line bg-paper">
+          <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Invoice</th>

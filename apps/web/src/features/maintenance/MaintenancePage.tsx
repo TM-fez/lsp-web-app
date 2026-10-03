@@ -89,7 +89,7 @@ export function MaintenancePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center flex-wrap gap-3 justify-between">
         <div>
           <h1 className="font-display text-4xl text-ink">Maintenance</h1>
           <p className="text-sm text-slate-500">{countLabel}</p>
@@ -160,8 +160,8 @@ export function MaintenancePage() {
         <EmptyState title="No matches" description="No work orders match your search or filter. Try clearing them." />
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="overflow-hidden rounded-lg border border-line bg-paper">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-line bg-paper">
+            <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                   <th className="px-4 py-3.5 font-medium">Repair</th>

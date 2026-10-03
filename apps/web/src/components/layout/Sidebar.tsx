@@ -1,11 +1,18 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils/cn';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { getWorkspace, landingRoute, workspaceForPath, type WorkspaceId } from './nav';
 
-export function Sidebar() {
+interface Props {
+  /** Phones only: whether the slide-out menu is showing. Ignored from `md` up. */
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: Props) {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const location = useLocation();
   const navigate = useNavigate();
@@ -20,7 +27,26 @@ export function Sidebar() {
   const items = workspace.items.filter((item) => (item.built ? !item.perm || hasPerm(item.perm) : true));
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-paper">
+    <>
+      {/* Phone backdrop — tap outside the menu to close it. */}
+      {open && (
+        <div className="fixed inset-0 z-30 bg-slate-900/40 md:hidden" onClick={onClose} aria-hidden="true" />
+      )}
+    <aside
+      className={cn(
+        'fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-line bg-paper transition-transform duration-300 ease-[cubic-bezier(.19,1,.22,1)]',
+        'md:static md:z-auto md:w-60 md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-3 rounded-md p-1.5 text-muted hover:bg-cream-2 md:hidden"
+        aria-label="Close menu"
+      >
+        <X className="h-4 w-4" />
+      </button>
       <div className="flex items-center gap-3 px-6 pb-5 pt-7">
         <LifestyleMark className="h-9 w-9 shrink-0 text-forest" />
         <div className="leading-[1.5]">
@@ -83,5 +109,6 @@ export function Sidebar() {
         <div className="font-display text-sm italic leading-snug text-muted">Boutique Luxury Serviced Apartments</div>
       </div>
     </aside>
+    </>
   );
 }

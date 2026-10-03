@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useActivePropertyStore } from '@/store/activeProperty';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,12 @@ function useGaboroneClock() {
   }).format(now);
 }
 
-export function Topbar() {
+interface Props {
+  /** Opens the slide-out menu on phones; the button only shows below `md`. */
+  onOpenNav: () => void;
+}
+
+export function Topbar({ onOpenNav }: Props) {
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
   const clearActiveProperty = useActivePropertyStore((s) => s.clear);
@@ -47,20 +52,25 @@ export function Topbar() {
     .toUpperCase();
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-line bg-cream px-7">
-      <PropertySwitcher />
-      <div className="flex items-center gap-5">
+    <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-line bg-cream px-3 md:px-7">
+      <div className="flex min-w-0 items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={onOpenNav} title="Menu" className="md:hidden">
+          <Menu className="h-5 w-5" />
+        </Button>
+        <PropertySwitcher />
+      </div>
+      <div className="flex items-center gap-2 md:gap-5">
         <div className="hidden items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted sm:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-terra" />
           {time} CAT · Gaborone
         </div>
         <NotificationBell />
-        <div className="flex items-center gap-3 border-l border-line pl-5">
-          <div className="text-right leading-tight">
+        <div className="flex items-center gap-2 border-l border-line pl-2 md:gap-3 md:pl-5">
+          <div className="hidden text-right leading-tight sm:block">
             <div className="text-sm text-ink">{user?.name}</div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-muted">{user?.role}</div>
           </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-forest text-[11px] tracking-[0.06em] text-cream">
+          <div className="hidden h-9 w-9 items-center justify-center rounded-full bg-forest text-[11px] tracking-[0.06em] text-cream sm:flex">
             {initials}
           </div>
           <Button variant="ghost" size="icon" onClick={handleLogout} title="Log out">
