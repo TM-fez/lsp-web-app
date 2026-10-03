@@ -5,6 +5,7 @@ import { FinanceRepository } from './finance.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 
 export function createFinanceRouter(dbInstance = db): Router {
   const router = Router();
@@ -13,7 +14,7 @@ export function createFinanceRouter(dbInstance = db): Router {
 
   router.use(authenticate);
   // Shares the management/dashboard permission with reports (A5 Dashboards).
-  router.get('/receivables', authorize('reports.read'), controller.receivables);
+  router.get('/receivables', authorize('reports.read'), requireActiveProperty, controller.receivables);
 
   return router;
 }

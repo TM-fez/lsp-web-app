@@ -1,12 +1,10 @@
 import { ReservationsRepository } from './reservations.repository.js';
 import { RoomsRepository } from '../rooms/rooms.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
-import { QuotesService } from '../quotes/quotes.service.js';
-import { HoldsService } from '../holds/holds.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
-import { InvoicesService } from '../invoices/invoices.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
+import { describeThebe } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
@@ -40,16 +38,15 @@ export function isReservationOverlapError(e: unknown): boolean {
 export class ReservationsService {
   // rooms + pricing are optional so unit tests can construct the service with just
   // a repository; the live router (reservations.routes) always wires them in, which
-  // is what GET /:id/pricing needs. quotes/holds/payments are wired the same way and
-  // back POST /:id/mark-paid — see markPaid().
+  // is what GET /:id/pricing needs. payments is wired the same way and backs
+  // POST /:id/mark-paid — see markPaid(). (quotes/holds/invoices used to be injected
+  // here too, to be driven one transaction at a time; the desk payment is now ONE
+  // transaction inside PaymentsRepository.recordDeskPayment, so they are gone.)
   constructor(
     private readonly repository: ReservationsRepository,
     private readonly rooms?: RoomsRepository,
     private readonly pricing?: PricingService,
-    private readonly quotes?: QuotesService,
-    private readonly holds?: HoldsService,
     private readonly payments?: PaymentsService,
-    private readonly invoices?: InvoicesService,
   ) {}
 
   /**
@@ -155,17 +152,24 @@ export class ReservationsService {
    * website-expiry sweep eventually cancels it. The cockpit's booking wizard cannot
    * help: it builds its own new reservation and can't adopt an existing one.
    *
-   * So we assemble the same chain the wizard does, in the same order, against the
-   * booking that already exists: quote -> hold -> intent -> successful attempt.
-   * Nothing here bypasses the invariant; settlePaid() still does the confirming.
+   * So we assemble the same chain the wizard does (quote -> hold -> intent -> successful
+   * attempt) against the booking that already exists — but ATOMICALLY: see
+   * PaymentsRepository.recordDeskPayment. Nothing here bypasses the invariant;
+   * settlePaid() still does the confirming.
    *
-   * The amount defaults to the booking's OWN priced total, which has any approved
-   * discount already applied — so an approved discount reduces what is actually
-   * charged here, not merely what is displayed.
+   * The amount defaults to what the booking still OWES per the folio — the frozen agreed
+   * price (or, before one exists, the booking's own priced total with any approved
+   * discount applied) minus what has already arrived.
    *
-   * A paid-up invoice is raised at the end so the guest has a receipt and Accounts has
-   * a record, plus an UNPAID one for anything still owed. That step is deliberately
-   * best-effort — see the comment at the call.
+   * What the folio says is re-read UNDER THE BOOKING'S LOCK. This method used to read it
+   * here, decide the cap, then create four rows in four transactions: two parallel
+   * requests both saw "P4,500 outstanding" and both collected it. The checks below are only
+   * the cheap early refusals with good messages; the authoritative ones are in the
+   * repository, where they can't be raced.
+   *
+   * The receipt and the re-sized balance invoice are written in the same transaction as the
+   * money — a payment can no longer exist without its invoice, and a part payment leaves
+   * exactly one open invoice for what remains (invoices.receivable.ts).
    */
   async markPaid(
     id: string,
@@ -173,7 +177,7 @@ export class ReservationsService {
     meta: ReservationRequestMeta,
     activePropertyId?: string,
   ): Promise<ReservationRow> {
-    if (!this.rooms || !this.pricing || !this.quotes || !this.holds || !this.payments) {
+    if (!this.rooms || !this.pricing || !this.payments) {
       throw AppError.internal('Payment recording is not configured for this service');
     }
 
@@ -201,122 +205,46 @@ export class ReservationsService {
       throw AppError.badRequest(`This booking cannot be priced: ${priced.reason}. Set a rate plan for the unit first.`);
     }
 
-    // The folio is the authority on what is still owed: the frozen agreed price minus
-    // what has already arrived. Capping against `priced.total_amount` (the whole stay,
-    // recomputed at TODAY's rates) let a second payment be taken for the full amount on
-    // a booking that was already part-paid, and moved with the rate plan besides.
-    const folio = await this.getFolio(id, activePropertyId);
-    const amount = dto.amount ?? folio.outstanding_amount;
+    // Early, friendly refusal against the folio (frozen agreed price minus what has
+    // arrived). Capping against `priced.total_amount` (the whole stay, recomputed at
+    // TODAY's rates) let a second payment be taken for the full amount on a booking that
+    // was already part-paid, and moved with the rate plan besides.
+    const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
+    const total = reservation.folio_total_amount ?? priced.total_amount;
+    const outstanding = Math.max(0, total - paid);
+    const amount = dto.amount ?? outstanding;
 
     if (amount <= 0) {
       throw AppError.badRequest(
-        folio.outstanding_amount <= 0
-          ? 'This booking is already paid in full.'
-          : 'Enter how much the guest paid.',
+        outstanding <= 0 ? 'This booking is already paid in full.' : 'Enter how much the guest paid.',
       );
     }
-    if (amount > folio.outstanding_amount) {
+    if (amount > outstanding) {
       throw AppError.badRequest(
-        `That is more than this booking still owes. Outstanding: ${(folio.outstanding_amount / 100).toFixed(2)}.`,
+        `That is more than this booking still owes. Outstanding: ${describeThebe(outstanding)}.`,
       );
     }
 
-    // Freeze the agreed price on first contact with money, if confirming did not
-    // already. After this a rate change cannot restate what this guest owes.
-    if (reservation.folio_total_amount == null && folio.total_amount > 0) {
-      await this.repository.update(
-        id,
-        { folio_total_amount: folio.total_amount, updated_by: meta.userId },
-        meta,
-      );
-    }
-
-    const quote = await this.quotes.createQuote(
+    await this.payments.recordDeskPayment(
       {
-        unit_type: room.type as UnitType,
-        check_in: reservation.check_in_date,
-        check_out: reservation.check_out_date,
-        guests: 1,
-      },
-      meta,
-    );
-
-    const hold = await this.holds.createHold(
-      { quote_id: quote.id, room_id: reservation.room_id, reservation_id: reservation.id },
-      meta,
-    );
-
-    const intent = await this.payments.createIntent(
-      {
-        hold_id: hold.id,
+        reservationId: reservation.id,
+        roomId: reservation.room_id,
+        stay: {
+          unit_type: room.type as UnitType,
+          check_in: reservation.check_in_date,
+          check_out: reservation.check_out_date,
+          guests: 1,
+        },
+        pricedTotal: priced.total_amount,
+        // Omitted when the caller didn't say: the repository then takes whatever is
+        // outstanding AT THE MOMENT IT HOLDS THE LOCK, not what it was a moment ago.
+        amount: dto.amount,
         method: dto.method,
-        // Label only — the amount is explicit either way. BALANCE reads correctly for
-        // a payment that CLEARS the booking, DEPOSIT for one that leaves a balance.
-        // Measured against what was outstanding, not the whole stay, so the second
-        // half of a part payment is a BALANCE rather than another DEPOSIT.
-        purpose: amount >= folio.outstanding_amount ? 'BALANCE' : 'DEPOSIT',
-        amount,
+        reference: dto.reference ?? null,
+        note: dto.note ?? null,
       },
       meta,
     );
-
-    // SUCCESS runs settlePaid(): intent PAID, hold CONFIRMED, reservation CONFIRMED,
-    // all in one transaction with its audit rows.
-    await this.payments.attempt(
-      intent.id,
-      { outcome: 'SUCCESS', reference: dto.reference ?? null, note: dto.note ?? null },
-      meta,
-    );
-
-    // Raise the receipt. Money has changed hands and the booking is already CONFIRMED
-    // by the time we get here, so a failure to write the DOCUMENT must not fail the
-    // request — telling reception "payment failed" after the guest has paid would send
-    // them round again and risk taking the money twice. The quote and hold both exist
-    // now, so Accounts can raise it by hand from the Invoices screen if this misses;
-    // the error is logged loudly rather than swallowed.
-    if (this.invoices) {
-      try {
-        await this.invoices.issueSettledInvoice(
-          {
-            quote_id: quote.id,
-            hold_id: hold.id,
-            reservation_id: reservation.id,
-            kind: amount >= folio.outstanding_amount ? 'BALANCE' : 'DEPOSIT',
-            amount,
-          },
-          meta,
-        );
-
-        // Part payment: invoice what is STILL OWED, unpaid.
-        //
-        // Without this the money simply disappears from view — reception takes P500
-        // against a P4,500 stay, the guest gets a P500 receipt, the booking confirms,
-        // and nothing anywhere records the P4,000 outstanding. It would not appear in
-        // the Finance cockpit's total, its ageing, or the property receivables, because
-        // all three read OPEN invoices and no open invoice would exist.
-        //
-        // ISSUED, not settled: this is the one the guest still has to pay, and Accounts
-        // settles it when they do.
-        const outstanding = priced.total_amount - amount;
-        if (outstanding > 0) {
-          await this.invoices.issueInvoice(
-            {
-              quote_id: quote.id,
-              hold_id: hold.id,
-              reservation_id: reservation.id,
-              kind: 'BALANCE',
-              amount: outstanding,
-            },
-            meta,
-          );
-        }
-      } catch (err) {
-        logger.error(
-          { err, reservationId: id, quoteId: quote.id, amount },
-          '[reservations] payment recorded but its invoices could not be raised — raise them by hand from Invoices',
-        );
-      }
-    }
 
     return this.getReservationById(id, activePropertyId);
   }
@@ -385,15 +313,17 @@ export class ReservationsService {
     // vouch for a stay they have not priced, and the folio falls back to live pricing
     // and says so. Better an unpriced confirmed booking than an unrecorded guest.
     let folioTotal: number | null = reservation.folio_total_amount;
-    if (folioTotal == null) {
-      try {
-        const priced = await this.priceReservation(id, activePropertyId);
-        if (!('priceable' in priced) || priced.priceable !== false) {
-          folioTotal = priced.total_amount;
-        }
-      } catch (err) {
-        logger.warn({ err, reservationId: id }, '[reservations] confirmed without a priced folio');
+    let taxRateBps: number | undefined;
+    let currency: string | undefined;
+    try {
+      const priced = await this.priceReservation(id, activePropertyId);
+      if (priced.priceable) {
+        taxRateBps = priced.tax_rate_bps;
+        currency = priced.currency;
+        if (folioTotal == null) folioTotal = priced.total_amount;
       }
+    } catch (err) {
+      logger.warn({ err, reservationId: id }, '[reservations] confirmed without a priced folio');
     }
 
     const updated = await this.repository.update(
@@ -405,12 +335,66 @@ export class ReservationsService {
         confirmed_without_payment: true,
         confirmation_note: dto.note ?? null,
         ...(folioTotal != null ? { folio_total_amount: folioTotal } : {}),
+        ...(folioTotal != null && currency ? { folio_currency: currency } : {}),
         updated_by: meta.userId,
       },
-      meta
+      meta,
+      undefined,
+      // The stay is on and nothing is paid: that is a receivable. Raise the invoice in the
+      // same transaction as the confirmation, or Finance has no idea this guest owes.
+      { reconcile: true, taxRateBps }
     );
     if (!updated) throw AppError.notFound(`Reservation with id ${id} not found`);
     return updated;
+  }
+
+  /**
+   * Make sure a live booking's price is agreed and its receivable is on the books.
+   *
+   * Called by the flows that create money OWED without any money arriving: a public website
+   * booking, check-in, check-out. Without it the stay exists and the debt does not — no
+   * invoice, so nothing in Finance, nothing to chase. Idempotent (a second call finds the
+   * invoice already right and changes nothing), so it is safe to call from several places.
+   *
+   * Never throws for want of a rate plan: an unpriceable booking simply has no receivable
+   * yet, which is the truth.
+   */
+  async ensureReceivable(id: string, meta: ReservationRequestMeta): Promise<void> {
+    if (!this.pricing || !this.rooms) return;
+    const priced = await this.priceReservation(id);
+    await this.repository.agreePrice(
+      id,
+      priced.priceable
+        ? { total: priced.total_amount, currency: priced.currency, taxRateBps: priced.tax_rate_bps }
+        : null,
+      meta,
+      'ensure'
+    );
+  }
+
+  /**
+   * After an edit that changes the price (dates, unit, discount) of a booking that was
+   * priced at creation and has had no money, move the frozen price and its invoice to the
+   * new figure. A no-op for anything else — see ReservationsRepository.agreePrice. Failure
+   * is logged, not thrown: the edit has committed and the receivable self-heals on the next
+   * touch (and the backfill reconciles any drift).
+   */
+  private async refreezeIfUnpaid(id: string, meta: ReservationRequestMeta): Promise<void> {
+    if (!this.pricing || !this.rooms) return;
+    try {
+      const current = await this.repository.findById(id);
+      if (!current || current.status !== 'PENDING' || current.folio_total_amount == null) return;
+      const priced = await this.priceReservation(id);
+      if (!priced.priceable) return;
+      await this.repository.agreePrice(
+        id,
+        { total: priced.total_amount, currency: priced.currency, taxRateBps: priced.tax_rate_bps },
+        meta,
+        'refreeze'
+      );
+    } catch (err) {
+      logger.error({ err, reservationId: id }, '[reservations] could not re-price the receivable after an edit');
+    }
   }
 
   async markNoShow(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
@@ -598,6 +582,9 @@ export class ReservationsService {
     if (!updated) {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
+    if (dto.check_in_date || dto.check_out_date || dto.room_id) {
+      await this.refreezeIfUnpaid(id, meta);
+    }
     return updated;
   }
 
@@ -620,6 +607,7 @@ export class ReservationsService {
       updated_by: meta.userId,
     }, meta);
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 
@@ -634,6 +622,7 @@ export class ReservationsService {
       updated_by: meta.userId,
     }, meta);
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 
@@ -649,6 +638,7 @@ export class ReservationsService {
       updated_by: meta.userId,
     }, meta);
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
+    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 

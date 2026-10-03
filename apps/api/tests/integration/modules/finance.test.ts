@@ -5,9 +5,12 @@
  * totals, ageing buckets, per-property debt, and the oldest-first drill-down — and
  * that PAID/settled invoices and REFUND liabilities are handled correctly.
  *
- * Fixtures are self-created and every assertion runs the service SCOPED to those
- * property ids, so unrelated rows in lsp_test never pollute the aggregates
- * (CI's lsp_test is seeded minimally; global/admin scope would be non-deterministic).
+ * Fixtures are self-created and every assertion runs the service scoped to one of the
+ * fixture properties. The cockpit shows ONE property's books — the active property, the
+ * same scope as the Invoices list — and shows house-wide (unattributed) invoices in every
+ * property, so other suites' unattributed rows can appear alongside ours. Assertions
+ * therefore read the fixture property's own rows, or filter to fixture ids, rather than
+ * assuming the whole snapshot is ours.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../src/config/db.js';
@@ -16,6 +19,9 @@ import { FinanceService } from '../../../src/modules/finance/finance.service.js'
 
 const service = new FinanceService(new FinanceRepository(db));
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+// Due dates are plain calendar days (Africa/Gaborone), carried as YYYY-MM-DD.
+const dayOffset = (n: number) =>
+  new Date(Date.now() + n * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Africa/Gaborone' });
 
 let userId: string;
 let propA: string;
@@ -88,14 +94,14 @@ beforeAll(async () => {
   const invoices = await db.insertInto('invoices')
     .values([
       // propA — two open receivables in different age buckets
-      inv({ reservation_id: resA, kind: 'BALANCE', status: 'ISSUED', total_amount: 100_000, created_at: daysAgo(10) }),  // 0-30
-      inv({ reservation_id: resA, kind: 'DEPOSIT', status: 'ISSUED', total_amount: 50_000, created_at: daysAgo(45) }),   // 31-60
+      inv({ reservation_id: resA, kind: 'BALANCE', status: 'ISSUED', total_amount: 100_000, created_at: daysAgo(10), due_date: dayOffset(-3) }),  // 0-30, 3 days overdue
+      inv({ reservation_id: resA, kind: 'DEPOSIT', status: 'PARTIALLY_PAID', total_amount: 50_000, created_at: daysAgo(45), due_date: dayOffset(5) }),   // 31-60, not yet due
       // propA — settled: must NOT count as receivable
       inv({ reservation_id: resA, kind: 'BALANCE', status: 'PAID', total_amount: 999_999, created_at: daysAgo(5) }),
       // propA — refund liability: money we owe the guest, not a receivable
       inv({ reservation_id: resA, kind: 'REFUND', status: 'ISSUED', total_amount: 20_000, created_at: daysAgo(3) }),
       // propB — one very old open receivable (90+ bucket), bills to the guest
-      inv({ reservation_id: resB, kind: 'BALANCE', status: 'ISSUED', total_amount: 200_000, created_at: daysAgo(100) }),
+      inv({ reservation_id: resB, kind: 'BALANCE', status: 'ISSUED', total_amount: 200_000, created_at: daysAgo(100), due_date: dayOffset(-90) }),
     ])
     .returning('id').execute();
   invoiceIds.push(...invoices.map((r) => r.id));
@@ -111,55 +117,87 @@ afterAll(async () => {
   await db.deleteFrom('users').where('id', '=', userId).execute();
 });
 
+const ours = (c: { invoices: Array<{ id: string }> }) => c.invoices.filter((i) => invoiceIds.includes(i.id));
+
 describe('Financial Cockpit — receivables (live DB)', () => {
-  it('rolls open DEPOSIT/BALANCE into totals, excluding settled invoices', async () => {
-    const c = await service.getCockpit({ accessiblePropertyIds: [propA, propB] });
-    expect(c.summary.total_receivable).toBe(350_000); // 100k + 50k + 200k (PAID 999k excluded)
-    expect(c.summary.open_invoices).toBe(3);
-    expect(c.summary.oldest_days).toBeGreaterThanOrEqual(99);
+  it('rolls open DEPOSIT/BALANCE (ISSUED and PARTIALLY_PAID) into the property’s totals, excluding settled invoices', async () => {
+    const c = await service.getCockpit({ propertyId: propA });
+    const a = c.by_property.find((p) => p.property_id === propA)!;
+    expect(a).toMatchObject({ amount: 150_000, count: 2 }); // 100k + 50k (PAID 999k excluded)
+    // The headline is exactly the sum of the rows beneath it — one scope, one answer.
+    expect(c.summary.total_receivable).toBe(c.by_property.reduce((t, p) => t + p.amount, 0));
+    expect(c.summary.open_invoices).toBe(c.by_property.reduce((t, p) => t + p.count, 0));
+    expect(c.summary.oldest_days).toBeGreaterThanOrEqual(44);
   });
 
   it('reports REFUND invoices as a separate payable, not a receivable', async () => {
-    const c = await service.getCockpit({ accessiblePropertyIds: [propA, propB] });
-    expect(c.summary.refunds_payable).toBe(20_000);
+    const c = await service.getCockpit({ propertyId: propA });
+    expect(c.summary.refunds_payable).toBeGreaterThanOrEqual(20_000);
   });
 
   it('buckets receivables by issue age, always returning the four buckets in order', async () => {
-    const c = await service.getCockpit({ accessiblePropertyIds: [propA, propB] });
+    const c = await service.getCockpit({ propertyId: propA });
     expect(c.aging.map((b) => b.bucket)).toEqual(['0-30', '31-60', '61-90', '90+']);
     const by = Object.fromEntries(c.aging.map((b) => [b.bucket, b]));
-    expect(by['0-30']).toMatchObject({ amount: 100_000, count: 1 });
+    expect(by['0-30']!.amount).toBeGreaterThanOrEqual(100_000);
     expect(by['31-60']).toMatchObject({ amount: 50_000, count: 1 });
     expect(by['61-90']).toMatchObject({ amount: 0, count: 0 });
-    expect(by['90+']).toMatchObject({ amount: 200_000, count: 1 });
+    expect(by['90+']).toMatchObject({ amount: 0, count: 0 }); // B's 200k is another property's debt
+
+    const b = await service.getCockpit({ propertyId: propB });
+    expect(Object.fromEntries(b.aging.map((x) => [x.bucket, x]))['90+']).toMatchObject({ amount: 200_000, count: 1 });
   });
 
-  it('attributes outstanding debt to each property, biggest first', async () => {
-    const c = await service.getCockpit({ accessiblePropertyIds: [propA, propB] });
-    const a = c.by_property.find((p) => p.property_id === propA)!;
-    const b = c.by_property.find((p) => p.property_id === propB)!;
-    expect(a).toMatchObject({ amount: 150_000, count: 2 });
-    expect(b).toMatchObject({ amount: 200_000, count: 1 });
-    expect(c.by_property[0]!.property_id).toBe(propB); // ordered by amount desc
+  it('shows only the active property’s attributed debt', async () => {
+    const a = await service.getCockpit({ propertyId: propA });
+    const b = await service.getCockpit({ propertyId: propB });
+    expect(a.by_property.find((p) => p.property_id === propB)).toBeUndefined();
+    expect(b.by_property.find((p) => p.property_id === propA)).toBeUndefined();
+    expect(b.by_property.find((p) => p.property_id === propB)).toMatchObject({ amount: 200_000, count: 1 });
   });
 
   it('lists outstanding invoices oldest-first, billing to the assigned contact', async () => {
-    const c = await service.getCockpit({ accessiblePropertyIds: [propA, propB] });
-    expect(c.invoices).toHaveLength(3);
-    expect(c.invoices[0]!.property_id).toBe(propB); // 100-day invoice leads
-    expect(c.invoices[0]!.bill_to_name).toBe('Neo Guest'); // no billing contact on B
-    const withBilling = c.invoices.find((i) => i.property_id === propA)!;
-    expect(withBilling.bill_to_name).toBe('Acme Accounts'); // A's billing contact
+    const a = await service.getCockpit({ propertyId: propA });
+    const mine = ours(a);
+    expect(mine).toHaveLength(2);
+    expect(mine[0]!.days_outstanding).toBeGreaterThan(mine[1]!.days_outstanding); // oldest first
+    expect(mine.every((i) => i.bill_to_name === 'Acme Accounts')).toBe(true); // A's billing contact
+    const b = await service.getCockpit({ propertyId: propB });
+    expect(ours(b)[0]!.bill_to_name).toBe('Neo Guest'); // no billing contact on B
   });
 
-  it('scopes to the caller’s accessible properties', async () => {
-    const onlyA = await service.getCockpit({ accessiblePropertyIds: [propA] });
-    expect(onlyA.summary.total_receivable).toBe(150_000); // propB's 200k excluded
-    expect(onlyA.summary.open_invoices).toBe(2);
-    expect(onlyA.by_property.every((p) => p.property_id === propA)).toBe(true);
+  it('counts what is past its due date, by the property calendar, and says how late', async () => {
+    const a = await service.getCockpit({ propertyId: propA });
+    // Only the BALANCE (due 3 days ago) is overdue; the DEPOSIT is not due for 5 days.
+    // Assert on OUR rows: the summary also carries house-wide (unattributed) debt, which
+    // other suites running in parallel create, so an exact summary figure flakes.
+    const overdueOurs = (c: typeof a) =>
+      ours(c).filter((i) => i.days_overdue > 0).reduce((sum, i) => sum + i.total_amount, 0);
+    expect(overdueOurs(a)).toBe(100_000);
+    expect(a.summary.overdue_amount).toBeGreaterThanOrEqual(100_000);
+    const late = ours(a).filter((i) => i.days_overdue > 0);
+    expect(late).toHaveLength(1);
+    expect(late[0]!.days_overdue).toBe(3);
+    expect(late[0]!.due_date).toBe(dayOffset(-3));
 
-    const none = await service.getCockpit({ accessiblePropertyIds: [] });
-    expect(none.summary.total_receivable).toBe(0);
-    expect(none.invoices).toHaveLength(0);
+    const b = await service.getCockpit({ propertyId: propB });
+    expect(overdueOurs(b)).toBe(200_000);
+    expect(b.summary.overdue_amount).toBeGreaterThanOrEqual(200_000);
+    expect(ours(b)[0]!.days_overdue).toBe(90);
+  });
+
+  it('shows house-wide (unattributed) debt in every property rather than hiding it from non-admins', async () => {
+    const orphan = await db.insertInto('invoices').values({
+      number: `FIN-ORPHAN-${Date.now()}`, kind: 'BALANCE', status: 'ISSUED',
+      subtotal_amount: 0, tax_rate_bps: 0, tax_amount: 0, total_amount: 12_345,
+      issued_by: userId, created_by: userId, updated_by: userId,
+    }).returning('id').executeTakeFirstOrThrow();
+    invoiceIds.push(orphan.id);
+
+    const a = await service.getCockpit({ propertyId: propA });
+    const b = await service.getCockpit({ propertyId: propB });
+    expect(a.invoices.some((i) => i.id === orphan.id)).toBe(true);
+    expect(b.invoices.some((i) => i.id === orphan.id)).toBe(true);
+    expect(a.by_property.find((p) => p.property_id === null)?.property_name).toBe('Unattributed');
   });
 });

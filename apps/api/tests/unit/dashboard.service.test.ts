@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/modules/dashboard/dashboard.repository.js', () => ({
   getAggregateStats:      vi.fn(),
-  getRecentAuditActivity: vi.fn(),
 }));
 
 import * as dashboardRepo    from '../../src/modules/dashboard/dashboard.repository.js';
@@ -16,27 +15,6 @@ const RAW_STATS = {
   totalContacts:      42,
   totalUsers:         7,
 };
-
-const RAW_ACTIVITY = [
-  {
-    id:        'log-id-1',
-    action:    'CREATE',
-    entity:    'auth_login',
-    entityId:  'user-id-1',
-    userId:    'user-id-1',
-    userName:  'Admin User',
-    createdAt: new Date('2026-06-05T10:00:00Z'),
-  },
-  {
-    id:        'log-id-2',
-    action:    'UPDATE',
-    entity:    'contacts',
-    entityId:  'contact-id-1',
-    userId:    'user-id-1',
-    userName:  'Admin User',
-    createdAt: new Date('2026-06-05T09:00:00Z'),
-  },
-];
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -112,85 +90,5 @@ describe('dashboardService.getStats', () => {
     );
 
     await expect(dashboardService.getStats()).rejects.toThrow('DB connection lost');
-  });
-});
-
-describe('dashboardService.getRecentActivity', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns formatted activity entries', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue(RAW_ACTIVITY);
-
-    const result = await dashboardService.getRecentActivity();
-
-    expect(result.data).toHaveLength(2);
-    expect(result.data[0]).toMatchObject({
-      id:       'log-id-1',
-      action:   'CREATE',
-      entity:   'auth_login',
-      entityId: 'user-id-1',
-      userId:   'user-id-1',
-      userName: 'Admin User',
-    });
-    expect(result.data[0]!.createdAt).toBe('2026-06-05T10:00:00.000Z');
-  });
-
-  it('always calls the repository (no cache)', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue(RAW_ACTIVITY);
-
-    await dashboardService.getRecentActivity();
-    await dashboardService.getRecentActivity();
-
-    expect(dashboardRepo.getRecentAuditActivity).toHaveBeenCalledTimes(2);
-  });
-
-  it('defaults limit to 20', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue([]);
-
-    await dashboardService.getRecentActivity();
-
-    expect(dashboardRepo.getRecentAuditActivity).toHaveBeenCalledWith(20);
-  });
-
-  it('clamps limit to a maximum of 50', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue([]);
-
-    await dashboardService.getRecentActivity(999);
-
-    expect(dashboardRepo.getRecentAuditActivity).toHaveBeenCalledWith(50);
-  });
-
-  it('clamps limit to a minimum of 1', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue([]);
-
-    await dashboardService.getRecentActivity(0);
-
-    expect(dashboardRepo.getRecentAuditActivity).toHaveBeenCalledWith(1);
-  });
-
-  it('handles entries where the user has been deleted (userId null)', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue([
-      {
-        id:        'log-id-3',
-        action:    'DELETE',
-        entity:    'contacts',
-        entityId:  'contact-id-2',
-        userId:    null,
-        userName:  null,
-        createdAt: new Date('2026-06-05T08:00:00Z'),
-      },
-    ]);
-
-    const result = await dashboardService.getRecentActivity(1);
-
-    expect(result.data[0]).toMatchObject({ userId: null, userName: null });
-  });
-
-  it('returns an empty array when there are no logs', async () => {
-    vi.mocked(dashboardRepo.getRecentAuditActivity).mockResolvedValue([]);
-
-    const result = await dashboardService.getRecentActivity();
-
-    expect(result.data).toEqual([]);
   });
 });

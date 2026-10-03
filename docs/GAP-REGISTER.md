@@ -13,7 +13,7 @@ Refs `G01`–`G32` are stable — use them in commits, branches and conversation
 **Size** — `S` a day or two · `M` about a week · `L` several weeks. Rough shape, not a quote.
 
 Audited against `main` @ `2c54c41` (2026-08-20) — 31 API routers, 62 migrations, 31 web routes, 93 test files.
-Re-audited **2026-09-08** against `main` @ `63a0e89` — **31 API routers, 69 migrations, 32 web routes,
+Stage 1 money update **2026-10-02**: migrations now at 071, D04 closed, invoice list/finance scope + filters fixed. Re-audited **2026-09-08** against `main` @ `63a0e89` — **31 API routers, 69 migrations, 32 web routes,
 115 test files**, PRs to #111. Every G-item and D-item below was checked against the code on that
 commit, not carried forward on trust. Two things moved: **D06 was fixed in PR #105 but still read
 `OPEN` here**, and **G15 changed shape** now that the revenue ledger exists (see its entry). The
@@ -258,10 +258,9 @@ disagrees with the P&L.
 
 ## Found in the code, not on the board
 
-**Nine defects, seven closed.** Open as of 2026-09-08: **D04** (`PARTIALLY_PAID` written by nothing —
-a deliberate hold, not a bug to fix today) and **D07** (no date-ranged maintenance block — needs a
+**Nine defects, eight closed.** Open as of 2026-10-02: **D07** (no date-ranged maintenance block — needs a
 decision, and is a hard prerequisite for G32's calendar). Both are `Decide`, so neither is picked up
-without asking. Everything else here is resolved and kept for the reasoning, not the status.
+without asking. **D04 was closed by Stage 1** (`fix/lsp-stage1-money-invoices`). Everything else here is resolved and kept for the reasoning, not the status.
 
 ### D01 · "Looked free, got 409" · ✅ `RESOLVED` 2026-09-01 (PR #99)
 - **Was** — two definitions of "blocked" live at once. `checkAvailability` and the `reservations_no_overlap` constraint blocked on PENDING; the availability engine counted only `('CONFIRMED','BLOCKED')` + CHECKED_IN occupancy. A unit with a PENDING booking read as free in search, then 409'd on create — worst on public `/stay` bookings, which sit PENDING up to 24h.
@@ -280,7 +279,9 @@ without asking. Everything else here is resolved and kept for the reasoning, not
 - **Fixed** — the property is resolved at READ time, walking each entity down its own chain to a building (reservations, rooms, housekeeping tasks, work orders + costs, occupancy, holds, invoices, payment intents, buildings, properties, operating expenses, channel collisions). One rule: `coalesce(resolved, :propertyId) = :propertyId` — resolves to a property, must match; resolves to nothing, it is house-wide and everyone sees it. The route now takes `requireActiveProperty`, the same gate the cockpit board beside it already used.
 - **Accepted, documented** — an audit row whose entity was HARD-deleted resolves to NULL and reads as global. Soft deletes are unaffected. Hiding such rows would quietly lose history, which is the worse trade.
 
-### D04 · `PARTIALLY_PAID` is a status nothing writes · `OPEN` · Decide · S
+### D04 · `PARTIALLY_PAID` is a status nothing writes · ✅ `RESOLVED` 2026-10-02 (Stage 1 money PR)
+- **Resolved** — the premise changed: instead of a part-payment amount column, a booking now has exactly one open invoice sized `agreed total − Σ receipts` (`reconcileReceivable`), and that invoice is `PARTIALLY_PAID` once money has arrived. Finance counts its *full face value* correctly because the face value IS the remaining balance, so the receivables ledger equals folio outstanding. The enum was kept (no rebuild). Existing data needs `npm run db:backfill-invoices` — see HANDOVER.
+- **History below kept for the reasoning.**
 - **Note 2026-09-08** — unchanged by G30. The accrual ledger answers "what is owed for nights already provided" at the *month* level (`/reports/revenue`); this is about a single invoice's part-payment, which still has no amount column. The two do not overlap.
 - **Today** — read by the finance queries, the UI badges and the status filter; written by nothing. A part payment produces a fully-PAID smaller invoice plus an ISSUED balance (#96) instead.
 - **Needed** — leave it or remove it. Removing means rebuilding a Postgres enum type, which is real work for no functional gain today.

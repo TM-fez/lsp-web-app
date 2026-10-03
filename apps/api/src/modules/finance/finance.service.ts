@@ -10,7 +10,7 @@ const UNATTRIBUTED = 'Unattributed';
 export class FinanceService {
   constructor(private readonly repo: FinanceRepository) {}
 
-  /** Real-time receivables snapshot, scoped to the caller's accessible properties. */
+  /** Real-time receivables snapshot, scoped to the caller's ACTIVE property. */
   async getCockpit(query: FinanceQuery): Promise<FinanceCockpit> {
     const [summary, agingRows, propRows, invoiceRows] = await Promise.all([
       this.repo.summary(query),
@@ -45,6 +45,8 @@ export class FinanceService {
       property_name: r.property_name,
       created_at: r.created_at.toISOString(),
       days_outstanding: num(r.days_outstanding),
+      due_date: r.due_date,
+      days_overdue: num(r.days_overdue),
     }));
 
     return {
@@ -54,6 +56,8 @@ export class FinanceService {
         open_invoices: num(summary.open_invoices),
         oldest_days: num(summary.oldest_days),
         refunds_payable: num(summary.refunds_payable),
+        overdue_amount: num(summary.overdue_amount),
+        overdue_count: num(summary.overdue_count),
       },
       aging,
       by_property,

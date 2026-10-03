@@ -143,6 +143,18 @@ export class PublicService {
       actorMeta,
     );
 
+    // A website booking creates money OWED, so it must exist as a receivable from the
+    // first moment: agree the price and raise the open invoice now. Without it Finance
+    // sees nothing until someone happens to record a payment. Best-effort — the guest's
+    // booking stands whether or not the books could be updated (it self-heals at
+    // check-in/check-out and the backfill reconciles any that missed). If the guest never
+    // pays, the 24h expiry cancels the booking and voids the invoice with it.
+    try {
+      await this.reservations.ensureReceivable(reservation.id, actorMeta);
+    } catch (err) {
+      logger.error({ err, reservationId: reservation.id }, '[public] booking created but its invoice could not be raised');
+    }
+
     const pricing = await this.reservations.priceReservation(reservation.id);
 
     const confirmation = {

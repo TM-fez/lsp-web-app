@@ -5,6 +5,7 @@ import { env } from '../../config/env.js';
 import type { Database } from '../../db/types.js';
 import { notifications as sharedNotifications } from '../notifications/notifications.routes.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
+import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 
 /**
  * Auto-expiry for unpaid website bookings.
@@ -142,6 +143,10 @@ function buildDeps(db: Kysely<Database>, service: NotificationsService): ExpiryD
             ip_address: null,
           })
           .execute();
+
+        // The booking was raised with an open invoice (public.createBooking); cancelling it
+        // cancels what it owed. Same transaction, so a cancelled booking never keeps a debt.
+        await reconcileReceivable(trx, id, { userId: actorId });
 
         return true;
       });

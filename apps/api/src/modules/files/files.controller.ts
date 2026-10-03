@@ -54,6 +54,10 @@ export class FilesController {
     };
   }
 
+  private viewer(req: Request): { userId: string; role: string } {
+    return { userId: req.user!.sub, role: req.user!.role };
+  }
+
   uploadFile = (req: Request, res: Response, _next: NextFunction) => {
     // The actual upload is handled by multer storage engine
     // If it succeeds, the result is in req.file
@@ -78,7 +82,7 @@ export class FilesController {
 
   getFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await this.service.getMetadata(req.params.id as string);
+      const result = await this.service.getMetadata(req.params.id as string, this.viewer(req));
       res.json(result);
     } catch (err) {
       next(err);
@@ -87,7 +91,7 @@ export class FilesController {
 
   downloadFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { stream, file } = await this.service.getDownloadStream(req.params.id as string);
+      const { stream, file } = await this.service.getDownloadStream(req.params.id as string, this.viewer(req));
       res.setHeader('Content-Type', file.mime_type);
       res.setHeader('Content-Disposition', `inline; filename="${file.original_name}"`);
       stream.pipe(res);

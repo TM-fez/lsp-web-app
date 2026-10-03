@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,19 +16,33 @@ import { cn } from '@/lib/utils/cn';
 import { useInvoices, useSettleInvoice, useRefundInvoice, useActiveQuotes, useIssueInvoice } from './hooks';
 import type { Invoice, InvoiceStatus } from '@/types';
 
-const FILTERS: { key: InvoiceStatus | 'ALL'; label: string }[] = [
+// "Unpaid" is a server-side filter on OPEN receivables (ISSUED + PARTIALLY_PAID), not a
+// single status: a part-paid booking's balance must show up under it too.
+type Tab = 'ALL' | 'OUTSTANDING' | 'OVERDUE' | 'PAID' | 'REFUNDED' | 'VOID';
+const FILTERS: { key: Tab; label: string }[] = [
   { key: 'ALL', label: 'All' },
-  { key: 'ISSUED', label: 'Unpaid' },
+  { key: 'OUTSTANDING', label: 'Unpaid' },
+  { key: 'OVERDUE', label: 'Overdue' },
   { key: 'PAID', label: 'Paid' },
   { key: 'REFUNDED', label: 'Refunded' },
   { key: 'VOID', label: 'Void' },
 ];
+const STATUS_TABS: Partial<Record<Tab, InvoiceStatus>> = { PAID: 'PAID', REFUNDED: 'REFUNDED', VOID: 'VOID' };
 
 const kindTone = { DEPOSIT: 'blue', BALANCE: 'slate', REFUND: 'amber' } as const;
 const statusTone = { ISSUED: 'amber', PARTIALLY_PAID: 'blue', PAID: 'green', REFUNDED: 'slate', VOID: 'slate' } as const;
+const statusLabel: Record<InvoiceStatus, string> = {
+  ISSUED: 'ISSUED', PARTIALLY_PAID: 'PART-PAID', PAID: 'PAID', REFUNDED: 'REFUNDED', VOID: 'VOID',
+};
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// A due date is a calendar day, not an instant — format it as that day in UTC so a
+// browser in another timezone never shows the day before.
+function fmtDay(ymd: string): string {
+  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 export function InvoicesPage() {
@@ -37,11 +51,27 @@ export function InvoicesPage() {
   const canRefund = hasPerm('invoices.refund');
   const canIssue = hasPerm('invoices.create');
 
-  const [filter, setFilter] = useState<InvoiceStatus | 'ALL'>('ALL');
+  const [filter, setFilter] = useState<Tab>('ALL');
+  const [searchText, setSearchText] = useState('');
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  // Wait for a pause in typing before asking the server, so each keystroke is not a query.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchText.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchText]);
+  const rangeInvalid = !!from && !!to && from > to;
   const { data, isLoading, isError, refetch } = useInvoices({
-    status: filter === 'ALL' ? undefined : filter,
+    status: STATUS_TABS[filter],
+    outstanding: filter === 'OUTSTANDING' ? true : undefined,
+    overdue: filter === 'OVERDUE' ? true : undefined,
+    search: search || undefined,
+    from: from && !rangeInvalid ? from : undefined,
+    to: to && !rangeInvalid ? to : undefined,
     limit: 100,
   });
+  const filtered = !!search || !!from || !!to || filter !== 'ALL';
   const settle = useSettleInvoice();
   const refund = useRefundInvoice();
   const issue = useIssueInvoice();
@@ -94,7 +124,10 @@ export function InvoicesPage() {
         <div className="flex items-end gap-4">
           {data && <div className="text-right">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted">Showing</div>
-            <div className="font-display text-3xl tabnum text-ink">{data.total}</div>
+            <div className="font-display text-3xl tabnum text-ink">
+              {data.data.length}
+              {data.total > data.data.length && <span className="text-base text-muted"> of {data.total}</span>}
+            </div>
           </div>}
           {canIssue && (
             <Button variant="primary" onClick={() => setIssuing(true)}><Plus className="mr-1.5 h-4 w-4" />New invoice</Button>
@@ -118,6 +151,47 @@ export function InvoicesPage() {
         ))}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="inv-search">Search</Label>
+          <Input
+            id="inv-search" className="w-64" value={searchText} placeholder="Invoice, guest or unit"
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="inv-from">Issued from</Label>
+          <Input id="inv-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="inv-to">to</Label>
+          <Input id="inv-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        {(searchText || from || to) && (
+          <Button variant="outline" onClick={() => { setSearchText(''); setSearch(''); setFrom(''); setTo(''); }}>
+            Clear
+          </Button>
+        )}
+      </div>
+      {rangeInvalid && <p role="alert" className="text-xs text-terra">The start date is after the end date.</p>}
+
+      {data && data.totals.outstanding_count > 0 && (
+        <div className="flex flex-wrap gap-6 rounded-lg border border-line bg-paper px-4 py-3 text-sm">
+          <div>
+            <span className="text-muted">Unpaid in this view </span>
+            <span className="tabnum text-ink">{formatMoney(data.totals.outstanding_amount, 'BWP')}</span>
+            <span className="text-muted"> · {data.totals.outstanding_count}</span>
+          </div>
+          {data.totals.overdue_count > 0 && (
+            <div>
+              <span className="text-muted">Overdue </span>
+              <span className="tabnum text-terra">{formatMoney(data.totals.overdue_amount, 'BWP')}</span>
+              <span className="text-muted"> · {data.totals.overdue_count}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex h-40 items-center justify-center"><Spinner className="h-6 w-6" /></div>
       ) : isError ? (
@@ -125,6 +199,12 @@ export function InvoicesPage() {
           title="Couldn’t load invoices"
           description="The server didn’t respond. Try again."
           action={<Button variant="outline" onClick={() => refetch()}>Retry</Button>}
+        />
+      ) : invoices.length === 0 && filtered ? (
+        <EmptyState
+          icon={<FileText className="h-8 w-8" />}
+          title="No invoices match"
+          description="Nothing fits those filters in this property. Try another tab, a wider date range, or clear the search."
         />
       ) : invoices.length === 0 ? (
         <EmptyState
@@ -144,6 +224,7 @@ export function InvoicesPage() {
                 <th className="px-4 py-3.5 text-right font-medium">Amount</th>
                 <th className="px-4 py-3.5 font-medium">Status</th>
                 <th className="px-4 py-3.5 font-medium">Issued</th>
+                <th className="px-4 py-3.5 font-medium">Due</th>
                 <th className="px-4 py-3.5 text-right font-medium">Action</th>
               </tr>
             </thead>
@@ -183,8 +264,16 @@ export function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3.5"><Badge tone={kindTone[inv.kind]}>{inv.kind}</Badge></td>
                   <td className="px-4 py-3.5 text-right tabnum text-ink">{formatMoney(inv.total_amount, inv.currency)}</td>
-                  <td className="px-4 py-3.5"><Badge tone={statusTone[inv.status]}>{inv.status}</Badge></td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-wrap gap-1">
+                      <Badge tone={statusTone[inv.status]}>{statusLabel[inv.status]}</Badge>
+                      {inv.is_overdue && <Badge tone="rose">OVERDUE</Badge>}
+                    </div>
+                  </td>
                   <td className="px-4 py-3.5 text-muted">{fmtDate(inv.created_at)}</td>
+                  <td className={cn('px-4 py-3.5', inv.is_overdue ? 'text-terra' : 'text-muted')}>
+                    {inv.due_date && inv.kind !== 'REFUND' ? fmtDay(inv.due_date) : '—'}
+                  </td>
                   <td className="px-4 py-3.5">
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => window.open(`/invoices/${inv.id}/print`, '_blank')}>

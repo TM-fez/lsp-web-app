@@ -1,5 +1,8 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
+import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
+import { inTransaction } from '../../core/db/transaction.js';
+import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 export class ReservationsRepository {
@@ -15,46 +18,13 @@ export class ReservationsRepository {
   }
 
   /**
-   * ── THE folio arithmetic. One definition, deliberately. ──────────────────────
-   *
-   * How much money has actually arrived against a booking, in thebe.
-   *
-   * Why it lives in exactly one place: D01 was two definitions of "blocked" drifting
-   * apart. A second definition of "paid" would fail the same way — so every caller
-   * (the folio read, list badges, the cockpit, markPaid's cap) comes through here.
-   * When `payments` + `payment_allocations` land (G30, closing D04) the body of this
-   * one query changes to sum allocations, and every caller follows for free.
-   *
-   * ⚠️ The refund subtlety, which the obvious query gets backwards:
-   * refundInvoice() marks the ORIGINAL invoice 'REFUNDED' and inserts a SEPARATE
-   * positive row with kind='REFUND', status='PAID'. So filtering on status='PAID'
-   * alone drops the original from the positive side while keeping the refund on the
-   * negative side: a P1,000 booking refunded P300 would read as −P300 paid instead of
-   * P700. A REFUNDED invoice was still paid — the money did arrive — so both statuses
-   * count, and the REFUND row is what takes it back out.
+   * How much money has actually arrived against a booking, in thebe — the folio's
+   * "paid". The arithmetic (including the refund subtlety) lives in core/money/folio.ts so
+   * the payment, settle, refund and reconcile paths, which need the SAME answer inside
+   * their own transactions, share one definition instead of copying it. See there.
    */
   async paidToDate(reservationIds: string[]): Promise<Map<string, number>> {
-    const paid = new Map<string, number>();
-    if (reservationIds.length === 0) return paid;
-
-    const rows = await this.db
-      .selectFrom('invoices')
-      .select(['reservation_id'])
-      .select(
-        sql<string>`COALESCE(SUM(CASE WHEN kind = 'REFUND' THEN -total_amount ELSE total_amount END), 0)`.as('paid')
-      )
-      .where('reservation_id', 'in', reservationIds)
-      .where('deleted_at', 'is', null)
-      .where('status', 'in', ['PAID', 'REFUNDED'])
-      .groupBy('reservation_id')
-      .execute();
-
-    for (const row of rows) {
-      // SUM() comes back as a string from pg (bigint), so Number() it here rather than
-      // letting a string leak into money arithmetic (invariant 1: integer thebe).
-      if (row.reservation_id) paid.set(row.reservation_id, Number(row.paid));
-    }
-    return paid;
+    return paidToDate(this.db, reservationIds);
   }
 
   /** The invoice documents behind a booking's folio, newest last. */
@@ -267,9 +237,10 @@ export class ReservationsRepository {
     id: string,
     update: UpdateReservation,
     meta: ReservationRequestMeta,
-    roomMove?: { fromRoomId: string; toRoomId: string }
+    roomMove?: { fromRoomId: string; toRoomId: string },
+    opts: { reconcile?: boolean; taxRateBps?: number } = {}
   ): Promise<ReservationRow | undefined> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
       const updated = await trx
         .updateTable('reservations')
         .set({ ...update, updated_at: sql`now()` })
@@ -288,6 +259,18 @@ export class ReservationsRepository {
           diff: update,
           ip_address: meta.ip ?? null,
         }).execute();
+      }
+
+      // Keep what the booking owes in step with what just happened to it, in THIS
+      // transaction. A booking that ends (cancelled / no-show) owes nothing, so its open
+      // invoice is voided — otherwise Finance would keep chasing a debt that was cancelled
+      // with the stay. A caller that has just agreed or changed the price (confirm without
+      // payment) asks for a reconcile explicitly.
+      const ended =
+        update.status != null &&
+        (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(update.status);
+      if (updated && (ended || opts.reconcile)) {
+        await reconcileReceivable(trx, id, meta, { taxRateBps: opts.taxRateBps });
       }
 
       if (updated && roomMove) {
@@ -372,6 +355,73 @@ export class ReservationsRepository {
       }
 
       return false;
+    });
+  }
+
+  /**
+   * Agree (or re-agree) the booking's price and bring its open invoice in line — one
+   * transaction under the booking's lock.
+   *
+   * `ensure` (default): freeze the folio total if nothing has yet, then reconcile. Used by
+   * flows that create money owed without money arriving — a public website booking, a
+   * check-in/out — so Finance sees the receivable.
+   *
+   * `refreeze`: re-price a PENDING booking with NOTHING paid whose total was frozen, after
+   * a price-changing edit (dates, unit, discount). Freezing at creation would otherwise
+   * turn every such edit into a silent mismatch between folio and invoice. Never touches a
+   * booking that has had money or has been confirmed — a confirmed price is an agreement
+   * (date/room changes after that are a known follow-up, H6).
+   */
+  async agreePrice(
+    id: string,
+    agreed: { total: number; currency: string; taxRateBps: number } | null,
+    meta: ReservationRequestMeta,
+    mode: 'ensure' | 'refreeze' = 'ensure'
+  ): Promise<void> {
+    await inTransaction(this.db, async (trx) => {
+      const reservation = await lockReservation(trx, id);
+      if (!reservation) return;
+
+      if (agreed && agreed.total > 0) {
+        let freeze = reservation.folio_total_amount == null;
+        if (mode === 'refreeze') {
+          const paid = (await paidToDate(trx, [id])).get(id) ?? 0;
+          freeze =
+            reservation.status === 'PENDING' &&
+            reservation.folio_total_amount != null &&
+            reservation.folio_total_amount !== agreed.total &&
+            paid === 0;
+        }
+        if (freeze) {
+          await trx
+            .updateTable('reservations')
+            .set({
+              folio_total_amount: agreed.total,
+              folio_currency: agreed.currency,
+              updated_by: meta.userId,
+              updated_at: sql`now()`,
+            })
+            .where('id', '=', id)
+            .execute();
+          await trx.insertInto('audit_logs').values({
+            request_id: meta.requestId ?? null,
+            user_id: meta.userId,
+            action: 'UPDATE',
+            entity: 'reservations',
+            entity_id: id,
+            diff: {
+              folio_total_amount: agreed.total,
+              reason: mode === 'refreeze' ? 'price re-agreed after edit' : 'price agreed',
+            },
+            ip_address: meta.ip ?? null,
+          }).execute();
+        }
+      }
+
+      await reconcileReceivable(trx, id, meta, {
+        taxRateBps: agreed?.taxRateBps,
+        currency: agreed?.currency,
+      });
     });
   }
 }

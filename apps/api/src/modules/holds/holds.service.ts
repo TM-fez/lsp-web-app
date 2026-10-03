@@ -5,7 +5,7 @@ import type { HoldRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateHoldDTO, HoldFilters, HoldRequestMeta } from './holds.types.js';
 
-const HOLD_TTL_MS = 30 * 60 * 1000; // 30 minutes
+export const HOLD_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RETRY_EXTENSION_MS = 15 * 60 * 1000; // each retry buys 15 more minutes
 
 function isUniqueViolation(err: unknown): boolean {
