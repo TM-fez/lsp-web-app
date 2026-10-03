@@ -60,6 +60,7 @@ async function main() {
   row('paid intents examined', result.examined);
   row('existing invoices linked', result.linked);
   row('receipt invoices created', result.created);
+  row('skipped — booking deleted', result.details.filter((d) => d.action === 'skip' && d.reason === 'booking deleted').length);
   row('failed', result.failed);
 
   const amountCreated = result.details
@@ -87,8 +88,9 @@ async function main() {
     console.warn('\n  Detail:');
     for (const d of result.details) {
       const inv = d.invoice_id ? ` → ${d.invoice_id}` : '';
+      const why = d.reason ? `  (${d.reason})` : '';
       console.warn(
-        `    ${d.action.padEnd(6)} ${d.payment_intent_id}  ${pula(d.amount)} ${d.purpose}${inv}`
+        `    ${d.action.padEnd(6)} ${d.payment_intent_id}  ${d.paid_on ?? '??????????'}  ${pula(d.amount)} ${d.purpose}${inv}${why}`
       );
     }
   }
