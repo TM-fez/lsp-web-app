@@ -104,6 +104,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    (b) **no-shows are not charged** — NO_SHOW, like CANCELLED, voids the open invoice;
    (c) **payment terms are 7 days** (`INVOICE_TERMS_DAYS` default). Do not change any of these without asking.
 
+   **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
+   receipts (refund rows negative) and date money by **when it moved** — the paying intent's
+   `paid_at`, else the invoice's `created_at` (`CASH_AT` in `reports.repository.ts`). This moves
+   historic monthly cash figures for invoices settled after they were raised. A date/unit edit on a
+   live booking that is confirmed or has money moves its agreed price by the **delta** (new stay −
+   old stay, both at today's rates) — never a full re-price (`repriceAfterEdit`).
+
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
 **Forward view only.** `occupancyByProperty`, `occupancyByMonth` and `occupancyByOwnedRoom` are

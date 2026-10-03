@@ -58,12 +58,24 @@ export class ReservationsService {
    */
   async priceReservation(id: string, activePropertyId?: string): Promise<ReservationPricing | NotPriceable> {
     const reservation = await this.getReservationById(id, activePropertyId);
+    return this.priceStay(reservation, reservation);
+  }
+
+  /**
+   * Price a stay shape (room + dates) at TODAY's rate card, carrying the booking's own
+   * discount. Split out of priceReservation so an edit can price the stay as it WAS as
+   * well as how it IS — see repriceAfterEdit.
+   */
+  private async priceStay(
+    stay: Pick<ReservationRow, 'room_id' | 'check_in_date' | 'check_out_date'>,
+    reservation: ReservationRow
+  ): Promise<ReservationPricing | NotPriceable> {
     if (!this.rooms || !this.pricing) {
       throw AppError.internal('Pricing is not configured for this service');
     }
-    const nights = nightsBetween(reservation.check_in_date, reservation.check_out_date);
+    const nights = nightsBetween(stay.check_in_date, stay.check_out_date);
 
-    const room = await this.rooms.findById(reservation.room_id);
+    const room = await this.rooms.findById(stay.room_id);
     if (!room) return { priceable: false, reason: 'Unit not found', nights };
 
     let plan;
@@ -397,6 +409,58 @@ export class ReservationsService {
     }
   }
 
+  /**
+   * (Stage 3) After a date or unit change, move what the booking owes.
+   *
+   * An unpaid PENDING booking is simply re-priced (refreezeIfUnpaid) — nothing about it
+   * has been agreed with money yet. Every other live booking — CONFIRMED (paid or
+   * confirmed without payment, invariant 3), part-paid, CHECKED_IN — used to keep its old
+   * price: extend a confirmed stay by three nights and the folio, the invoice and Finance
+   * still said the original amount.
+   *
+   * For those the agreed price moves by the DIFFERENCE between the stay as it was and as
+   * it is, both priced at today's rates. Re-pricing the whole stay would restate nights
+   * the guest already agreed (a negotiated rate, an older rate card — CLAUDE.md: never
+   * size money from a re-priced total); the delta keeps them and adds or removes only
+   * what changed. A shortened, already-paid stay can end up overpaid — the reconcile
+   * then owes nothing and the backfill lists it; a refund stays a human decision.
+   *
+   * Failure is logged, not thrown: the edit has committed, and the receivable self-heals
+   * on the next touch.
+   */
+  private async repriceAfterEdit(before: ReservationRow, meta: ReservationRequestMeta): Promise<void> {
+    if (!this.pricing || !this.rooms) return;
+    try {
+      const after = await this.repository.findById(before.id);
+      if (!after || after.folio_total_amount == null) return;
+      if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(after.status)) return;
+
+      const paid = (await this.repository.paidToDate([after.id])).get(after.id) ?? 0;
+      if (after.status === 'PENDING' && paid === 0) {
+        await this.refreezeIfUnpaid(after.id, meta);
+        return;
+      }
+
+      const [was, now] = await Promise.all([this.priceStay(before, after), this.priceStay(after, after)]);
+      if (!was.priceable || !now.priceable) return;
+      const delta = now.total_amount - was.total_amount;
+      if (delta === 0) return;
+
+      await this.repository.agreePrice(
+        after.id,
+        {
+          total: Math.max(0, after.folio_total_amount + delta),
+          currency: now.currency,
+          taxRateBps: now.tax_rate_bps,
+        },
+        meta,
+        'adjust'
+      );
+    } catch (err) {
+      logger.error({ err, reservationId: before.id }, '[reservations] could not re-price the receivable after an edit');
+    }
+  }
+
   async markNoShow(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     const reservation = await this.getReservationById(id, activePropertyId);
 
@@ -583,7 +647,7 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
     if (dto.check_in_date || dto.check_out_date || dto.room_id) {
-      await this.refreezeIfUnpaid(id, meta);
+      await this.repriceAfterEdit(existing, meta);
     }
     return updated;
   }
