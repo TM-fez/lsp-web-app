@@ -1,11 +1,11 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import { db as defaultDb } from '../../config/db.js';
-import { env } from '../../config/env.js';
 import type { Database } from '../../db/types.js';
 import { notifications as sharedNotifications } from '../notifications/notifications.routes.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
+import { websiteHoldHours } from '../../core/settings/appSettings.js';
 
 /**
  * Auto-expiry for unpaid website bookings.
@@ -175,5 +175,6 @@ export function createWebsiteBookingExpiry(
   service: NotificationsService = sharedNotifications,
 ): () => Promise<number> {
   const deps = buildDeps(db, service);
-  return () => expireStaleWebsiteBookings(deps, env.WEBSITE_PENDING_TTL_HOURS);
+  // (P7) Read each run, so a change in Settings applies from the next sweep.
+  return async () => expireStaleWebsiteBookings(deps, await websiteHoldHours(db));
 }

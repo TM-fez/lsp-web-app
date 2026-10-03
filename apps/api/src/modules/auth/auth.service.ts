@@ -230,6 +230,26 @@ export async function assertSessionLive(payload: JwtPayload): Promise<void> {
   }
 }
 
+/**
+ * (P7) Change your own password. A wrong current password is a 400, not a 401: the web
+ * client treats 401 as "token expired" and would silently refresh and retry.
+ */
+export async function changePassword(
+  userId: string,
+  sessionId: string | undefined,
+  currentPassword: string,
+  newPassword: string,
+  meta: RequestMeta
+): Promise<void> {
+  const user = await authRepo.findUserById(userId);
+  if (!user) throw AppError.unauthorized('Account not found or inactive');
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    throw AppError.badRequest('Your current password is incorrect.');
+  }
+  const hash = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);
+  await authRepo.changeOwnPassword(userId, hash, sessionId, meta);
+}
+
 export function verifyAccessToken(token: string): JwtPayload {
   try {
     return jwt.verify(token, jwtKeys.publicKey, {

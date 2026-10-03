@@ -11,6 +11,7 @@ import { createChannelRouter } from './modules/channel/channel.routes.js';
 import { createCheckinsRouter } from './modules/checkins/checkins.routes.js';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.js';
 import { createFilesRouter } from './modules/files/files.routes.js';
+import { createSettingsRouter } from './modules/settings/settings.routes.js';
 import { createMaintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 import { createPricingRouter } from './modules/pricing/pricing.routes.js';
 import { createHousekeepingRouter } from './modules/housekeeping/housekeeping.routes.js';
@@ -65,6 +66,7 @@ router.use('/availability', createAvailabilityRouter());
 
 // ── Sprint 6 — Files ──────────────────────────────────────────────────────────
 router.use('/files', createFilesRouter());
+router.use('/settings', createSettingsRouter());
 
 // ── Sprint 7 — Maintenance ────────────────────────────────────────────────────
 router.use('/maintenance', createMaintenanceRouter());

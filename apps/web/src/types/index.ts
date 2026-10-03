@@ -744,6 +744,21 @@ export interface InvoiceDocument {
   unit_name: string | null;
   nights: number | null;
   unit_type: string | null;
+  /** (P7) The business's own details from Settings, with defaults filled in server-side. */
+  company: InvoiceCompany;
+}
+
+export interface InvoiceCompany {
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  vat_number: string | null;
+  bank_name: string | null;
+  bank_account_name: string | null;
+  bank_account_number: string | null;
+  bank_branch_code: string | null;
+  footer: string | null;
 }
 
 export interface Hold {

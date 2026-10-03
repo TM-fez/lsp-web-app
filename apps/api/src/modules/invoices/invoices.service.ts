@@ -29,9 +29,9 @@ export class InvoicesService {
 
   /** Enriched data for a printable invoice/receipt (invoice + guest + stay). */
   async getInvoiceDocument(id: string) {
-    const doc = await this.repository.findDocumentData(id);
+    const [doc, company] = await Promise.all([this.repository.findDocumentData(id), this.repository.companyDetails()]);
     if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
-    return doc;
+    return { ...doc, company };
   }
 
   /** Email the invoice/receipt to the bill-to: the reservation's billing/accounts
@@ -41,7 +41,7 @@ export class InvoicesService {
     if (!doc) throw AppError.notFound(`Invoice ${id} not found`);
     const to = doc.bill_to_email;
     if (!to) throw AppError.badRequest('This invoice has no billing or guest email on file.');
-    const { subject, html } = renderInvoiceEmail(doc);
+    const { subject, html } = renderInvoiceEmail(doc, await this.repository.companyDetails());
     await sendEmail({ to, subject, html });
     await this.repository.recordEmailSent(id, to, meta);
     return { sent: true, to };

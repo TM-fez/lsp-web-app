@@ -173,3 +173,32 @@ export async function revokeAllUserRefreshTokens(userId: string): Promise<void> 
 export function hashRefreshToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
+
+/**
+ * (P7) Set a user's own new password and end every OTHER login session, with the audit row,
+ * in one transaction. The session making the change stays signed in — the person is right
+ * there — but a phone or laptop someone else might be holding is cut off on its next request
+ * (H7: an access token is honoured only while its session has a live refresh token).
+ */
+export async function changeOwnPassword(
+  userId: string,
+  passwordHash: string,
+  keepSessionId: string | undefined,
+  meta: { requestId?: string | null; ip?: string | null }
+): Promise<void> {
+  await db.transaction().execute(async (trx) => {
+    await trx.updateTable('users').set({ password_hash: passwordHash, updated_at: new Date() }).where('id', '=', userId).execute();
+    let revoke = trx.updateTable('refresh_tokens').set({ revoked: true }).where('user_id', '=', userId).where('revoked', '=', false);
+    if (keepSessionId) revoke = revoke.where('session_id', '<>', keepSessionId);
+    const revoked = await revoke.executeTakeFirst();
+    await trx.insertInto('audit_logs').values({
+      request_id: meta.requestId ?? null,
+      user_id: userId,
+      action: 'UPDATE',
+      entity: 'users',
+      entity_id: userId,
+      diff: { password: 'changed by the user', other_sessions_ended: Number(revoked.numUpdatedRows) },
+      ip_address: meta.ip ?? null,
+    }).execute();
+  });
+}
