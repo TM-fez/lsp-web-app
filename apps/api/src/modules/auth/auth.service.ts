@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { env } from '../../config/env.js';
 import { jwtKeys } from '../../config/jwt.js';
 import { AppError } from '../../core/errors/AppError.js';
@@ -11,12 +11,14 @@ import type { JwtPayload } from '@lsp/shared-types';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function buildAccessToken(user: AuthUser): string {
+function buildAccessToken(user: AuthUser, sessionId: string): string {
   const payload: JwtPayload = {
     sub: user.id,
     email: user.email,
     role: user.role,
     permissions: user.permissions,
+    // (H7) The login session this token belongs to — authenticate checks it is still open.
+    sid: sessionId,
   };
   return jwt.sign(payload, jwtKeys.privateKey, {
     algorithm: 'RS256',
@@ -102,13 +104,15 @@ export async function login(
     permissions,
   };
 
-  const accessToken = buildAccessToken(user);
+  const sessionId = randomUUID();
+  const accessToken = buildAccessToken(user, sessionId);
   const { raw, hash } = buildRefreshToken();
 
   await authRepo.saveRefreshToken({
     userId: user.id,
     tokenHash: hash,
     expiresAt: refreshTokenExpiresAt(),
+    sessionId,
   });
 
   await writeAuditLog({
@@ -135,19 +139,22 @@ export async function refresh(
     throw AppError.unauthorized('Refresh token is invalid or has expired');
   }
 
-  // Rotate: revoke consumed token before issuing new pair
-  await authRepo.revokeRefreshToken(tokenRow.id);
-
   const user = await buildAuthUser(tokenRow.userId);
 
-  const accessToken = buildAccessToken(user);
+  // Rotate, carrying the session forward. The new token is saved BEFORE the old one is
+  // revoked (H7): authenticate accepts an access token only while its session has a live
+  // refresh token, so revoking first left a gap in which the user's other in-flight
+  // requests were rejected mid-rotation.
+  const accessToken = buildAccessToken(user, tokenRow.sessionId);
   const { raw, hash: newHash } = buildRefreshToken();
 
   await authRepo.saveRefreshToken({
     userId: user.id,
     tokenHash: newHash,
     expiresAt: refreshTokenExpiresAt(),
+    sessionId: tokenRow.sessionId,
   });
+  await authRepo.revokeRefreshToken(tokenRow.id);
 
   await writeAuditLog({
     request_id: meta.requestId ?? null,
@@ -197,6 +204,30 @@ export async function logoutAll(userId: string, meta: RequestMeta): Promise<void
     diff: JSON.stringify({ scope: 'all_sessions' }),
     ip_address: meta.ip ?? null,
   });
+}
+
+/**
+ * (H7) Reject a token whose session has ended or whose holder has changed under it.
+ *
+ * The JWT alone is trusted for 15 minutes; this closes that window:
+ *   · logged out / "log out everywhere"  → no live refresh token in the session → 401
+ *   · deactivated                        → 401
+ *   · role changed, or a permission the token claims has been taken away → 401; the web
+ *     client refreshes, and the new token carries the new permissions.
+ *
+ * Tokens with no `sid` (issued before this check existed — 15 minutes at most) are left
+ * to expire on their own.
+ */
+export async function assertSessionLive(payload: JwtPayload): Promise<void> {
+  if (!payload.sid) return;
+  const session = await authRepo.findLiveSession(payload.sid, payload.sub);
+  if (!session) throw AppError.unauthorized('Your session has ended. Please sign in again.');
+  if (!session.active) throw AppError.unauthorized('Account is inactive');
+  if (session.role !== payload.role) throw AppError.unauthorized('Your access has changed. Please sign in again.');
+  const current = new Set(await authRepo.findEffectivePermissions(payload.sub, session.roleId));
+  if (payload.permissions.some((p) => !current.has(p))) {
+    throw AppError.unauthorized('Your access has changed. Please sign in again.');
+  }
 }
 
 export function verifyAccessToken(token: string): JwtPayload {
