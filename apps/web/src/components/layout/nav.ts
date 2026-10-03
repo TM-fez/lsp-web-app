@@ -88,7 +88,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/rooms', label: 'Rooms', icon: BedDouble, perm: 'rooms.read', built: true },
       { to: '/pricing', label: 'Pricing', icon: Tags, perm: 'pricing.read', built: true },
       { to: '/users', label: 'Users & Roles', icon: ShieldCheck, perm: 'users.read', built: true },
-      { to: '/files', label: 'Files', icon: FolderOpen, perm: 'files.read', built: false },
+      { to: '/files', label: 'Files', icon: FolderOpen, perm: 'files.read', built: true },
       { to: '/settings', label: 'Settings', icon: Settings, built: false },
     ],
   },

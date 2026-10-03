@@ -5,6 +5,8 @@ import { FilesRepository } from './files.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
+import { validateBody } from '../../core/middleware/validate.middleware.js';
+import { ClassifyFileSchema } from './files.types.js';
 
 export function createFilesRouter(dbInstance = db): Router {
   const router = Router();
@@ -22,6 +24,9 @@ export function createFilesRouter(dbInstance = db): Router {
 
   router.post('/upload', authorize('files.create'), controller.uploadMiddleware, controller.uploadFile);
   router.get('/', authorize('files.read'), controller.listFiles);
+  // (P6) The categorised library. Declared before '/:id' so 'library' is not read as an id.
+  router.get('/library', authorize('files.read'), controller.library);
+  router.patch('/:id/classify', authorize('files.create'), validateBody(ClassifyFileSchema), controller.classify);
   router.get('/:id', authorize('files.read'), controller.getFile);
   router.get('/:id/download', authorize('files.read'), controller.downloadFile);
   router.delete('/:id', authorize('files.delete'), controller.deleteFile);

@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, FileRow, NewFile } from '../../db/types.js';
 import type { FileRequestMeta, PaginatedResult } from './files.types.js';
+import { isLinked, listLibrary, viewerCanOpen, type LibraryFilters, type LibraryViewer } from './files.library.js';
 
 type NewFileRecord = Omit<NewFile, 'id' | 'created_at' | 'updated_at'>;
 
@@ -32,32 +33,51 @@ export class FilesRepository {
     });
   }
 
+  /** (P6) The categorised library, filtered and scoped to the viewer. */
+  library(viewer: LibraryViewer, filters: LibraryFilters) {
+    return listLibrary(this.db, viewer, filters);
+  }
+
   /**
-   * (H6) May a contractor read this file? Only one they uploaded, or a before/after photo
-   * on a work order assigned to them. A contractor is an outside repair person, and
-   * files.read alone let them walk any id — guest IDs, invoice receipts, payslips.
+   * (H6/P6) May this viewer open this file? The library's own rules: contractors see only
+   * their uploads and their work orders' photos, guest ID copies need
+   * files.guest_documents.read, and a file about another property is out of scope.
    */
-  async contractorCanRead(fileId: string, userId: string): Promise<boolean> {
-    const row = await this.db
-      .selectFrom('files')
-      .select('files.id')
-      .where('files.id', '=', fileId)
-      .where('files.deleted_at', 'is', null)
-      .where((eb) =>
-        eb.or([
-          eb('files.created_by', '=', userId),
-          eb.exists(
-            eb
-              .selectFrom('maintenance_work_orders as wo')
-              .select('wo.id')
-              .where('wo.assigned_to', '=', userId)
-              .where('wo.deleted_at', 'is', null)
-              .where((w) => w.or([w('wo.before_file_id', '=', fileId), w('wo.after_file_id', '=', fileId)]))
-          ),
-        ])
-      )
-      .executeTakeFirst();
-    return !!row;
+  canOpen(viewer: LibraryViewer, fileId: string): Promise<boolean> {
+    return viewerCanOpen(this.db, viewer, fileId);
+  }
+
+  isLinked(fileId: string): Promise<boolean> {
+    return isLinked(this.db, fileId);
+  }
+
+  /** File a standalone library upload under a category / property, audited. */
+  async classify(
+    id: string,
+    data: { category: 'CONTRACTS' | 'COMPLIANCE' | 'OTHER' | null; property_id: string | null },
+    meta: FileRequestMeta
+  ): Promise<FileRow | undefined> {
+    return this.db.transaction().execute(async (trx) => {
+      const updated = await trx
+        .updateTable('files')
+        .set({ category: data.category, property_id: data.property_id, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .returningAll()
+        .executeTakeFirst();
+      if (updated) {
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'files',
+          entity_id: id,
+          diff: data,
+          ip_address: meta.ip ?? null,
+        }).execute();
+      }
+      return updated;
+    });
   }
 
   async findById(id: string): Promise<FileRow | undefined> {
