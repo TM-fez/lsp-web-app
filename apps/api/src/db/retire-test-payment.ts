@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 
   // Attributed to the system actor, the same rule the backfills use.
   const actor = await db.selectFrom('users').select('id').orderBy('created_at', 'asc').limit(1).executeTakeFirstOrThrow();
-  const meta = { userId: actor.id };
+  const meta = { userId: actor.id, ip: undefined, requestId: undefined };
   const reservations = new ReservationsRepository(db);
 
   console.warn(`\n  Retire test payments — ${APPLY ? 'APPLY: bookings will be cancelled and removed' : 'DRY RUN: nothing will change'}\n`);
