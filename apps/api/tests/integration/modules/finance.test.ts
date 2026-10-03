@@ -169,15 +169,20 @@ describe('Financial Cockpit — receivables (live DB)', () => {
   it('counts what is past its due date, by the property calendar, and says how late', async () => {
     const a = await service.getCockpit({ propertyId: propA });
     // Only the BALANCE (due 3 days ago) is overdue; the DEPOSIT is not due for 5 days.
-    expect(a.summary.overdue_amount).toBe(100_000);
-    expect(a.summary.overdue_count).toBe(1);
+    // Assert on OUR rows: the summary also carries house-wide (unattributed) debt, which
+    // other suites running in parallel create, so an exact summary figure flakes.
+    const overdueOurs = (c: typeof a) =>
+      ours(c).filter((i) => i.days_overdue > 0).reduce((sum, i) => sum + i.total_amount, 0);
+    expect(overdueOurs(a)).toBe(100_000);
+    expect(a.summary.overdue_amount).toBeGreaterThanOrEqual(100_000);
     const late = ours(a).filter((i) => i.days_overdue > 0);
     expect(late).toHaveLength(1);
     expect(late[0]!.days_overdue).toBe(3);
     expect(late[0]!.due_date).toBe(dayOffset(-3));
 
     const b = await service.getCockpit({ propertyId: propB });
-    expect(b.summary.overdue_amount).toBe(200_000);
+    expect(overdueOurs(b)).toBe(200_000);
+    expect(b.summary.overdue_amount).toBeGreaterThanOrEqual(200_000);
     expect(ours(b)[0]!.days_overdue).toBe(90);
   });
 

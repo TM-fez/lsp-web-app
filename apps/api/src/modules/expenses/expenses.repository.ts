@@ -11,6 +11,7 @@ export class ExpensesRepository {
     return this.db
       .selectFrom('maintenance_work_orders as wo')
       .leftJoin('rooms as r', 'r.id', 'wo.room_id')
+      .leftJoin('buildings as bld', 'bld.id', 'r.building_id')
       .leftJoin('users as appr', 'appr.id', 'wo.cost_approved_by')
       .leftJoin('users as rec', 'rec.id', 'wo.cost_reconciled_by')
       .select([
@@ -33,13 +34,30 @@ export class ExpensesRepository {
       .where('wo.deleted_at', 'is', null);
   }
 
-  async list(status?: ExpenseStatus) {
+  /** @param propertyIds null = no restriction (admin); [] = sees nothing. */
+  async list(status?: ExpenseStatus, propertyIds?: string[] | null) {
     let q = this.base();
+    if (propertyIds) {
+      if (propertyIds.length === 0) return [];
+      q = q.where('bld.property_id', 'in', propertyIds);
+    }
     if (status === 'PENDING') q = q.where('wo.cost_approved_at', 'is', null);
     else if (status === 'APPROVED')
       q = q.where('wo.cost_approved_at', 'is not', null).where('wo.cost_reconciled_at', 'is', null);
     else if (status === 'RECONCILED') q = q.where('wo.cost_reconciled_at', 'is not', null);
     return q.orderBy('wo.opened_at', 'desc').execute();
+  }
+
+  async propertyOf(id: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('maintenance_work_orders as wo')
+      .leftJoin('rooms as r', 'r.id', 'wo.room_id')
+      .leftJoin('buildings as b', 'b.id', 'r.building_id')
+      .select('b.property_id')
+      .where('wo.id', '=', id)
+      .where('wo.deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row?.property_id ?? null;
   }
 
   async findById(id: string) {

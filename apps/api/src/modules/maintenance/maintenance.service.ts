@@ -243,6 +243,19 @@ export class MaintenanceService {
       throw AppError.conflict(`Cannot update work order from status ${order.status}`);
     }
 
+    // (H6) The general edit also carries cost_amount, and used to keep the old sign-off —
+    // so a P500 approval could be quietly turned into P50,000 approved spend. A changed
+    // cost needs approving again, exactly as setCost already enforces.
+    const costChanged = data.cost_amount !== undefined && (data.cost_amount ?? null) !== (order.cost_amount ?? null);
+    if (costChanged) {
+      return this.repo.update(id, {
+        ...data,
+        cost_approved_by: null,
+        cost_approved_at: null,
+        cost_reconciled_by: null,
+        cost_reconciled_at: null,
+      }, meta);
+    }
     return this.repo.update(id, data, meta);
   }
 

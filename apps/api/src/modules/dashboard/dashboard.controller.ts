@@ -13,17 +13,3 @@ export async function stats(
     next(err);
   }
 }
-
-export async function activity(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const limit = req.query['limit'] ? parseInt(req.query['limit'] as string, 10) : 20;
-    const data = await dashboardService.getRecentActivity(limit);
-    res.status(200).json(data);
-  } catch (err) {
-    next(err);
-  }
-}

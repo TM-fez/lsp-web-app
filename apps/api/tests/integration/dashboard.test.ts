@@ -136,83 +136,15 @@ describe('GET /api/v1/dashboard/stats', () => {
   });
 });
 
-// ── GET /dashboard/activity ───────────────────────────────────────────────────
+// ── GET /dashboard/activity (removed, H6) ─────────────────────────────────────
 
 describe('GET /api/v1/dashboard/activity', () => {
-  it('returns 200 with correct response shape', async () => {
+  // It returned the audit log for EVERY property to anyone with dashboard:read. The
+  // property-scoped feed is GET /activity (D03); nothing in the web app called this one.
+  it('no longer exists', async () => {
     const res = await request(app)
       .get('/api/v1/dashboard/activity')
       .set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
-
-  it('returns entries with required fields', async () => {
-    const res = await request(app)
-      .get('/api/v1/dashboard/activity')
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    if (res.body.data.length > 0) {
-      const entry = res.body.data[0];
-      expect(entry).toHaveProperty('id');
-      expect(entry).toHaveProperty('action');
-      expect(entry).toHaveProperty('entity');
-      expect(entry).toHaveProperty('entityId');
-      expect(entry).toHaveProperty('createdAt');
-      expect(['CREATE', 'UPDATE', 'DELETE']).toContain(entry.action);
-    }
-  });
-
-  it('respects the ?limit query param', async () => {
-    const res = await request(app)
-      .get('/api/v1/dashboard/activity?limit=2')
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.length).toBeLessThanOrEqual(2);
-  });
-
-  it('clamps limit to 50 when an excessive value is passed', async () => {
-    const res = await request(app)
-      .get('/api/v1/dashboard/activity?limit=999')
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.length).toBeLessThanOrEqual(50);
-  });
-
-  it('returns entries in descending chronological order', async () => {
-    const res = await request(app)
-      .get('/api/v1/dashboard/activity')
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    const entries: { createdAt: string }[] = res.body.data;
-    for (let i = 1; i < entries.length; i++) {
-      expect(new Date(entries[i - 1]!.createdAt).getTime())
-        .toBeGreaterThanOrEqual(new Date(entries[i]!.createdAt).getTime());
-    }
-  });
-
-  it('does not cache — successive calls may return different data', async () => {
-    // Verify the route is live and returns data structure on every call
-    const [r1, r2] = await Promise.all([
-      request(app).get('/api/v1/dashboard/activity').set('Authorization', `Bearer ${adminToken}`),
-      request(app).get('/api/v1/dashboard/activity').set('Authorization', `Bearer ${adminToken}`),
-    ]);
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
-  });
-
-  it('returns 401 with no token', async () => {
-    const res = await request(app).get('/api/v1/dashboard/activity');
-    expect(res.status).toBe(401);
-  });
-
-  it('includes X-Request-Id on every response', async () => {
-    const res = await request(app)
-      .get('/api/v1/dashboard/activity')
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.headers['x-request-id']).toBeTruthy();
+    expect(res.status).toBe(404);
   });
 });
