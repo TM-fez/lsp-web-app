@@ -41,6 +41,7 @@ import { ContactsRepository } from '../../../src/modules/crm/contacts/contacts.r
 import { LeadsRepository } from '../../../src/modules/crm/leads/leads.repository.js';
 import { createWebsiteBookingExpiry } from '../../../src/modules/reservations/reservations.expiry.js';
 import { runReceivablesBackfill } from '../../../src/modules/invoices/invoices.receivables-backfill.js';
+import { runInvoiceBackfill } from '../../../src/modules/invoices/invoices.backfill.js';
 import { todayInPropertyTZ } from '../../../src/core/time.js';
 import { addDays } from '../../../src/modules/invoices/invoices.due.js';
 import { lockReservation } from '../../../src/core/money/folio.js';
@@ -1007,6 +1008,46 @@ describe('6. The backfill brings legacy data into line (dry-run by default, idem
     } as never).execute();
     const report = await runReceivablesBackfill(db, { reservationIds: [over.id] });
     expect(report.overpaid).toEqual([{ reservation_id: over.id, total: 100_000, paid: 130_000 }]);
+  });
+});
+
+describe('7. Receipt backfill: purged test payments and the date money arrived', () => {
+  // A legacy paid intent with no receipt, as production has them: the money loop marked
+  // the intent PAID and stopped. Paid on a fixed past day so the receipt date is checkable.
+  async function legacyPaidIntent(reservationId: string, roomId: string, offset: number) {
+    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(offset), check_out: dateOnly(offset + 2), guests: 1 }, meta());
+    const hold = await holds.createHold({ quote_id: quote.id, room_id: roomId, reservation_id: reservationId } as never, meta());
+    return (await db.insertInto('payment_intents').values({
+      hold_id: hold.id, quote_id: quote.id, purpose: 'DEPOSIT', amount: 76_950, method: 'CASH',
+      status: 'PAID', paid_at: new Date('2026-08-15T08:00:00Z'), created_by: userId, updated_by: userId,
+    } as never).returning('id').executeTakeFirstOrThrow()).id;
+  }
+
+  it('skips payments on deleted (purged test) bookings, and dates real receipts the day money arrived', async () => {
+    const real = await booking();
+    const test = await booking();
+    const realIntent = await legacyPaidIntent(real.id, real.roomId, 800);
+    const testIntent = await legacyPaidIntent(test.id, test.roomId, 810);
+    await db.updateTable('reservations').set({ deleted_at: new Date() }).where('id', '=', test.id).execute();
+
+    const dry = await runInvoiceBackfill(db, { intentIds: [realIntent, testIntent] });
+    expect(dry.details.find((d) => d.payment_intent_id === testIntent)).toMatchObject({ action: 'skip', reason: 'booking deleted' });
+    expect(dry.details.find((d) => d.payment_intent_id === realIntent)).toMatchObject({ action: 'create', paid_on: '2026-08-15' });
+
+    const applied = await runInvoiceBackfill(db, { dryRun: false, intentIds: [realIntent, testIntent] });
+    expect(applied.created).toBe(1);
+
+    const testRow = await db.selectFrom('payment_intents').select('invoice_id').where('id', '=', testIntent).executeTakeFirstOrThrow();
+    expect(testRow.invoice_id).toBeNull();
+    const realRow = await db.selectFrom('payment_intents').select('invoice_id').where('id', '=', realIntent).executeTakeFirstOrThrow();
+    const receipt = await db.selectFrom('invoices').select(['status', 'total_amount', 'created_at']).where('id', '=', realRow.invoice_id!).executeTakeFirstOrThrow();
+    expect(receipt).toMatchObject({ status: 'PAID', total_amount: 76_950 });
+    expect(receipt.created_at.toISOString()).toBe('2026-08-15T08:00:00.000Z');
+
+    // And the Payments page no longer lists the purged one.
+    const list = await new PaymentsRepository(db).findPaginated({}, { page: 1, limit: 100 });
+    const ids = list.data.map((p) => p.id);
+    expect(ids).not.toContain(testIntent);
   });
 });
 

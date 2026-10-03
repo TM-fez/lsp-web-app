@@ -34,6 +34,8 @@ import { InvoicesService } from './invoices.service.js';
 export interface InvoiceBackfillOptions {
   /** Preview only — count everything, write nothing. The default, deliberately. */
   dryRun?: boolean;
+  /** Limit to these payment intents (tests, or trying one on live data first). */
+  intentIds?: string[];
 }
 
 export interface InvoiceBackfillResult {
@@ -50,6 +52,8 @@ export interface InvoiceBackfillResult {
     purpose: 'DEPOSIT' | 'BALANCE';
     invoice_id?: string;
     reason?: string;
+    /** Gaborone day the money arrived (YYYY-MM-DD), for the CLI listing. */
+    paid_on?: string | null;
   }>;
 }
 
@@ -61,6 +65,10 @@ interface OrphanPaidIntent {
   amount: number;
   created_by: string;
   reservation_id: string | null;
+  paid_at: Date | null;
+  paid_on: string | null;
+  /** The hold, or the booking behind it, was soft-deleted (e.g. purged test data). */
+  booking_deleted: boolean;
 }
 
 function createInvoicesService(dbInstance: Kysely<Database>): InvoicesService {
@@ -74,10 +82,14 @@ function createInvoicesService(dbInstance: Kysely<Database>): InvoicesService {
 }
 
 /** Paid intents with no invoice_id — the ones that may still need a receipt. */
-async function findOrphanPaidIntents(dbInstance: Kysely<Database>): Promise<OrphanPaidIntent[]> {
-  return dbInstance
+async function findOrphanPaidIntents(
+  dbInstance: Kysely<Database>,
+  intentIds?: string[]
+): Promise<OrphanPaidIntent[]> {
+  let q = dbInstance
     .selectFrom('payment_intents as pi')
     .leftJoin('holds as h', 'h.id', 'pi.hold_id')
+    .leftJoin('reservations as r', 'r.id', 'h.reservation_id')
     .select([
       'pi.id',
       'pi.hold_id',
@@ -85,7 +97,10 @@ async function findOrphanPaidIntents(dbInstance: Kysely<Database>): Promise<Orph
       'pi.purpose',
       'pi.amount',
       'pi.created_by',
+      'pi.paid_at',
       'h.reservation_id',
+      sql<string | null>`to_char(pi.paid_at AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM-DD')`.as('paid_on'),
+      sql<boolean>`(h.deleted_at IS NOT NULL OR r.deleted_at IS NOT NULL)`.as('booking_deleted'),
     ])
     .where('pi.status', '=', 'PAID')
     .where('pi.invoice_id', 'is', null)
@@ -93,9 +108,9 @@ async function findOrphanPaidIntents(dbInstance: Kysely<Database>): Promise<Orph
     // they always carry invoice_id, so the filter above already excludes them; this
     // narrows the type and makes the assumption explicit.
     .where('pi.hold_id', 'is not', null)
-    .where('pi.quote_id', 'is not', null)
-    .orderBy('pi.paid_at', 'asc')
-    .execute() as Promise<OrphanPaidIntent[]>;
+    .where('pi.quote_id', 'is not', null);
+  if (intentIds) q = q.where('pi.id', 'in', intentIds.length > 0 ? intentIds : ['00000000-0000-0000-0000-000000000000']);
+  return q.orderBy('pi.paid_at', 'asc').execute() as Promise<OrphanPaidIntent[]>;
 }
 
 /**
@@ -166,7 +181,7 @@ export async function runInvoiceBackfill(
 ): Promise<InvoiceBackfillResult> {
   const dryRun = options.dryRun ?? true;
   const invoices = invoicesService ?? createInvoicesService(dbInstance);
-  const orphans = await findOrphanPaidIntents(dbInstance);
+  const orphans = await findOrphanPaidIntents(dbInstance, options.intentIds);
 
   const result: InvoiceBackfillResult = {
     examined: orphans.length,
@@ -182,7 +197,16 @@ export async function runInvoiceBackfill(
       payment_intent_id: intent.id,
       amount: intent.amount,
       purpose: intent.purpose,
+      paid_on: intent.paid_on,
     };
+
+    // A payment whose booking (or hold) was soft-deleted is purged test data, not money
+    // the house holds: an earlier test-data purge deleted the bookings and left their
+    // payment rows behind. Raising receipts for them would book test money as revenue.
+    if (intent.booking_deleted) {
+      result.details.push({ ...base, action: 'skip', reason: 'booking deleted' });
+      continue;
+    }
 
     try {
       const existingId = await findUnclaimedMatchingInvoice(dbInstance, intent);
@@ -214,6 +238,16 @@ export async function runInvoiceBackfill(
       );
 
       await linkIntentToInvoice(dbInstance, intent.id, invoice.id, intent.created_by);
+      // Date the receipt the day the money ARRIVED, not the day this backfill ran. Revenue
+      // is reported by invoice date, so a receipt minted today for an August payment would
+      // move August's cash into this month.
+      if (intent.paid_at) {
+        await dbInstance
+          .updateTable('invoices')
+          .set({ created_at: intent.paid_at })
+          .where('id', '=', invoice.id)
+          .execute();
+      }
       result.created += 1;
       result.details.push({ ...base, action: 'create', invoice_id: invoice.id });
     } catch (err) {

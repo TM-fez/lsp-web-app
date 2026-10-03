@@ -91,6 +91,23 @@ export class PaymentsRepository {
       ]);
     let countQuery = this.db.selectFrom('payment_intents').select(this.db.fn.count<number>('id').as('total'));
 
+    // Invariant 5: a payment whose hold, or the booking behind its hold or invoice, was
+    // soft-deleted is gone from the books — in practice purged test data, whose bookings
+    // were deleted and whose payment rows were left behind. Written against
+    // payment_intents' own columns so the join-free count query applies it identically.
+    const live = sql<boolean>`NOT EXISTS (
+      SELECT 1 FROM holds dh
+      LEFT JOIN reservations dr ON dr.id = dh.reservation_id
+      WHERE dh.id = payment_intents.hold_id
+        AND (dh.deleted_at IS NOT NULL OR dr.deleted_at IS NOT NULL)
+    ) AND NOT EXISTS (
+      SELECT 1 FROM invoices di
+      JOIN reservations dr2 ON dr2.id = di.reservation_id
+      WHERE di.id = payment_intents.invoice_id AND dr2.deleted_at IS NOT NULL
+    )`;
+    query = query.where(live);
+    countQuery = countQuery.where(live);
+
     // Qualified on the joined query: `status` now exists on intents, holds AND
     // reservations, so an unqualified name is ambiguous to Postgres.
     if (filters.status) {
