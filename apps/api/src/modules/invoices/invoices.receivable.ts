@@ -11,6 +11,7 @@ import {
 } from '../../core/money/folio.js';
 import { splitInclusive } from '../quotes/quotes.util.js';
 import { computeDueDate } from './invoices.due.js';
+import { invoiceTermsDays } from '../../core/settings/appSettings.js';
 import type { InvoiceRequestMeta } from './invoices.types.js';
 
 /**
@@ -123,7 +124,12 @@ export async function insertInvoice(
       ? invoice.due_date
       : invoice.kind === 'REFUND'
         ? null
-        : computeDueDate({ issuedOn: todayInPropertyTZ(), checkInDay: opts.checkInDay });
+        : computeDueDate({
+            issuedOn: todayInPropertyTZ(),
+            checkInDay: opts.checkInDay,
+            // (P7) The owner's payment terms from Settings, else INVOICE_TERMS_DAYS.
+            termsDays: await invoiceTermsDays(trx),
+          });
 
   const inserted = await trx
     .insertInto('invoices')

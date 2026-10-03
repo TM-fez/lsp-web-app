@@ -3,7 +3,7 @@ import { env } from '../../config/env.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { accessiblePropertiesForUser } from '../../core/scope/activeProperty.js';
 import * as authService from './auth.service.js';
-import type { LoginInput } from './auth.schema.js';
+import type { LoginInput, ChangePasswordInput } from './auth.schema.js';
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -96,6 +96,18 @@ export async function logoutAll(req: Request, res: Response, next: NextFunction)
 
     await authService.logoutAll(userId, meta(req, res));
     clearRefreshCookie(res);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) throw AppError.unauthorized();
+    const body = req.body as ChangePasswordInput;
+    await authService.changePassword(user.sub, user.sid, body.current_password, body.new_password, meta(req, res));
     res.status(204).send();
   } catch (err) {
     next(err);

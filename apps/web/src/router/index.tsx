@@ -34,6 +34,7 @@ import { ManageBookingPage } from '@/features/stay/ManageBookingPage';
 import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
 import { EnquirePage } from '@/features/stay/EnquirePage';
 import { FilesPage } from '@/features/files/FilesPage';
+import { SettingsPage } from '@/features/settings/SettingsPage';
 import { homePathFor } from '@/components/layout/nav';
 
 function ProtectedRoute() {
@@ -98,6 +99,7 @@ export const router = createBrowserRouter([
           { path: '/payroll', element: <PayrollPage /> },
           { path: '/finance', element: <FinanceCockpitPage /> },
           { path: '/files', element: <FilesPage /> },
+          { path: '/settings', element: <SettingsPage /> },
             ],
           },
         ],
