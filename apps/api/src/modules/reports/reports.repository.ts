@@ -44,22 +44,41 @@ const byProp = (id?: string, accessibleIds?: string[] | null) => {
 // The accrual ledger queries below need none of this: `stay_date` is a DATE, and a
 // calendar night has no timezone to get wrong.
 
+/**
+ * (Stage 3) The moment money actually moved, for cash-basis revenue.
+ *
+ * Revenue used to be dated by `invoices.created_at`. For a receipt born PAID that is the
+ * payment moment, but an invoice raised in August and settled in October was counted in
+ * August — cash Accounts had not yet received. The payment intent that paid it carries
+ * `paid_at`, so that wins; an invoice with no paying intent (a receipt born PAID, a
+ * refund credit note) falls back to its own creation time, which is when its money moved.
+ */
+const CASH_AT = sql`COALESCE(
+  (SELECT MAX(pi_c.paid_at) FROM payment_intents pi_c WHERE pi_c.invoice_id = i.id AND pi_c.status = 'PAID'),
+  i.created_at
+)`;
+
 export class ReportsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  // ── Revenue (PAID invoices, refunds negative; recognised at invoice date) ─────
+  // ── Revenue (cash received, refunds negative; recognised when the money moved) ─
+  //
+  // (Stage 3) REFUNDED counts: refundInvoice() flips the ORIGINAL receipt to REFUNDED and
+  // adds a separate REFUND row. Counting only PAID dropped the original and kept the
+  // refund, so a P1,000 receipt refunded P300 reported −P300 instead of +P700 — the
+  // same subtlety core/money/folio.ts paidToDate() already handles.
   async revenueByMonth(w: RepoWindow): Promise<MonthAmount[]> {
     const r = await sql<MonthAmount>`
-      SELECT to_char(i.created_at AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM') AS month,
+      SELECT to_char(${CASH_AT} AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM') AS month,
              SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
       FROM invoices i
       LEFT JOIN reservations rsv ON rsv.id = i.reservation_id
       LEFT JOIN rooms rm ON rm.id = rsv.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
-      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
+      WHERE i.status IN ('PAID', 'REFUNDED') AND i.deleted_at IS NULL
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1 ORDER BY 1
     `.execute(this.db);
@@ -75,16 +94,16 @@ export class ReportsRepository {
       LEFT JOIN rooms rm ON rm.id = rsv.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
-      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
+      WHERE i.status IN ('PAID', 'REFUNDED') AND i.deleted_at IS NULL
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1, 2
     `.execute(this.db);
     return r.rows;
   }
 
-  // Output VAT collected (tax on PAID invoices, refunds negative) — for BURS returns.
+  // Output VAT collected (tax on cash received, refunds negative) — for BURS returns.
   async vatOutput(w: RepoWindow): Promise<string | number | null> {
     const r = await sql<{ vat: string | number | null }>`
       SELECT SUM(CASE WHEN i.kind = 'REFUND' THEN -i.tax_amount ELSE i.tax_amount END) AS vat
@@ -93,9 +112,9 @@ export class ReportsRepository {
       LEFT JOIN rooms rm ON rm.id = rsv.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
-      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
+      WHERE i.status IN ('PAID', 'REFUNDED') AND i.deleted_at IS NULL
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}`.execute(this.db);
     return r.rows[0]?.vat ?? 0;
   }
@@ -367,7 +386,8 @@ export class ReportsRepository {
     return r.rows;
   }
 
-  // Revenue per owned unit (PAID invoices, refunds negative; recognised at invoice date).
+  // Revenue per owned unit (cash received incl. later-refunded receipts, refunds negative;
+  // recognised when the money moved — see CASH_AT).
   async revenueByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; amount: string | number | null }>> {
     const r = await sql<{ room_id: string; amount: string | number | null }>`
       SELECT rsv.room_id AS room_id,
@@ -377,10 +397,10 @@ export class ReportsRepository {
       JOIN rooms rm ON rm.id = rsv.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
       LEFT JOIN properties p ON p.id = b.property_id
-      WHERE i.status = 'PAID' AND i.deleted_at IS NULL
+      WHERE i.status IN ('PAID', 'REFUNDED') AND i.deleted_at IS NULL
         AND rm.ownership = 'LANDLORD' AND rm.deleted_at IS NULL
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
-        AND (i.created_at AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') >= ${w.from}::timestamp
+        AND (${CASH_AT} AT TIME ZONE 'Africa/Gaborone') <  ${w.toExcl}::timestamp
         ${byProp(w.propertyId, w.accessiblePropertyIds)}
       GROUP BY 1
     `.execute(this.db);

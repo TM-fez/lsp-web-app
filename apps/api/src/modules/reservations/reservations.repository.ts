@@ -376,7 +376,7 @@ export class ReservationsRepository {
     id: string,
     agreed: { total: number; currency: string; taxRateBps: number } | null,
     meta: ReservationRequestMeta,
-    mode: 'ensure' | 'refreeze' = 'ensure'
+    mode: 'ensure' | 'refreeze' | 'adjust' = 'ensure'
   ): Promise<void> {
     await inTransaction(this.db, async (trx) => {
       const reservation = await lockReservation(trx, id);
@@ -391,6 +391,9 @@ export class ReservationsRepository {
             reservation.folio_total_amount != null &&
             reservation.folio_total_amount !== agreed.total &&
             paid === 0;
+        } else if (mode === 'adjust') {
+          // repriceAfterEdit has already worked out the new agreed total (old + delta).
+          freeze = reservation.folio_total_amount !== agreed.total;
         }
         if (freeze) {
           await trx
@@ -411,7 +414,13 @@ export class ReservationsRepository {
             entity_id: id,
             diff: {
               folio_total_amount: agreed.total,
-              reason: mode === 'refreeze' ? 'price re-agreed after edit' : 'price agreed',
+              ...(mode === 'adjust' ? { from: reservation.folio_total_amount } : {}),
+              reason:
+                mode === 'refreeze'
+                  ? 'price re-agreed after edit'
+                  : mode === 'adjust'
+                    ? 'price adjusted for changed dates or unit'
+                    : 'price agreed',
             },
             ip_address: meta.ip ?? null,
           }).execute();

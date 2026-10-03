@@ -42,6 +42,7 @@ import { LeadsRepository } from '../../../src/modules/crm/leads/leads.repository
 import { createWebsiteBookingExpiry } from '../../../src/modules/reservations/reservations.expiry.js';
 import { runReceivablesBackfill } from '../../../src/modules/invoices/invoices.receivables-backfill.js';
 import { runInvoiceBackfill } from '../../../src/modules/invoices/invoices.backfill.js';
+import { ReportsRepository } from '../../../src/modules/reports/reports.repository.js';
 import { todayInPropertyTZ } from '../../../src/core/time.js';
 import { addDays } from '../../../src/modules/invoices/invoices.due.js';
 import { lockReservation } from '../../../src/core/money/folio.js';
@@ -1048,6 +1049,79 @@ describe('7. Receipt backfill: purged test payments and the date money arrived',
     const list = await new PaymentsRepository(db).findPaginated({}, { page: 1, limit: 100 });
     const ids = list.data.map((p) => p.id);
     expect(ids).not.toContain(testIntent);
+  });
+});
+
+describe('8. Stage 3: reports count refunds and cash by when it moved; edits move a confirmed price', () => {
+  // Money is pinned to months no other suite touches (2041), so the property totals are ours.
+  const at = (iso: string) => new Date(iso);
+  const revenueIn = async (from: string, toExcl: string) => {
+    const rows = await new ReportsRepository(db).revenueByProperty({ from, toExcl, propertyId: propA, accessiblePropertyIds: null });
+    return Number(rows.find((r) => r.property_id === propA)?.amount ?? 0);
+  };
+
+  it('a refunded receipt reports what was kept (+P700 of P1,000), not −P300', async () => {
+    const b = await booking({ startOffset: 900 });
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+    const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
+    await invoices.refundInvoice(receipt.id, 30_000, 'goodwill', meta());
+
+    // Everything happened on 10 May 2041.
+    await db.updateTable('invoices').set({ created_at: at('2041-05-10T08:00:00Z') }).where('reservation_id', '=', b.id).execute();
+    await db.updateTable('payment_intents').set({ paid_at: at('2041-05-10T08:00:00Z') }).where('invoice_id', '=', receipt.id).execute();
+
+    expect(await revenueIn('2041-05-01', '2041-06-01')).toBe(STAY - 30_000);
+  });
+
+  it('an invoice raised in one month and paid in a later one is cash in the month it was paid', async () => {
+    const b = await booking({ startOffset: 910 });
+    await reservations.confirmWithoutPayment(b.id, {} as never, meta());
+    const open = (await openOf(b.id))[0]!;
+    await db.updateTable('invoices').set({ created_at: at('2041-07-10T08:00:00Z') }).where('id', '=', open.id).execute();
+
+    await invoices.settleInvoice(open.id, null, meta(), 'EFT');
+    await db.updateTable('payment_intents').set({ paid_at: at('2041-09-15T08:00:00Z') }).where('invoice_id', '=', open.id).execute();
+
+    expect(await revenueIn('2041-07-01', '2041-08-01')).toBe(0);
+    expect(await revenueIn('2041-09-01', '2041-10-01')).toBe(STAY);
+  });
+
+  it('extending a CONFIRMED (unpaid) booking adds the extra night to what it owes', async () => {
+    const b = await booking({ startOffset: 920 });
+    await reservations.confirmWithoutPayment(b.id, {} as never, meta());
+    expect((await reservations.getFolio(b.id)).total_amount).toBe(STAY);
+
+    await reservations.modifyReservation(b.id, { check_out_date: dateOnly(923) } as never, meta());
+
+    const folio = await reservations.getFolio(b.id);
+    expect(folio.total_amount).toBe(STAY + NIGHTLY);
+    const open = await openOf(b.id);
+    expect(open).toHaveLength(1);
+    expect(open[0]!.total_amount).toBe(STAY + NIGHTLY);
+  });
+
+  it('extending a fully PAID booking leaves exactly the new night owing', async () => {
+    const b = await booking({ startOffset: 930 });
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+    expect(await openOf(b.id)).toHaveLength(0);
+
+    await reservations.modifyReservation(b.id, { check_out_date: dateOnly(933) } as never, meta());
+
+    const folio = await reservations.getFolio(b.id);
+    expect(folio).toMatchObject({ total_amount: STAY + NIGHTLY, paid_amount: STAY, outstanding_amount: NIGHTLY });
+    const open = await openOf(b.id);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ total_amount: NIGHTLY, status: 'PARTIALLY_PAID' });
+  });
+
+  it('keeps an agreed price that differs from today’s rate card — only the changed nights move', async () => {
+    const b = await booking({ startOffset: 940, status: 'CONFIRMED', folioTotal: 250_000 }); // negotiated, below 300k
+    await reservations.modifyReservation(b.id, { check_out_date: dateOnly(943) } as never, meta());
+    expect((await reservations.getFolio(b.id)).total_amount).toBe(250_000 + NIGHTLY);
+
+    // Shortening by one night takes one night off again.
+    await reservations.modifyReservation(b.id, { check_out_date: dateOnly(942) } as never, meta());
+    expect((await reservations.getFolio(b.id)).total_amount).toBe(250_000);
   });
 });
 
