@@ -14,6 +14,15 @@
  * Safe to re-run: intents that already carry `invoice_id` are skipped; a matching
  * unclaimed PAID invoice on the same hold is linked rather than duplicated.
  *
+ * PHASE 2 (receivables) then makes every booking's OPEN invoice equal what its folio says
+ * is still owed: stale part-payment balance invoices are voided (never deleted), missing
+ * ones are raised (pay-later, wizard deposits, public bookings, checkouts), and a part-paid
+ * booking's open invoice becomes PARTIALLY_PAID. See invoices.receivables-backfill.ts.
+ * Bookings with no known price are LISTED, not priced — pass --reconstruct-prices (run this
+ * file directly: `npx tsx src/db/backfill-invoices.ts --apply --reconstruct-prices`) to
+ * price them at today's rate plan, after reading that list. `--reservation=<uuid>` limits
+ * phase 2 to specific bookings (repeatable) so you can try one before the whole ledger.
+ *
  * Usage (with DATABASE_URL pointing at the target DB). Applying has its OWN
  * script rather than a flag, because `npm run … -- --yes` never reaches us —
  * npm has its own --yes and eats it:
@@ -23,10 +32,14 @@
 import 'dotenv/config';
 import { db } from '../config/db.js';
 import { runInvoiceBackfill } from '../modules/invoices/invoices.backfill.js';
+import { runReceivablesBackfill } from '../modules/invoices/invoices.receivables-backfill.js';
 
 const args = process.argv.slice(2);
 // `--apply` as well as `--yes` because `npm run … -- --yes` never reaches us.
 const APPLY = args.includes('--yes') || args.includes('--apply');
+const RECONSTRUCT = args.includes('--reconstruct-prices');
+// `--reservation=<uuid>` (repeatable) limits phase 2 to those bookings — try one first.
+const ONLY = args.filter((a) => a.startsWith('--reservation=')).map((a) => a.slice('--reservation='.length));
 
 /** Thebe to Pula, for reading. Money is integer minor units everywhere else. */
 function pula(thebe: number): string {
@@ -34,7 +47,7 @@ function pula(thebe: number): string {
 }
 
 async function main() {
-  console.warn('\n  Invoice backfill — PAID receipts for settled payments with none');
+  console.warn('\n  Invoice backfill — receipts for settled payments, then open invoices vs. folios');
   console.warn(`  Mode:   ${APPLY ? 'APPLY — invoices will be raised / linked' : 'DRY RUN — nothing will change'}`);
   console.warn('');
 
@@ -76,6 +89,50 @@ async function main() {
       const inv = d.invoice_id ? ` → ${d.invoice_id}` : '';
       console.warn(
         `    ${d.action.padEnd(6)} ${d.payment_intent_id}  ${pula(d.amount)} ${d.purpose}${inv}`
+      );
+    }
+  }
+
+  // ── Phase 2: receivables ──────────────────────────────────────────────────────
+  console.warn('\n  Phase 2 — open invoices vs. folio outstanding');
+  const rec = await runReceivablesBackfill(db, {
+    dryRun: !APPLY,
+    reconstructPrices: RECONSTRUCT,
+    reservationIds: ONLY.length > 0 ? ONLY : undefined,
+  });
+  console.warn(`  ${APPLY ? 'Written' : 'Would write'}:`);
+  row('bookings examined', rec.examined);
+  row('already in agreement', rec.in_agreement);
+  row('bookings changed', rec.changed);
+  row('stale open invoices voided', rec.voided);
+  row('open invoices resized', rec.resized);
+  row('balance invoices raised', rec.created);
+  row('folio totals frozen', rec.froze_totals);
+  row('voided on deleted bookings', rec.voided_on_deleted);
+  row('failed', rec.failed.length);
+
+  if (rec.needs_price.length > 0) {
+    console.warn(
+      `\n  ${rec.needs_price.length} live booking(s) have NO known price and were left alone` +
+        (RECONSTRUCT ? ' (could not be priced either):' : ' (re-run with --reconstruct-prices to price them at TODAY\'s rates):')
+    );
+    for (const n of rec.needs_price.slice(0, 50)) {
+      console.warn(`    ${n.reservation_id}  ${n.status}  paid ${pula(n.paid)}`);
+    }
+  }
+  if (rec.overpaid.length > 0) {
+    console.warn(`\n  ${rec.overpaid.length} booking(s) have received MORE than their total — needs a human (refund due, or wrong total):`);
+    for (const o of rec.overpaid.slice(0, 50)) {
+      console.warn(`    ${o.reservation_id}  total ${pula(o.total)}  paid ${pula(o.paid)}`);
+    }
+  }
+  for (const f of rec.failed) console.warn(`    FAILED ${f.reservation_id} — ${f.reason}`);
+  if (!APPLY && rec.details.length > 0 && rec.details.length <= 50) {
+    console.warn('\n  Detail:');
+    for (const d of rec.details) {
+      const what = d.actions.map((a) => a.type).join('+') || 'freeze total';
+      console.warn(
+        `    ${d.reservation_id}  ${d.status.padEnd(11)} total ${pula(d.total ?? 0)} (${d.total_source}) paid ${pula(d.paid)} → ${what}`
       );
     }
   }

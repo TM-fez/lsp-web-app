@@ -8,6 +8,8 @@ function setup() {
     // Back-fills the stay behind a quote so the invoice is attributable. Null here =
     // the quote never became a hold, which is the anonymous-invoice case.
     findReservationIdForQuote: vi.fn(async () => null),
+    // A booking and the property its unit sits in; undefined = no such booking.
+    findReservationProperty: vi.fn(async (id: string) => ({ id, property_id: 'prop-1' })),
     create: vi.fn(async (v: any) => ({ id: 'inv1', ...v })),
     settle: vi.fn(async (id: string) => ({ id, status: 'PAID' })),
     markStatus: vi.fn(),
@@ -82,20 +84,65 @@ describe('InvoicesService.issueInvoice', () => {
   });
 });
 
+describe('InvoicesService.issueInvoice — reservation scope', () => {
+  it('refuses a reservation that does not exist', async () => {
+    const { svc, repo } = setup();
+    repo.findReservationProperty.mockResolvedValue(undefined);
+    await expect(
+      svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT', reservation_id: 'ghost' } as any, { userId: 'u1' }, 'prop-1'),
+    ).rejects.toThrow('That booking could not be found');
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a reservation in another property, with the same "not found" (no existence leak)', async () => {
+    const { svc, repo } = setup();
+    repo.findReservationProperty.mockResolvedValue({ id: 'res-x', property_id: 'prop-2' });
+    await expect(
+      svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT', reservation_id: 'res-x' } as any, { userId: 'u1' }, 'prop-1'),
+    ).rejects.toThrow('That booking could not be found');
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  // The route guard only sees a reservation_id in the BODY. One derived from the quote's
+  // hold used to attach unchecked.
+  it('checks the reservation derived from the quote’s hold too', async () => {
+    const { svc, repo } = setup();
+    repo.findReservationIdForQuote.mockResolvedValue('res-derived');
+    repo.findReservationProperty.mockResolvedValue({ id: 'res-derived', property_id: 'prop-2' });
+    await expect(
+      svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT' } as any, { userId: 'u1' }, 'prop-1'),
+    ).rejects.toThrow('That booking could not be found');
+  });
+
+  it('accepts a reservation in the active property', async () => {
+    const { svc, repo } = setup();
+    await svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT', reservation_id: 'res-ok' } as any, { userId: 'u1' }, 'prop-1');
+    expect(repo.findReservationProperty).toHaveBeenCalledWith('res-ok');
+    expect(repo.create).toHaveBeenCalled();
+  });
+
+  it('allows an invoice with no reservation at all (a quote-only deposit)', async () => {
+    const { svc, repo } = setup();
+    await svc.issueInvoice({ quote_id: 'q1', kind: 'DEPOSIT' } as any, { userId: 'u1' }, 'prop-1');
+    expect(repo.findReservationProperty).not.toHaveBeenCalled();
+    expect(repo.create).toHaveBeenCalled();
+  });
+});
+
 describe('InvoicesService.issueSettledInvoice', () => {
   // Money already in hand: issuing it as ISSUED would put a settled booking into the
   // Finance cockpit's outstanding list and debtor ageing, which is untrue.
-  it('raises the invoice and marks it paid in one go', async () => {
+  it('inserts the invoice already PAID, in a single write', async () => {
     const { svc, repo } = setup();
-    // settleInvoice re-reads the row it is about to settle, so the fake has to know
-    // about the invoice create() just made.
-    repo.findById.mockResolvedValue({ id: 'inv1', status: 'ISSUED', total_amount: 114000 });
     const out = await svc.issueSettledInvoice(
       { quote_id: 'q1', kind: 'BALANCE', amount: 114000 } as any,
       { userId: 'u1' },
     );
-    expect(repo.create).toHaveBeenCalled();
-    expect(repo.settle).toHaveBeenCalledWith('inv1', null, expect.anything());
+    // One create, born PAID. It used to be create(ISSUED) then settle() in a second
+    // transaction, and a crash between them left an ISSUED invoice for money in hand.
+    expect(repo.create).toHaveBeenCalledTimes(1);
+    expect(repo.create.mock.calls[0][0].status).toBe('PAID');
+    expect(repo.settle).not.toHaveBeenCalled();
     expect(out.status).toBe('PAID');
   });
 });
@@ -120,6 +167,33 @@ describe('InvoicesService.settleInvoice', () => {
     const r = await svc.settleInvoice('inv1', null, { userId: 'u1' });
     expect(repo.settle).toHaveBeenCalled();
     expect(r.status).toBe('PAID');
+  });
+
+  // PARTIALLY_PAID is an open invoice, so it must be settleable like an ISSUED one.
+  it('settles a PARTIALLY_PAID invoice', async () => {
+    const { svc, repo } = setup();
+    repo.findById.mockResolvedValue({ id: 'inv1', status: 'PARTIALLY_PAID' });
+    const r = await svc.settleInvoice('inv1', null, { userId: 'u1' });
+    expect(r.status).toBe('PAID');
+  });
+
+  // The Invoices screen has never asked how the money arrived. Recording CASH would be a
+  // guess dressed as fact on a financial record; OTHER says "not recorded".
+  it('records the payment method as OTHER unless one is given', async () => {
+    const { svc, repo } = setup();
+    repo.findById.mockResolvedValue({ id: 'inv1', status: 'ISSUED' });
+    await svc.settleInvoice('inv1', null, { userId: 'u1' });
+    expect(repo.settle).toHaveBeenCalledWith('inv1', { receiptFileId: null, method: 'OTHER' }, expect.anything());
+
+    await svc.settleInvoice('inv1', null, { userId: 'u1' }, 'EFT');
+    expect(repo.settle).toHaveBeenLastCalledWith('inv1', { receiptFileId: null, method: 'EFT' }, expect.anything());
+  });
+
+  it.each(['REFUNDED', 'VOID'])('refuses to settle a %s invoice', async (status) => {
+    const { svc, repo } = setup();
+    repo.findById.mockResolvedValue({ id: 'inv1', status });
+    await expect(svc.settleInvoice('inv1', null, { userId: 'u1' })).rejects.toThrow(`Cannot settle a ${status} invoice`);
+    expect(repo.settle).not.toHaveBeenCalled();
   });
 });
 

@@ -25,9 +25,14 @@ npm workspaces + Turborepo. Node 20.
 npm run dev            # turbo → api :3000, web :5173
 npm run lint           # eslint
 npm run typecheck      # tsc --noEmit
-npm test               # unit tests only (live-DB + e2e excluded)
+npm test               # vitest unit config — NOT DB-free: it also runs tests/integration/*, which need
+                       # a migrated Postgres in DATABASE_URL (use the lsp_test DB, never a dev/prod one)
 npm run db:migrate     # → @lsp/api
 npm run db:seed
+npm run db:backfill-invoices          # dry run (default): receipts + open-invoice-vs-folio repair, writes nothing
+npm run db:backfill-invoices:apply    # apply. Owner runs this on prod, after deploy + migrate. Flags go after `--`:
+                                      #   --reconstruct-prices (price at TODAY's rates where no agreed total exists)
+                                      #   --reservation=<uuid> (repeatable) to limit to given bookings
 
 # live-DB suites (needs docker)
 docker compose -f infra/docker-compose.test.yml up -d
@@ -78,8 +83,26 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    **The money axis is separate and must stay that way.** No availability, overlap or channel-export
    query may reference the folio, the derived payment state, or the `invoices` table. Whether a
    booking holds the room is a question about its *status*, never about its money — an unpaid
-   booking holds the room, and so does a part-paid one. `folio-invariant.test.ts` asserts this, so
+   booking holds the room, and so does a part-paid one. `tests/unit/core/money-axis-invariant.test.ts` asserts this, so
    a future "free up the unpaid ones" optimisation fails loudly.
+
+   **The receivable invariant (Stage 1, migration 070–071).** For every live, non-terminal booking
+   there is *at most one* open (ISSUED / PARTIALLY_PAID) DEPOSIT/BALANCE invoice and it equals the
+   folio outstanding (`agreed total − Σ PAID receipts`). `PARTIALLY_PAID` means exactly one thing:
+   *the open invoice of a booking that has already received money.* Everything that moves money goes
+   through `core/money/folio.ts` (lock the reservation row, `FOR NO KEY UPDATE`, **before** reading
+   `paidToDate`) and ends in `reconcileReceivable()` (`modules/invoices/invoices.receivable.ts`),
+   in the **same transaction** as the audit row. Never size an invoice, a payment or a refund from a
+   re-priced total — use the frozen folio total (`reservations.folio_total_amount`). Desk payments
+   are `PaymentsService.recordDeskPayment`; settling an invoice is `InvoicesRepository.settle`;
+   both refuse to collect more than is owed (`AppError`). A receipt is an invoice born `PAID`.
+   `invoices.due_date` = later of (issue day, check-in) + `INVOICE_TERMS_DAYS`; "overdue" is computed
+   against the Gaborone day, server-side.
+
+   ✅ **Owner decisions 2026-10-02:** (a) **a refund never puts the guest back in debt** — refunding
+   lowers the agreed total by the same amount, so outstanding is unchanged (`InvoicesRepository.refund`);
+   (b) **no-shows are not charged** — NO_SHOW, like CANCELLED, voids the open invoice;
+   (c) **payment terms are 7 days** (`INVOICE_TERMS_DAYS` default). Do not change any of these without asking.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
@@ -126,7 +149,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 066). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 071). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —

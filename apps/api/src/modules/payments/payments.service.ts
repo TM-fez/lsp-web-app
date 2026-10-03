@@ -1,10 +1,31 @@
 import { PaymentsRepository } from './payments.repository.js';
 import { HoldsRepository } from '../holds/holds.repository.js';
+import { HOLD_TTL_MS } from '../holds/holds.service.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import type { PaymentIntentRow, PaymentAttemptRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { CreatePaymentIntentDTO, AttemptPaymentDTO, PaymentFilters, PaymentRequestMeta, PaymentListRow } from './payments.types.js';
+import type { CreateQuoteDTO } from '../quotes/quotes.types.js';
+import { describeThebe } from '../../core/money/folio.js';
+import type { CreatePaymentIntentDTO, AttemptPaymentDTO, PaymentFilters, PaymentMethod, PaymentRequestMeta, PaymentListRow } from './payments.types.js';
+
+export interface DeskPaymentInput {
+  reservationId: string;
+  roomId: string;
+  /** The stay to price for the quote that backs the payment. */
+  stay: CreateQuoteDTO;
+  /**
+   * What the folio would show if nothing were frozen: the booking's own priced total,
+   * discount applied. NOT the quote's total — the quote prices the stay at the rack
+   * rate and knows nothing of the booking's approved discount.
+   */
+  pricedTotal: number;
+  /** Thebe; omitted = whatever the booking still owes. */
+  amount?: number;
+  method: PaymentMethod;
+  reference?: string | null;
+  note?: string | null;
+}
 
 const RETRY_EXTENSION_MS = 15 * 60 * 1000;
 
@@ -46,6 +67,14 @@ export class PaymentsService {
       dto.purpose === 'BALANCE' ? quote.total_amount - quote.deposit_amount : quote.deposit_amount;
     const amount = dto.amount ?? defaultAmount;
     if (amount <= 0) throw AppError.badRequest('Payment amount must be positive');
+    // A payment can never be larger than what it pays for. (The binding cap — against what
+    // the booking has already received — is enforced under the booking's lock when the
+    // payment settles; this refuses the obviously impossible one up front.)
+    if (amount > quote.total_amount) {
+      throw AppError.badRequest(
+        `That payment is more than the quote total (${describeThebe(quote.total_amount)}).`
+      );
+    }
 
     return this.repository.create(
       {
@@ -64,6 +93,29 @@ export class PaymentsService {
   }
 
   /**
+   * Take a payment at the desk against a booking, atomically (see
+   * PaymentsRepository.recordDeskPayment). Pricing is read here, before the transaction;
+   * everything that decides whether the money is accepted is read under the booking's lock.
+   */
+  async recordDeskPayment(input: DeskPaymentInput, meta: PaymentRequestMeta): Promise<PaymentIntentRow> {
+    const quote = await this.quotes.prepareQuote(input.stay, { userId: meta.userId, ip: meta.ip, requestId: meta.requestId });
+    return this.repository.recordDeskPayment(
+      {
+        reservationId: input.reservationId,
+        roomId: input.roomId,
+        quote,
+        pricedTotal: input.pricedTotal,
+        amount: input.amount,
+        method: input.method,
+        reference: input.reference ?? null,
+        note: input.note ?? null,
+        holdTtlMs: HOLD_TTL_MS,
+      },
+      meta
+    );
+  }
+
+  /**
    * Drive one payment attempt. SUCCESS confirms the hold; FAILURE retries until
    * max_attempts (retry-before-release), then fails and releases the hold.
    * No real gateway — the outcome is supplied by the caller.
@@ -74,6 +126,9 @@ export class PaymentsService {
       throw AppError.conflict(`Payment intent is ${intent.status} and cannot be retried`);
     }
 
+    if (!intent.hold_id) {
+      throw AppError.conflict('This payment was recorded against an invoice and cannot be re-attempted');
+    }
     const hold = await this.holds.findById(intent.hold_id);
     if (!hold) throw AppError.notFound('Hold for this payment no longer exists');
     if (hold.status !== 'HELD') {

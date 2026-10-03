@@ -1,15 +1,24 @@
 import { api } from './client';
-import type { Invoice, InvoiceStatus, InvoiceKind, InvoiceDocument, Paginated } from '@/types';
+import type { Invoice, InvoiceStatus, InvoiceKind, InvoiceDocument, InvoiceList } from '@/types';
 
 export interface InvoiceListParams {
   status?: InvoiceStatus;
   kind?: InvoiceKind;
+  /** Open receivables only (ISSUED + PARTIALLY_PAID, refunds excluded). */
+  outstanding?: boolean;
+  /** Open and past the due date. */
+  overdue?: boolean;
+  /** Invoice number, guest / bill-to name or unit. */
+  search?: string;
+  /** Issue-date range, YYYY-MM-DD, inclusive. */
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 }
 
-export async function listInvoices(params: InvoiceListParams): Promise<Paginated<Invoice>> {
-  const { data } = await api.get<Paginated<Invoice>>('/invoices', { params });
+export async function listInvoices(params: InvoiceListParams): Promise<InvoiceList> {
+  const { data } = await api.get<InvoiceList>('/invoices', { params });
   return data;
 }
 

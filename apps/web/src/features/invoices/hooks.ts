@@ -3,7 +3,7 @@ import { listInvoices, issueInvoice, settleInvoice, refundInvoice, getInvoiceDoc
 import { listQuotes } from '@/lib/api/quotes';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
-import type { Invoice, InvoiceDocument, Paginated, Quote } from '@/types';
+import type { InvoiceDocument, InvoiceList, Quote } from '@/types';
 
 const KEY = ['invoices'] as const;
 
@@ -23,7 +23,7 @@ export function useSendInvoice() {
 }
 
 export function useInvoices(params: InvoiceListParams) {
-  return useQuery<Paginated<Invoice>>({
+  return useQuery<InvoiceList>({
     queryKey: [...KEY, params],
     queryFn: () => listInvoices(params),
   });

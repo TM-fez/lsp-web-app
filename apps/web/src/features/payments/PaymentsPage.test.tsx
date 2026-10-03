@@ -16,6 +16,8 @@ const row = (over: Partial<PaymentIntent>): PaymentIntent => ({
 
 const rows: PaymentIntent[] = [
   row({ id: 'ok', guest_name: 'Neo Kgosi', status: 'PAID' }),
+  // Settled from the Invoices page, which never asked how the guest paid.
+  row({ id: 'inv', guest_name: 'Tebogo Sithole', status: 'PAID', method: 'OTHER', hold_id: null, invoice_id: 'i9' }),
   row({
     id: 'bad', guest_name: 'Charity Chipondeni', status: 'FAILED', attempts: 3,
     last_error: 'Card declined by issuer',
@@ -53,6 +55,13 @@ describe('PaymentsPage', () => {
     render(<PaymentsPage />);
     expect(screen.getByText('Charity Chipondeni')).toBeInTheDocument();
     expect(screen.queryByText('Neo Kgosi')).not.toBeInTheDocument();
+  });
+
+  it('labels a settlement with no recorded method honestly, not as raw OTHER', () => {
+    render(<PaymentsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('Not recorded')).toBeInTheDocument();
+    expect(screen.queryByText('OTHER')).not.toBeInTheDocument();
   });
 
   it('counts what needs attention on the tab', () => {

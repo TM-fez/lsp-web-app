@@ -422,13 +422,15 @@ export interface HoldsTable {
 
 export interface PaymentIntentsTable {
   id: Generated<string>;
-  hold_id: string;
-  quote_id: string;
+  // Null when the payment was recorded straight against an invoice (migration 071):
+  // an intent hangs off a hold OR an invoice, never nothing.
+  hold_id: string | null;
+  quote_id: string | null;
   invoice_id: string | null;
   purpose: Generated<'DEPOSIT' | 'BALANCE'>;
   amount: number;
   currency: Generated<string>;
-  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER';
   status: Generated<'PENDING' | 'RETRY' | 'PAID' | 'FAILED' | 'EXPIRED'>;
   attempts: Generated<number>;
   max_attempts: Generated<number>;
@@ -445,7 +447,7 @@ export interface PaymentAttemptsTable {
   payment_intent_id: string;
   attempt_no: number;
   outcome: 'INITIATED' | 'SUCCESS' | 'FAILURE';
-  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+  method: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER';
   reference: string | null;
   note: string | null;
   created_by: string;
@@ -466,6 +468,8 @@ export interface InvoicesTable {
   total_amount: number;
   status: Generated<'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID'>;
   receipt_file_id: string | null;
+  // Payment due day, Africa/Gaborone (migration 071). Null for refund credit notes.
+  due_date: Date | string | null;
   issued_by: string;
   created_by: string;
   updated_by: string;

@@ -2,7 +2,7 @@ import { QuotesRepository } from './quotes.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { nightsBetween, taxExclusive, depositFrom } from './quotes.util.js';
-import type { QuoteRow } from '../../db/types.js';
+import type { NewQuote, QuoteRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateQuoteDTO, QuoteFilters, QuoteBreakdown, QuoteRequestMeta } from './quotes.types.js';
 
@@ -33,6 +33,18 @@ export class QuotesService {
   }
 
   async createQuote(dto: CreateQuoteDTO, meta: QuoteRequestMeta): Promise<QuoteRow> {
+    return this.repository.create(await this.prepareQuote(dto, meta), meta);
+  }
+
+  /**
+   * Price a stay and build the quote row WITHOUT writing it.
+   *
+   * Split out of createQuote so a caller that needs to write the quote inside a bigger
+   * transaction (a desk payment: quote + hold + intent + receipt, atomically) can do all
+   * the READS up front and keep the locked section to writes only — see
+   * PaymentsRepository.recordDeskPayment for why that matters (pool exhaustion).
+   */
+  async prepareQuote(dto: CreateQuoteDTO, meta: QuoteRequestMeta): Promise<NewQuote> {
     const nights = nightsBetween(dto.check_in, dto.check_out);
     const plan = await this.pricing.getActivePlan(dto.unit_type);
 
@@ -69,29 +81,26 @@ export class QuotesService {
       currency: plan.currency,
     };
 
-    return this.repository.create(
-      {
-        rate_plan_id: plan.id,
-        unit_type: dto.unit_type,
-        check_in_date: dto.check_in,
-        check_out_date: dto.check_out,
-        guests: dto.guests,
-        nights,
-        currency: plan.currency,
-        base_amount: price.base_amount,
-        adjustment_amount: adjustment,
-        adjustment_reason: dto.adjustment_reason ?? null,
-        tax_rate_bps: plan.tax_rate_bps,
-        tax_amount: taxAmount,
-        deposit_amount: depositAmount,
-        total_amount: totalAmount,
-        breakdown,
-        created_by: meta.userId,
-        override_by: adjustment !== 0 ? meta.userId : null,
-        expires_at: new Date(Date.now() + QUOTE_TTL_MS),
-      },
-      meta
-    );
+    return {
+      rate_plan_id: plan.id,
+      unit_type: dto.unit_type,
+      check_in_date: dto.check_in,
+      check_out_date: dto.check_out,
+      guests: dto.guests,
+      nights,
+      currency: plan.currency,
+      base_amount: price.base_amount,
+      adjustment_amount: adjustment,
+      adjustment_reason: dto.adjustment_reason ?? null,
+      tax_rate_bps: plan.tax_rate_bps,
+      tax_amount: taxAmount,
+      deposit_amount: depositAmount,
+      total_amount: totalAmount,
+      breakdown,
+      created_by: meta.userId,
+      override_by: adjustment !== 0 ? meta.userId : null,
+      expires_at: new Date(Date.now() + QUOTE_TTL_MS),
+    };
   }
 
   async expireStaleQuotes(): Promise<number> {

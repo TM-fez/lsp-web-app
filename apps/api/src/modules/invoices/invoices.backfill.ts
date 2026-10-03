@@ -89,8 +89,13 @@ async function findOrphanPaidIntents(dbInstance: Kysely<Database>): Promise<Orph
     ])
     .where('pi.status', '=', 'PAID')
     .where('pi.invoice_id', 'is', null)
+    // Intents created by settling an invoice (migration 071) have no hold or quote, but
+    // they always carry invoice_id, so the filter above already excludes them; this
+    // narrows the type and makes the assumption explicit.
+    .where('pi.hold_id', 'is not', null)
+    .where('pi.quote_id', 'is not', null)
     .orderBy('pi.paid_at', 'asc')
-    .execute();
+    .execute() as Promise<OrphanPaidIntent[]>;
 }
 
 /**
