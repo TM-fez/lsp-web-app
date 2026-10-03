@@ -47,6 +47,8 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   MOBILE_MONEY: 'Mobile money',
   CARD: 'Card',
   CORPORATE_CREDIT: 'Company account',
+  // Settled from the Invoices page without saying how — honest, not a guess.
+  OTHER: 'Not recorded',
 };
 
 /** Still owed the operator's attention: failed outright, or mid-retry. */

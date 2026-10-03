@@ -1,17 +1,8 @@
 import type { Kysely } from 'kysely';
 import { db as defaultDb } from '../../config/db.js';
 import type { Database } from '../../db/types.js';
-import { FilesRepository } from '../files/files.repository.js';
-import { HoldsRepository } from '../holds/holds.repository.js';
-import { HoldsService } from '../holds/holds.service.js';
-import { InvoicesRepository } from '../invoices/invoices.repository.js';
-import { InvoicesService } from '../invoices/invoices.service.js';
-import { PaymentsRepository } from '../payments/payments.repository.js';
-import { PaymentsService } from '../payments/payments.service.js';
 import { PricingRepository } from '../pricing/pricing.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
-import { QuotesRepository } from '../quotes/quotes.repository.js';
-import { QuotesService } from '../quotes/quotes.service.js';
 import { ReservationsRepository } from '../reservations/reservations.repository.js';
 import { ReservationsService } from '../reservations/reservations.service.js';
 import { RoomsRepository } from '../rooms/rooms.repository.js';
@@ -51,19 +42,11 @@ import type { RecogniseResult, RevenueRequestMeta } from './revenue.types.js';
 /** The full reservations service, wired only so far as priceReservation() needs. */
 export function createStayPricer(dbInstance: Kysely<Database> = defaultDb): StayPricer {
   const pricing = new PricingService(new PricingRepository(dbInstance));
-  const quotes = new QuotesService(new QuotesRepository(dbInstance), pricing);
-  const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
-  const payments = new PaymentsService(new PaymentsRepository(dbInstance), new HoldsRepository(dbInstance), quotes);
-  const invoices = new InvoicesService(new InvoicesRepository(dbInstance), quotes, new FilesRepository(dbInstance));
 
   return new ReservationsService(
     new ReservationsRepository(dbInstance),
     new RoomsRepository(dbInstance),
-    pricing,
-    quotes,
-    holds,
-    payments,
-    invoices
+    pricing
   );
 }
 

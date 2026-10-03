@@ -1,5 +1,6 @@
 import { CheckinsRepository } from './checkins.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { logger } from '../../core/logger.js';
 import type { OccupancyRow } from '../../db/types.js';
 import type {
   OccupancyFilters,
@@ -10,8 +11,33 @@ import type {
   CheckOutDTO,
 } from './checkins.types.js';
 
+/** The one thing check-in/out needs from the money side — see ReservationsService.ensureReceivable. */
+export interface ReceivableEnsurer {
+  ensureReceivable(reservationId: string, meta: OccupancyRequestMeta): Promise<void>;
+}
+
 export class CheckinsService {
-  constructor(private readonly repository: CheckinsRepository) {}
+  // `receivables` is optional so unit tests can build the service with a repository alone.
+  constructor(
+    private readonly repository: CheckinsRepository,
+    private readonly receivables?: ReceivableEnsurer,
+  ) {}
+
+  /**
+   * A guest in the house (or just out of it) who owes money must be on the books as
+   * owing it: an unpaid stay that was never invoiced — pay-later, a walk-in — is exactly
+   * the debt nobody chases. Best-effort by design: refusing to check a guest in or out
+   * because the accounting hiccuped would be the wrong trade, and the next touch (or the
+   * backfill) reconciles anything missed.
+   */
+  private async keepReceivable(reservationId: string, meta: OccupancyRequestMeta): Promise<void> {
+    if (!this.receivables) return;
+    try {
+      await this.receivables.ensureReceivable(reservationId, meta);
+    } catch (err) {
+      logger.error({ err, reservationId }, '[checkins] could not reconcile the receivable');
+    }
+  }
 
   async getOccupancyById(id: string): Promise<OccupancyRow> {
     const occupancy = await this.repository.findById(id);
@@ -72,7 +98,7 @@ export class CheckinsService {
       );
     }
 
-    return this.repository.checkIn(
+    const occupancy = await this.repository.checkIn(
       {
         reservationId: reservation.id,
         roomId: reservation.room_id,
@@ -82,6 +108,8 @@ export class CheckinsService {
       },
       meta
     );
+    await this.keepReceivable(reservation.id, meta);
+    return occupancy;
   }
 
   async checkOut(occupancyId: string, dto: CheckOutDTO, meta: OccupancyRequestMeta): Promise<OccupancyRow> {
@@ -107,6 +135,7 @@ export class CheckinsService {
     if (!updated) {
       throw AppError.notFound(`Failed to check out occupancy with id ${occupancyId}`);
     }
+    await this.keepReceivable(occupancy.reservation_id, meta);
     return updated;
   }
 }

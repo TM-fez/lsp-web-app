@@ -70,7 +70,7 @@ export function FinanceCockpitPage() {
             <span className="h-px w-10 bg-ink" /> Finance · Gaborone
           </div>
           <h1 className="font-display text-4xl text-ink sm:text-5xl">Financial Cockpit</h1>
-          <p className="mt-2 text-sm text-muted">Outstanding balances and receivables across the estate.</p>
+          <p className="mt-2 text-sm text-muted">Outstanding balances and receivables for the property you are working in.</p>
         </div>
       </header>
 
@@ -84,9 +84,12 @@ export function FinanceCockpitPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Metric label="Total outstanding" value={compactPula(s.total_receivable)} sub={fullPula(s.total_receivable)} />
             <Metric label="Open invoices" value={s.open_invoices.toLocaleString('en')} sub="awaiting payment" />
+            <Metric label="Overdue" value={compactPula(s.overdue_amount)}
+              sub={s.overdue_count > 0 ? `${s.overdue_count} past their due date` : 'nothing past due'}
+              tone={s.overdue_count > 0 ? 'neg' : undefined} />
             <Metric label="Oldest debt" value={s.oldest_days > 0 ? `${s.oldest_days}d` : '—'}
               sub={s.oldest_days > 0 ? 'since issue' : 'nothing outstanding'}
               tone={s.oldest_days > 90 ? 'neg' : undefined} />
@@ -97,7 +100,7 @@ export function FinanceCockpitPage() {
           {s.total_receivable === 0 ? (
             <EmptyState
               title="All settled"
-              description="There are no outstanding receivables for your properties right now."
+              description="There are no outstanding receivables for this property right now."
             />
           ) : (
             <>
@@ -151,6 +154,11 @@ export function FinanceCockpitPage() {
 
               <section>
                 <h2 className="mb-3 font-display text-xl text-ink">Outstanding invoices</h2>
+                {data.invoices.length < s.open_invoices && (
+                  <p className="mb-3 text-xs text-muted">
+                    Showing the {data.invoices.length} oldest of {s.open_invoices} — the totals above include all of them.
+                  </p>
+                )}
                 <div className="overflow-hidden rounded-lg border border-line bg-paper">
                   <table className="w-full text-sm">
                     <thead>
@@ -159,6 +167,7 @@ export function FinanceCockpitPage() {
                         <th className="px-4 py-3.5 font-medium">Bill to</th>
                         <th className="px-4 py-3.5 font-medium">Property</th>
                         <th className="px-4 py-3.5 text-right font-medium">Age</th>
+                        <th className="px-4 py-3.5 text-right font-medium">Due</th>
                         <th className="px-4 py-3.5 text-right font-medium">Amount</th>
                         <th className="px-4 py-3.5 text-right font-medium" />
                       </tr>
@@ -174,6 +183,9 @@ export function FinanceCockpitPage() {
                           <td className="px-4 py-3.5 text-muted">{i.property_name ?? 'Unattributed'}</td>
                           <td className={cn('px-4 py-3.5 text-right tabnum', i.days_outstanding > 90 ? 'text-terra' : 'text-muted')}>
                             {i.days_outstanding}d
+                          </td>
+                          <td className={cn('px-4 py-3.5 text-right', i.days_overdue > 0 ? 'text-terra' : 'text-muted')}>
+                            {i.days_overdue > 0 ? `${i.days_overdue}d overdue` : i.due_date ? 'On time' : '—'}
                           </td>
                           <td className="px-4 py-3.5 text-right tabnum text-ink" title={fullPula(i.total_amount)}>{compactPula(i.total_amount)}</td>
                           <td className="px-4 py-3.5 text-right">

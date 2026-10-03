@@ -36,7 +36,9 @@ export type HousekeepingTaskStatus = 'OPEN' | 'CLEANING' | 'INSPECTED' | 'DONE';
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'BLOCKED' | 'NO_SHOW';
 export type ReservationSource = 'DIRECT' | 'WEBSITE' | 'WALK_IN' | 'PHONE' | 'EMAIL' | 'BOOKING_COM' | 'CORPORATE' | 'OTHER';
 export type UnitType = 'STANDARD' | 'DELUXE' | 'SUITE' | 'CONFERENCE' | 'CUSTOM';
-export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT';
+// OTHER = the method was not recorded (e.g. an invoice settled from the Invoices page
+// without saying how the guest paid). It is never offered as a choice at the desk.
+export type PaymentMethod = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST';
 export type LeadSource = 'WHATSAPP' | 'WALK_IN' | 'BOOKING_COM' | 'WEBSITE' | 'REFERRAL' | 'CORPORATE' | 'OTHER';
 
@@ -429,6 +431,8 @@ export interface OutstandingInvoice {
   property_name: string | null;
   created_at: string;
   days_outstanding: number;
+  due_date: string | null;   // YYYY-MM-DD (Gaborone); null on unattributed legacy rows
+  days_overdue: number;      // 0 when not past its due date
 }
 export interface FinanceCockpit {
   as_of: string;
@@ -437,6 +441,8 @@ export interface FinanceCockpit {
     open_invoices: number;
     oldest_days: number;
     refunds_payable: number;
+    overdue_amount: number;  // the part of total_receivable past its due date
+    overdue_count: number;
   };
   aging: AgingBucket[];
   by_property: PropertyReceivable[];
@@ -651,6 +657,10 @@ export interface Invoice {
   receipt_file_id: string | null;
   created_at: string;
   updated_at: string;
+  // YYYY-MM-DD in Gaborone. Null only on legacy rows no backfill has reached.
+  due_date: string | null;
+  // Open, past its due date. Computed server-side so the page and the cockpit agree.
+  is_overdue: boolean;
   // Who the invoice is for and which stay it covers, resolved server-side from the
   // invoice's reservation (or the one behind its hold). All nullable: an invoice
   // raised straight off a quote has no guest to resolve — a quote prices a unit type
@@ -666,6 +676,16 @@ export interface Paginated<T> {
   total: number;
   page: number;
   limit: number;
+}
+
+/** GET /invoices — a page of invoices plus what is owed across the WHOLE filtered set. */
+export interface InvoiceList extends Paginated<Invoice> {
+  totals: {
+    outstanding_amount: number;
+    outstanding_count: number;
+    overdue_amount: number;
+    overdue_count: number;
+  };
 }
 
 export interface RecurringCost {

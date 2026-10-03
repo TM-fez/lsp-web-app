@@ -7,7 +7,7 @@ vi.mock('./hooks', () => ({
   useReceivables: () => ({
     data: {
       as_of: '2026-07-07T09:00:00.000Z',
-      summary: { total_receivable: 35_000_000, open_invoices: 3, oldest_days: 100, refunds_payable: 2_000_000 },
+      summary: { total_receivable: 35_000_000, open_invoices: 3, oldest_days: 100, refunds_payable: 2_000_000, overdue_amount: 20_000_000, overdue_count: 1 },
       aging: [
         { bucket: '0-30', amount: 10_000_000, count: 1 },
         { bucket: '31-60', amount: 5_000_000, count: 1 },
@@ -19,8 +19,8 @@ vi.mock('./hooks', () => ({
         { property_id: 'pA', property_name: 'Village', amount: 15_000_000, count: 2 },
       ],
       invoices: [
-        { id: 'i1', number: 'INV-900', kind: 'BALANCE', status: 'ISSUED', total_amount: 20_000_000, currency: 'BWP', bill_to_name: 'Neo Guest', property_id: 'pB', property_name: 'Riverside', created_at: '2026-03-29T00:00:00.000Z', days_outstanding: 100 },
-        { id: 'i2', number: 'INV-910', kind: 'BALANCE', status: 'ISSUED', total_amount: 10_000_000, currency: 'BWP', bill_to_name: 'Acme Accounts', property_id: 'pA', property_name: 'Village', created_at: '2026-06-27T00:00:00.000Z', days_outstanding: 10 },
+        { id: 'i1', number: 'INV-900', kind: 'BALANCE', status: 'ISSUED', total_amount: 20_000_000, currency: 'BWP', bill_to_name: 'Neo Guest', property_id: 'pB', property_name: 'Riverside', created_at: '2026-03-29T00:00:00.000Z', days_outstanding: 100, due_date: '2026-04-05', days_overdue: 94 },
+        { id: 'i2', number: 'INV-910', kind: 'BALANCE', status: 'ISSUED', total_amount: 10_000_000, currency: 'BWP', bill_to_name: 'Acme Accounts', property_id: 'pA', property_name: 'Village', created_at: '2026-06-27T00:00:00.000Z', days_outstanding: 10, due_date: '2026-07-14', days_overdue: 0 },
       ],
     },
     isLoading: false, isError: false, refetch: () => {},
@@ -46,5 +46,20 @@ describe('FinanceCockpitPage', () => {
     // P350k total appears as a KPI (compact form).
     expect(screen.getAllByText('P350k').length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('svg[role="img"]')).toBeTruthy();
+  });
+
+  // Overdue is its own question, answered from the due date — not from age.
+  it('surfaces what is overdue, and how late each invoice is', () => {
+    render(<FinanceCockpitPage />);
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getByText('1 past their due date')).toBeInTheDocument();
+    expect(screen.getByText('94d overdue')).toBeInTheDocument();
+    expect(screen.getByText('On time')).toBeInTheDocument();
+  });
+
+  // The list is capped; the totals are not. Say so rather than let the table look complete.
+  it('says when the invoice table is shorter than the open-invoice count', () => {
+    render(<FinanceCockpitPage />);
+    expect(screen.getByText(/Showing the 2 oldest of 3/)).toBeInTheDocument();
   });
 });

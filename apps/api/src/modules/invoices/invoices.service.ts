@@ -6,12 +6,12 @@ import { splitInclusive } from '../quotes/quotes.util.js';
 import { renderInvoiceEmail } from './invoices.email.js';
 import { sendEmail } from '../../core/email/email.service.js';
 import type { InvoiceRow } from '../../db/types.js';
-import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
+import type { PaginationOptions } from '../crm/crm.types.js';
 import type {
   IssueInvoiceDTO,
   InvoiceFilters,
   InvoiceRequestMeta,
-  InvoiceListRow,
+  InvoiceListResult,
 } from './invoices.types.js';
 
 export class InvoicesService {
@@ -50,11 +50,34 @@ export class InvoicesService {
   async listInvoices(
     filters: InvoiceFilters,
     pagination: PaginationOptions
-  ): Promise<PaginatedResult<InvoiceRow & InvoiceListRow>> {
+  ): Promise<InvoiceListResult> {
     return this.repository.findPaginated(filters, pagination);
   }
 
-  async issueInvoice(dto: IssueInvoiceDTO, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+  /**
+   * A booking an invoice is about to be attached to must EXIST and sit in the caller's
+   * active property. The route guard checks a reservation_id carried in the body, but the
+   * reservation can also be DERIVED (quote → hold → reservation), and the old code
+   * attached whatever it was given: a user in one property could invoice another
+   * property's booking, and a made-up id surfaced as a foreign-key error. "Not found"
+   * either way — a booking outside your property is not yours to learn about.
+   */
+  private async assertReservationInScope(
+    reservationId: string | null,
+    activePropertyId?: string
+  ): Promise<void> {
+    if (!reservationId) return;
+    const found = await this.repository.findReservationProperty(reservationId);
+    if (!found || (activePropertyId && found.property_id !== activePropertyId)) {
+      throw AppError.notFound('That booking could not be found.');
+    }
+  }
+
+  async issueInvoice(
+    dto: IssueInvoiceDTO,
+    meta: InvoiceRequestMeta,
+    activePropertyId?: string
+  ): Promise<InvoiceRow> {
     const quote = await this.quotes.getQuote(dto.quote_id);
 
     // An explicit amount wins: a payment taken at the desk is for whatever the guest
@@ -76,6 +99,7 @@ export class InvoicesService {
     // Accounts cannot tell who has not paid.
     const reservationId =
       dto.reservation_id ?? (await this.repository.findReservationIdForQuote(quote.id));
+    await this.assertReservationInScope(reservationId, activePropertyId);
 
     const { subtotal, tax } = splitInclusive(total, quote.tax_rate_bps);
 
@@ -99,23 +123,67 @@ export class InvoicesService {
   }
 
   /**
-   * Raise an invoice for money that has ALREADY been received, and mark it paid.
+   * Raise an invoice for money that has ALREADY been received, born PAID.
    *
    * The ordinary flow issues an invoice so someone can go and pay it. A payment taken
    * at the desk runs the other way round — the cash is in hand before any document
    * exists — so issuing it as ISSUED would put a settled booking into the Finance
    * cockpit's outstanding list and its debtor ageing, which is simply untrue.
    *
-   * Two statements rather than one transaction because create() and settle() each own
-   * their audit row; the pair is idempotent enough in practice (a failure between them
-   * leaves an ISSUED invoice that Accounts can settle by hand, not a lost payment).
+   * One insert, one transaction. It used to be issueInvoice() then settleInvoice() — two
+   * transactions, and the comment admitted a crash between them left an ISSUED invoice for
+   * money in hand. (The live payment paths no longer come through here at all: they raise
+   * the receipt inside the payment's own transaction. This remains for the backfill, which
+   * records receipts for payments that predate that.)
    */
   async issueSettledInvoice(dto: IssueInvoiceDTO, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
-    const invoice = await this.issueInvoice(dto, meta);
-    return this.settleInvoice(invoice.id, null, meta);
+    const quote = await this.quotes.getQuote(dto.quote_id);
+    const total =
+      dto.amount ??
+      (dto.kind === 'DEPOSIT' ? quote.deposit_amount : quote.total_amount - quote.deposit_amount);
+    if (total <= 0) {
+      throw AppError.badRequest(`Nothing to invoice for kind ${dto.kind} on this quote`);
+    }
+    if (total > quote.total_amount) {
+      throw AppError.badRequest('An invoice cannot be raised for more than the quote total.');
+    }
+    const reservationId =
+      dto.reservation_id ?? (await this.repository.findReservationIdForQuote(quote.id));
+    const { subtotal, tax } = splitInclusive(total, quote.tax_rate_bps);
+
+    return this.repository.create(
+      {
+        hold_id: dto.hold_id ?? null,
+        quote_id: quote.id,
+        reservation_id: reservationId,
+        kind: dto.kind,
+        currency: quote.currency,
+        subtotal_amount: subtotal,
+        tax_rate_bps: quote.tax_rate_bps,
+        tax_amount: tax,
+        total_amount: total,
+        status: 'PAID',
+        issued_by: meta.userId,
+        created_by: meta.userId,
+        updated_by: meta.userId,
+      },
+      meta
+    );
   }
 
-  async settleInvoice(id: string, receiptFileId: string | null | undefined, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+  /**
+   * Mark an open invoice paid. The guards that matter (is it still open, would it collect
+   * more than the booking owes, is the payment recorded, is what remains re-sized) all live
+   * in the repository, in ONE transaction under the booking's lock — checking them here
+   * and writing later is exactly the read-then-write race that let two clicks collect twice.
+   * What stays here is the cheap early refusal with a friendly message, and the receipt file.
+   */
+  async settleInvoice(
+    id: string,
+    receiptFileId: string | null | undefined,
+    meta: InvoiceRequestMeta,
+    method?: 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER'
+  ): Promise<InvoiceRow> {
     const invoice = await this.getInvoice(id);
     if (invoice.status === 'PAID') throw AppError.conflict('Invoice is already paid');
     if (invoice.status === 'REFUNDED' || invoice.status === 'VOID') {
@@ -127,7 +195,11 @@ export class InvoicesService {
       if (!file) throw AppError.badRequest('Invalid receipt_file_id');
     }
 
-    const updated = await this.repository.settle(id, receiptFileId ?? null, meta);
+    const updated = await this.repository.settle(
+      id,
+      { receiptFileId: receiptFileId ?? null, method: method ?? 'OTHER' },
+      meta
+    );
     if (!updated) throw AppError.notFound(`Failed to settle invoice ${id}`);
     return updated;
   }

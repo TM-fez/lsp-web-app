@@ -2,6 +2,11 @@ import { Router } from 'express';
 import { CheckinsController } from './checkins.controller.js';
 import { CheckinsService } from './checkins.service.js';
 import { CheckinsRepository } from './checkins.repository.js';
+import { ReservationsService } from '../reservations/reservations.service.js';
+import { ReservationsRepository } from '../reservations/reservations.repository.js';
+import { RoomsRepository } from '../rooms/rooms.repository.js';
+import { PricingService } from '../pricing/pricing.service.js';
+import { PricingRepository } from '../pricing/pricing.repository.js';
 import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
@@ -13,7 +18,13 @@ import { CreateCheckInSchema, CheckOutSchema } from './checkins.types.js';
 export function createCheckinsRouter(dbInstance = db): Router {
   const router = Router();
   const repository = new CheckinsRepository(dbInstance);
-  const service = new CheckinsService(repository);
+  // Check-in/out keep the guest's receivable on the books (see CheckinsService.keepReceivable).
+  const reservations = new ReservationsService(
+    new ReservationsRepository(dbInstance),
+    new RoomsRepository(dbInstance),
+    new PricingService(new PricingRepository(dbInstance)),
+  );
+  const service = new CheckinsService(repository, reservations);
   const controller = new CheckinsController(service);
 
   router.use(authenticate);

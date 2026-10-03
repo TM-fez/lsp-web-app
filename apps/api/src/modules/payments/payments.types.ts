@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PaymentMethodEnum = z.enum(['CARD', 'MOBILE_MONEY', 'EFT', 'CASH', 'CORPORATE_CREDIT']);
+export const PaymentMethodEnum = z.enum(['CARD', 'MOBILE_MONEY', 'EFT', 'CASH', 'CORPORATE_CREDIT', 'OTHER']);
 export const PaymentStatusEnum = z.enum(['PENDING', 'RETRY', 'PAID', 'FAILED', 'EXPIRED']);
 export const PaymentPurposeEnum = z.enum(['DEPOSIT', 'BALANCE']);
 export const PaymentOutcomeEnum = z.enum(['SUCCESS', 'FAILURE']);

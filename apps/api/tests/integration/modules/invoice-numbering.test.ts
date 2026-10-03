@@ -151,9 +151,13 @@ describe('InvoicesRepository — the row and its number commit together', () => 
       meta
     );
 
-    // Relative, not absolute: the live series is shared with every other suite.
+    // Relative, not absolute: the live series is shared with every other suite, and suites
+    // run in parallel — another file can legitimately allocate between `before` and the
+    // insert, so "exactly +1" was a race. What matters is that the number comes from the
+    // live series AFTER `before` (the sequence is gapless and monotonic: ids never repeat
+    // or go backwards); uniqueness itself is asserted in the concurrency case above.
     const seq = (n: string) => Number(n.slice(n.lastIndexOf('-') + 1));
-    expect(seq(invoice.number)).toBe(seq(before) + 1);
+    expect(seq(invoice.number)).toBeGreaterThan(seq(before));
     expect(invoice.number).toMatch(/^INV-\d{4}-\d{6}$/);
 
     // Hard-delete rather than soft: a test fixture must not sit in the receivables

@@ -25,13 +25,10 @@ import { PricingService } from '../../../src/modules/pricing/pricing.service.js'
 import { PricingRepository } from '../../../src/modules/pricing/pricing.repository.js';
 import { QuotesService } from '../../../src/modules/quotes/quotes.service.js';
 import { QuotesRepository } from '../../../src/modules/quotes/quotes.repository.js';
-import { HoldsService } from '../../../src/modules/holds/holds.service.js';
 import { HoldsRepository } from '../../../src/modules/holds/holds.repository.js';
 import { PaymentsService } from '../../../src/modules/payments/payments.service.js';
 import { PaymentsRepository } from '../../../src/modules/payments/payments.repository.js';
-import { InvoicesService } from '../../../src/modules/invoices/invoices.service.js';
 import { InvoicesRepository } from '../../../src/modules/invoices/invoices.repository.js';
-import { FilesRepository } from '../../../src/modules/files/files.repository.js';
 
 const uniq = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const NIGHTLY = 150_000; // P1,500.00 a night, in thebe
@@ -50,17 +47,12 @@ let partPaidReservationId: string;
 function buildService(): ReservationsService {
   const pricing = new PricingService(new PricingRepository(db));
   const quotes = new QuotesService(new QuotesRepository(db), pricing);
-  const holds = new HoldsService(new HoldsRepository(db), quotes);
   const payments = new PaymentsService(new PaymentsRepository(db), new HoldsRepository(db), quotes);
-  const invoices = new InvoicesService(new InvoicesRepository(db), quotes, new FilesRepository(db));
   return new ReservationsService(
     new ReservationsRepository(db),
     new RoomsRepository(db),
     pricing,
-    quotes,
-    holds,
     payments,
-    invoices,
   );
 }
 
@@ -213,8 +205,10 @@ describe('Recording a desk payment (live DB)', () => {
     expect(row!.check_in_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  // Reception takes what the guest has on them. The rest must not vanish.
-  it('invoices the unpaid remainder of a part payment, and Finance counts it', async () => {
+  // Reception takes what the guest has on them. The rest must not vanish — and it must
+  // not pile up either: it used to leave a fresh ISSUED invoice per payment, each priced
+  // off a live re-quote, so Finance's receivable only ever grew.
+  it('leaves ONE open invoice for the remainder of a part payment, and Finance counts it', async () => {
     const service = buildService();
     const meta = { userId, ip: null, requestId: null } as never;
     const HALF = NIGHTLY;                    // one night's worth of a two-night stay
@@ -224,28 +218,32 @@ describe('Recording a desk payment (live DB)', () => {
 
     const invoices = await db.selectFrom('invoices')
       .selectAll().where('reservation_id', '=', partPaidReservationId)
-      .orderBy('total_amount', 'asc').execute();
+      .orderBy('created_at', 'asc').execute();
 
     expect(invoices).toHaveLength(2);
 
     const receipt = invoices.find((i) => i.status === 'PAID')!;
-    const owing = invoices.find((i) => i.status === 'ISSUED')!;
+    // PARTIALLY_PAID, no longer a status nothing writes: an open invoice on a booking
+    // that has already received money.
+    const owing = invoices.find((i) => i.status === 'PARTIALLY_PAID')!;
 
     expect(receipt.kind).toBe('DEPOSIT');
     expect(receipt.total_amount).toBe(HALF);
     expect(owing.kind).toBe('BALANCE');
     expect(owing.total_amount).toBe(DUE - HALF);
+    expect(owing.due_date).not.toBeNull();
 
-    // The point of the whole thing: the debt is visible to Accounts. Finance treats an
-    // ISSUED DEPOSIT/BALANCE invoice as an open receivable.
+    // The point of the whole thing: the debt is visible to Accounts, and it equals what
+    // the folio says is outstanding.
     const open = await db.selectFrom('invoices')
-      .select('id')
+      .select(['id', 'total_amount'])
       .where('reservation_id', '=', partPaidReservationId)
       .where('status', 'in', ['ISSUED', 'PARTIALLY_PAID'])
       .where('kind', 'in', ['DEPOSIT', 'BALANCE'])
       .where('deleted_at', 'is', null)
       .execute();
     expect(open.map((o) => o.id)).toEqual([owing.id]);
+    expect((await service.getFolio(partPaidReservationId)).outstanding_amount).toBe(open[0]!.total_amount);
   });
 
   // The Payments screen reads this list. Unjoined it is a row of UUIDs and an amount,
@@ -288,5 +286,14 @@ describe('Recording a desk payment (live DB)', () => {
     // Capping against the whole stay rather than the outstanding balance would have
     // charged the guest the full amount a second time.
     expect(after.paid_amount).toBe(before.total_amount);
+
+    // Paid in full: the open balance invoice is retired (VOID — never deleted, so the
+    // number series stays gapless) rather than left behind to be settled a second time.
+    const stillOpen = await db.selectFrom('invoices')
+      .select('id')
+      .where('reservation_id', '=', partPaidReservationId)
+      .where('status', 'in', ['ISSUED', 'PARTIALLY_PAID'])
+      .execute();
+    expect(stillOpen).toHaveLength(0);
   });
 });

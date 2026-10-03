@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, HoldRow } from '../../db/types.js';
+import { inTransaction } from '../../core/db/transaction.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { HoldFilters, HoldStatus, HoldRequestMeta } from './holds.types.js';
 
@@ -70,7 +71,7 @@ export class HoldsRepository {
    * quote — occupancy is protected by the database, not by app timing.
    */
   async create(params: CreateHoldParams, meta: HoldRequestMeta): Promise<HoldRow> {
-    return this.db.transaction().execute(async (trx) => {
+    return inTransaction(this.db, async (trx) => {
       const hold = await trx
         .insertInto('holds')
         .values({
