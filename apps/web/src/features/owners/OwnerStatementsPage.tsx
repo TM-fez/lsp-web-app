@@ -100,7 +100,8 @@ function OwnerCard({ owner, from, to }: { owner: OwnerStatement; from: string; t
               <WhatsAppButton phone={owner.landlord_phone} label={`WhatsApp ${owner.landlord_phone}`} />
             </div>
           )}
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[36rem] whitespace-nowrap text-sm md:whitespace-normal">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.14em] text-muted">
                 <th className="py-2 pr-4 font-medium">Unit</th>
@@ -126,6 +127,7 @@ function OwnerCard({ owner, from, to }: { owner: OwnerStatement; from: string; t
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

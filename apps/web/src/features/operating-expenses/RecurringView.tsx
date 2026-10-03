@@ -91,8 +91,8 @@ export function RecurringView() {
           description="Add rent, insurance, software and other monthly overheads once — then generate them each month with a click."
           action={canCreate ? <Button variant="primary" onClick={openNew}>Add the first one</Button> : undefined} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-line bg-paper">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-line bg-paper">
+          <table className="min-w-[40rem] w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.18em] text-muted">
                 <th className="px-4 py-3.5 font-medium">Category</th>

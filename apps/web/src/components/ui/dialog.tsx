@@ -12,7 +12,7 @@ export function DialogContent({ className, children }: { className?: string; chi
       <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm" />
       <DialogPrimitive.Content
         className={cn(
-          'fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col gap-4 overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-xl outline-none',
+          'fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col gap-4 overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-xl sm:p-6 outline-none',
           className,
         )}
       >

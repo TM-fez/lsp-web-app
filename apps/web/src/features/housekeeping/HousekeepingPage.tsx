@@ -55,7 +55,7 @@ export function HousekeepingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start flex-wrap gap-3 justify-between">
         <div>
           <h1 className="font-display text-4xl text-ink">Housekeeping</h1>
           <p className="text-sm text-slate-500">
@@ -135,8 +135,8 @@ export function HousekeepingPage() {
       ) : filtered.length === 0 ? (
         <EmptyState title="Nothing here" description="No units match this filter or search. Try clearing them." />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
                 <th className="px-4 py-3 font-medium">Unit</th>
