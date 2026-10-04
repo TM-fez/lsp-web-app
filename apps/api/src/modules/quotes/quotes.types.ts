@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 import { UnitTypeEnum, type UnitType } from '../pricing/pricing.types.js';
 import type { PriceSegment } from '../pricing/pricing.types.js';
 
@@ -12,7 +13,7 @@ export const CreateQuoteSchema = z
     check_out: z.coerce.date(),
     guests: z.number().int().min(1).default(1),
     // Signed manual adjustment in thebe (negative = discount). Requires pricing.override.
-    adjustment_amount: z.number().int().optional(),
+    adjustment_amount: z.number().int().min(-MAX_MONEY_THEBE).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional(),
     adjustment_reason: z.string().max(500).optional().nullable(),
   })
   .refine((d) => d.check_in < d.check_out, {

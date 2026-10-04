@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 
 export const InvoiceKindEnum = z.enum(['DEPOSIT', 'BALANCE', 'REFUND']);
 export const InvoiceStatusEnum = z.enum(['ISSUED', 'PARTIALLY_PAID', 'PAID', 'REFUNDED', 'VOID']);
@@ -16,7 +17,7 @@ export const IssueInvoiceSchema = z.object({
    * handed over, which is not necessarily the quote's 50% deposit. Omitted for the
    * ordinary deposit-then-balance flow, which keeps deriving both from the quote.
    */
-  amount: z.number().int().positive().optional(),
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional(),
 });
 
 export const SettleInvoiceSchema = z.object({
@@ -30,7 +31,7 @@ export const SettleInvoiceSchema = z.object({
 });
 
 export const RefundInvoiceSchema = z.object({
-  amount: z.number().int().positive(),
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'),
   reason: z.string().min(1).max(500),
 });
 

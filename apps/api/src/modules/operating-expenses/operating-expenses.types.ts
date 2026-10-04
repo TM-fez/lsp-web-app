@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 
 export const OperatingExpenseCategoryEnum = z.enum([
   'RENT', 'PAYROLL', 'UTILITIES', 'MARKETING', 'INSURANCE', 'SUPPLIES', 'SOFTWARE', 'OTHER',
@@ -10,7 +11,7 @@ export const CreateOperatingExpenseSchema = z.object({
   category: OperatingExpenseCategoryEnum,
   description: z.string().min(1).max(300),
   vendor: z.string().max(200).nullable().optional(),
-  amount: z.number().int().positive(),        // thebe (100 = 1 BWP)
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'),        // thebe (100 = 1 BWP)
   currency: z.string().length(3).optional(),
   incurred_on: z.coerce.date(),               // accepts 'YYYY-MM-DD', stored as DATE
   notes: z.string().max(2000).nullable().optional(),
@@ -44,7 +45,7 @@ export const CreateRecurringSchema = z.object({
   category: OperatingExpenseCategoryEnum,
   description: z.string().min(1).max(300),
   vendor: z.string().max(200).nullable().optional(),
-  amount: z.number().int().positive(),
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'),
   day_of_month: z.number().int().min(1).max(28).optional(),
   active: z.boolean().optional(),
   notes: z.string().max(2000).nullable().optional(),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 
 export const PaymentMethodEnum = z.enum(['CARD', 'MOBILE_MONEY', 'EFT', 'CASH', 'CORPORATE_CREDIT', 'OTHER']);
 export const PaymentStatusEnum = z.enum(['PENDING', 'RETRY', 'PAID', 'FAILED', 'EXPIRED']);
@@ -13,7 +14,7 @@ export const CreatePaymentIntentSchema = z.object({
   method: PaymentMethodEnum,
   purpose: PaymentPurposeEnum.default('DEPOSIT'),
   // Defaults to the quote's deposit (or balance) when omitted.
-  amount: z.number().int().positive().optional(),
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional(),
   max_attempts: z.number().int().min(1).max(10).optional(),
 });
 
