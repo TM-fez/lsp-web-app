@@ -288,6 +288,19 @@ async function run(): Promise<void> {
     );
     nRes++;
 
+    // An in-house stay is a reservation AND an open occupancy row AND an occupied unit — the
+    // same three things a real check-in writes. Seeding only the first left the in-house and
+    // check-out screens disagreeing with the reservation list.
+    if (status === 'CHECKED_IN') {
+      await client.query(
+        `INSERT INTO occupancy
+           (reservation_id, room_id, status, checked_in_at, guest_count, created_by, updated_by)
+         VALUES ($1,$2,'CHECKED_IN',$3,$4,$5,$5)`,
+        [resRow.id, room.id, `${iso(checkIn)}T12:00:00Z`, guests, A]
+      );
+      await client.query(`UPDATE rooms SET status = 'OCCUPIED' WHERE id = $1`, [room.id]);
+    }
+
     const { rows: [quoteRow] } = await client.query(
       `INSERT INTO quotes
          (rate_plan_id, unit_type, check_in_date, check_out_date, guests, nights,
