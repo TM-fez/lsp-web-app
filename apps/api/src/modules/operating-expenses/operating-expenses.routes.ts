@@ -6,6 +6,7 @@ import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
+import { idempotent } from '../../core/middleware/idempotency.middleware.js';
 import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import { AppError } from '../../core/errors/AppError.js';
 import type { Request, Response, NextFunction } from 'express';
@@ -76,7 +77,7 @@ export function createOperatingExpensesRouter(dbInstance = db): Router {
   router.delete('/recurring/:id', authorize('opex.delete'), recurringInScope, controller.removeRecurring);
 
   router.get('/:id', authorize('opex.read'), opexInScope, controller.get);
-  router.post('/', authorize('opex.create'), validateBody(CreateOperatingExpenseSchema), bodyPropertyInScope, controller.create);
+  router.post('/', authorize('opex.create'), validateBody(CreateOperatingExpenseSchema), bodyPropertyInScope, idempotent(dbInstance), controller.create);
   router.patch('/:id', authorize('opex.update'), opexInScope, validateBody(UpdateOperatingExpenseSchema), bodyPropertyInScope, controller.update);
   router.delete('/:id', authorize('opex.delete'), opexInScope, controller.remove);
 

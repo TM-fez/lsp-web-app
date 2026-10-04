@@ -6,6 +6,7 @@ import { db } from '../../../config/db.js';
 import { authenticate } from '../../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../../core/auth/authorize.middleware.js';
 import { validateBody } from '../../../core/middleware/validate.middleware.js';
+import { idempotent } from '../../../core/middleware/idempotency.middleware.js';
 import { CreateContactSchema, UpdateContactSchema } from '../crm.types.js';
 
 export function createContactsRouter(dbInstance = db): Router {
@@ -19,7 +20,7 @@ export function createContactsRouter(dbInstance = db): Router {
   router.get('/', authorize('crm.contacts.read'), controller.getContacts);
   router.get('/:id', authorize('crm.contacts.read'), controller.getContactById);
   
-  router.post('/', authorize('crm.contacts.create'), validateBody(CreateContactSchema), controller.createContact);
+  router.post('/', authorize('crm.contacts.create'), validateBody(CreateContactSchema), idempotent(dbInstance), controller.createContact);
 
   router.patch('/:id', authorize('crm.contacts.update'), validateBody(UpdateContactSchema), controller.updateContact);
   
