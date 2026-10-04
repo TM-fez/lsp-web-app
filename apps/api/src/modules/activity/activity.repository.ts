@@ -114,8 +114,12 @@ export class ActivityRepository {
       const examined = Number(last.chunk_size);
       for (const r of rows) {
         if (r.visible && out.length < limit) {
-          const { visible: _v, chunk_size: _c, cursor_ts: _t, ...row } = r;
-          out.push(row);
+          // Drop the scan bookkeeping columns; the rest is the public row.
+          const row: Partial<ChunkRow> = { ...r };
+          delete row.visible;
+          delete row.chunk_size;
+          delete row.cursor_ts;
+          out.push(row as ActivityRow);
         }
       }
       scanned += examined;
