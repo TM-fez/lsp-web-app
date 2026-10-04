@@ -1,4 +1,5 @@
 import { api } from './client';
+import { idempotencyConfig } from './idempotency';
 import type { Invoice, InvoiceStatus, InvoiceKind, InvoiceDocument, InvoiceList } from '@/types';
 
 export interface InvoiceListParams {
@@ -44,7 +45,8 @@ export async function settleInvoice(id: string, receipt_file_id?: string | null)
   return data;
 }
 
-export async function refundInvoice(id: string, amount: number, reason: string): Promise<Invoice> {
-  const { data } = await api.post<Invoice>(`/invoices/${id}/refund`, { amount, reason });
+// `idempotencyKey`: one per dialog open, so a double click / retry can't refund twice.
+export async function refundInvoice(id: string, amount: number, reason: string, idempotencyKey?: string): Promise<Invoice> {
+  const { data } = await api.post<Invoice>(`/invoices/${id}/refund`, { amount, reason }, idempotencyConfig(idempotencyKey));
   return data;
 }

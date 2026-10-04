@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { useCreateGuest, useUpdateGuest, useDeleteGuest } from './hooks';
+import { newIdempotencyKey } from '@/lib/api/idempotency';
 import type { Contact, ContactType } from '@/types';
 
 const TYPES: ContactType[] = ['individual', 'company'];
@@ -47,6 +48,13 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
     setConfirmDelete(false);
   }, [open, guest]);
 
+  // One key per time the drawer opens: a double click or a retry after a slow network
+  // replays the first "Add guest" instead of creating the guest twice.
+  const idempotencyKey = useRef('');
+  useEffect(() => {
+    if (open) idempotencyKey.current = newIdempotencyKey();
+  }, [open]);
+
   const emailValid = email.trim() === '' || emailOk(email.trim());
   const valid = name.trim().length > 0 && emailValid;
 
@@ -67,7 +75,7 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
       if (guest) {
         await update.mutateAsync({ id: guest.id, input: payload });
       } else {
-        await create.mutateAsync(payload);
+        await create.mutateAsync({ input: payload, idempotencyKey: idempotencyKey.current });
       }
       onOpenChange(false);
     } catch {

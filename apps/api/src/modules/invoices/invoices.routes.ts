@@ -19,6 +19,7 @@ import {
   propertyOfReservation,
 } from '../../core/scope/propertyOf.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
+import { idempotent } from '../../core/middleware/idempotency.middleware.js';
 import { IssueInvoiceSchema, SettleInvoiceSchema, RefundInvoiceSchema } from './invoices.types.js';
 
 export function createInvoicesRouter(dbInstance = db): Router {
@@ -50,7 +51,7 @@ export function createInvoicesRouter(dbInstance = db): Router {
   router.get('/:id', authorize('invoices.read'), requireActiveProperty, inProperty, controller.get);
   router.post('/', authorize('invoices.create'), validateBody(IssueInvoiceSchema), requireActiveProperty, holdRefInProperty, reservationRefInProperty, controller.issue);
   router.post('/:id/settle', authorize('invoices.update'), requireActiveProperty, inProperty, validateBody(SettleInvoiceSchema), controller.settle);
-  router.post('/:id/refund', authorize('invoices.refund'), requireActiveProperty, inProperty, validateBody(RefundInvoiceSchema), controller.refund);
+  router.post('/:id/refund', authorize('invoices.refund'), requireActiveProperty, inProperty, validateBody(RefundInvoiceSchema), idempotent(dbInstance), controller.refund);
 
   return router;
 }

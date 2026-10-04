@@ -43,7 +43,8 @@ function useInvalidate() {
 export function useCreateGuest() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (input: CreateGuestInput) => createGuest(input),
+    mutationFn: ({ input, idempotencyKey }: { input: CreateGuestInput; idempotencyKey?: string }) =>
+      createGuest(input, idempotencyKey),
     onSuccess: () => {
       toast.success('Guest added');
       invalidate();

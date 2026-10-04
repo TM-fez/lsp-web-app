@@ -1,4 +1,5 @@
 import type { ReservationStatus, ReservationSource, PaymentState } from '@/types';
+import { pulaAmountError, pulaToThebe } from '@/lib/utils/money';
 
 type Tone = 'slate' | 'green' | 'amber' | 'blue' | 'rose' | 'violet';
 
@@ -80,4 +81,40 @@ export function fmtDate(s: string): string {
   return Number.isNaN(d.getTime())
     ? '—'
     : d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Discounts: the server only accepts one on a PENDING booking ("before payment confirms
+ * it"); anything later is a 409. Say so up front instead of offering a form that can only
+ * fail. null = a discount can be applied.
+ */
+export function discountBlockedReason(status: ReservationStatus): string | null {
+  if (status === 'PENDING') return null;
+  if (status === 'CONFIRMED') {
+    return 'A discount can only be added while the booking is pending, before payment confirms it. This booking is already confirmed, so its price is fixed.';
+  }
+  return `A discount can only be added while a booking is pending. This booking is ${statusLabel(status).toLowerCase()}.`;
+}
+
+/**
+ * The value typed in the discount box, as the API wants it: a whole percent (1–100), or a
+ * Pula amount turned into thebe. `error` is plain English for the line under the box.
+ */
+export function parseDiscountInput(
+  type: 'PERCENT' | 'FIXED',
+  text: string,
+): { value: number; error: null } | { value: null; error: string | null } {
+  const t = text.trim();
+  if (t === '') return { value: null, error: null };
+  if (type === 'PERCENT') {
+    if (!/^\d+$/.test(t)) return { value: null, error: 'Enter a whole percentage from 1 to 100.' };
+    const n = Number(t);
+    if (n < 1 || n > 100) return { value: null, error: 'A percentage discount must be between 1 and 100.' };
+    return { value: n, error: null };
+  }
+  const message = pulaAmountError(t);
+  if (message) return { value: null, error: message };
+  const thebe = pulaToThebe(t);
+  if (!(thebe > 0)) return { value: null, error: 'Enter an amount above P0.00.' };
+  return { value: thebe, error: null };
 }

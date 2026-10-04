@@ -71,8 +71,8 @@ export function useSettleInvoice() {
 export function useRefundInvoice() {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason: string }) =>
-      refundInvoice(id, amount, reason),
+    mutationFn: ({ id, amount, reason, idempotencyKey }: { id: string; amount: number; reason: string; idempotencyKey?: string }) =>
+      refundInvoice(id, amount, reason, idempotencyKey),
     onSuccess: () => {
       toast.success('Refund recorded ✓');
       refresh();

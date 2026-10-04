@@ -84,7 +84,9 @@ export class InvoicesController {
   refund = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as RefundInvoiceDTO;
-      res.status(201).json(await this.service.refundInvoice(req.params.id as string, dto.amount, dto.reason, this.getRequestMeta(req)));
+      res.status(201).json(await this.service.refundInvoice(req.params.id as string, dto.amount, dto.reason, this.getRequestMeta(req), {
+        hasIdempotencyKey: Boolean(req.get('Idempotency-Key')),
+      }));
     } catch (err) {
       next(err);
     }
