@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
 import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO, ClaimOtaBookingDTO, MarkPaidDTO, ConfirmReservationDTO } from './reservations.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
@@ -17,9 +18,7 @@ export class ReservationsController {
 
   getReservations = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      let limit = parseInt(req.query.limit as string) || 20;
-      if (limit > 100) limit = 100;
+      const { page, limit } = parsePageQuery(req.query);
       
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;

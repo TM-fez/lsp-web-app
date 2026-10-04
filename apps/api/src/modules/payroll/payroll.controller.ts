@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { PayrollService } from './payroll.service.js';
 import type { UpsertCompensationDTO, PostPayrollDTO } from './payroll.types.js';
+import { pageOf } from '../../core/http/pagination.js';
 
 export class PayrollController {
   constructor(private readonly service: PayrollService) {}
@@ -9,9 +10,9 @@ export class PayrollController {
     return { userId: req.user!.sub, ip: req.ip, requestId: req.id };
   }
 
-  listEmployees = async (_req: Request, res: Response, next: NextFunction) => {
+  listEmployees = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json({ data: await this.service.listEmployees() });
+      res.json(pageOf(await this.service.listEmployees(), req.query));
     } catch (err) {
       next(err);
     }

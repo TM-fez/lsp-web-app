@@ -186,7 +186,7 @@ export function InvoicesPage() {
       {rangeInvalid && <p role="alert" className="text-xs text-terra">The start date is after the end date.</p>}
 
       {data && data.totals.outstanding_count > 0 && (
-        <div className="flex flex-wrap gap-6 rounded-lg border border-line bg-paper px-4 py-3 text-sm">
+        <div className="flex flex-wrap gap-6 rounded-lg border border-line bg-paper px-4 py-3 text-sm" title={data.totals.scope}>
           <div>
             <span className="text-muted">Unpaid in this view </span>
             <span className="tabnum text-ink">{formatMoney(data.totals.outstanding_amount, 'BWP')}</span>

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { UsersService } from './users.service.js';
 import type { CreateUserDTO, ResetPasswordDTO, UpdateUserDTO, UsersRequestMeta } from './users.types.js';
+import { pageOf } from '../../core/http/pagination.js';
 
 export class UsersController {
   constructor(private readonly service: UsersService) {}
@@ -14,10 +15,9 @@ export class UsersController {
     };
   }
 
-  listUsers = async (_req: Request, res: Response, next: NextFunction) => {
+  listUsers = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const users = await this.service.listUsers();
-      res.json({ data: users, total: users.length });
+      res.json(pageOf(await this.service.listUsers(), req.query));
     } catch (err) {
       next(err);
     }

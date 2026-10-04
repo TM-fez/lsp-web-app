@@ -3,6 +3,7 @@ import { QuotesService } from './quotes.service.js';
 import { QuoteStatusEnum } from './quotes.types.js';
 import { UnitTypeEnum } from '../pricing/pricing.types.js';
 import type { CreateQuoteDTO } from './quotes.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class QuotesController {
   constructor(private readonly service: QuotesService) {}
@@ -18,8 +19,7 @@ export class QuotesController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
+      const { page, limit } = parsePageQuery(req.query);
       const status = req.query.status ? QuoteStatusEnum.parse(req.query.status) : undefined;
       const unit_type = req.query.unit_type ? UnitTypeEnum.parse(req.query.unit_type) : undefined;
       res.json(await this.service.listQuotes({ status, unit_type }, { page, limit }));

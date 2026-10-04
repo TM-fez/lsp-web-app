@@ -235,6 +235,8 @@ export class InvoicesRepository {
       outstanding_count: Number(totals!.outstanding_count),
       overdue_amount: Number(totals!.overdue_amount),
       overdue_count: Number(totals!.overdue_count),
+      scope:
+        'Money still owed across every invoice matching your search, branch and date filters. It ignores the status tab, so the Paid tab still shows what is owed elsewhere.',
     };
 
     return {

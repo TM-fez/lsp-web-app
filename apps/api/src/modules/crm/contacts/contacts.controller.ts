@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { ContactsService } from './contacts.service.js';
 import type { ContactViewer, CreateContactDTO, UpdateContactDTO } from '../crm.types.js';
 import { accessiblePropertyIdsForUser } from '../../../core/scope/activeProperty.js';
+import { parsePageQuery } from '../../../core/http/pagination.js';
 
 export class ContactsController {
   constructor(private readonly service: ContactsService) {}
@@ -26,9 +27,7 @@ export class ContactsController {
 
   getContacts = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      let limit = parseInt(req.query.limit as string) || 20;
-      if (limit > 100) limit = 100;
+      const { page, limit } = parsePageQuery(req.query);
       const search = req.query.search as string | undefined;
       const type = req.query.type as 'individual' | 'company' | undefined;
       const sort = req.query.sort === 'stays' ? 'stays' : undefined;
