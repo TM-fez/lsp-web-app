@@ -1,4 +1,4 @@
-import { ActivityRepository } from './activity.repository.js';
+import { ActivityRepository, type ActivityViewer } from './activity.repository.js';
 import type { ActivityItem } from './activity.types.js';
 
 type Action = 'CREATE' | 'UPDATE' | 'DELETE';
@@ -66,8 +66,8 @@ function humanize(entity: string, action: Action, diff: unknown): string {
 export class ActivityService {
   constructor(private readonly repo: ActivityRepository) {}
 
-  async recent(limit = 30, propertyId?: string): Promise<ActivityItem[]> {
-    const rows = await this.repo.recent(limit, propertyId);
+  async recent(limit = 30, propertyId?: string, viewer?: ActivityViewer): Promise<ActivityItem[]> {
+    const rows = await this.repo.recent(limit, propertyId, viewer);
     return rows.map((r) => ({
       id: r.id,
       actor: r.actor_name ?? 'System',
