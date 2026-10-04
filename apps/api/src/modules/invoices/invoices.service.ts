@@ -204,7 +204,13 @@ export class InvoicesService {
     return updated;
   }
 
-  async refundInvoice(id: string, amount: number, reason: string, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+  async refundInvoice(
+    id: string,
+    amount: number,
+    reason: string,
+    meta: InvoiceRequestMeta,
+    opts: { hasIdempotencyKey?: boolean } = {}
+  ): Promise<InvoiceRow> {
     // Fast, friendly refusals. The authoritative checks — including "how much is left"
     // after earlier partial refunds — run again in the repository under the invoice's row
     // lock, because a check here alone would race a second click.
@@ -241,7 +247,10 @@ export class InvoicesService {
         updated_by: meta.userId,
       },
       reason,
-      meta
+      meta,
+      // A caller that sent an Idempotency-Key already has exact retry protection (and a
+      // repeat of the same amount with a NEW key is a deliberate second refund).
+      { duplicateGuard: !opts.hasIdempotencyKey }
     );
   }
 }
