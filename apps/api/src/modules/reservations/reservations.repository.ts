@@ -1,10 +1,42 @@
 import { releaseReservationHolds } from '../holds/holds.release.js';
-import { Kysely, sql } from 'kysely';
+import { Kysely, Transaction, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
+import { AppError } from '../../core/errors/AppError.js';
+import { describeThebe } from '../../core/money/folio.js';
+import type { ReservationPricing, NotPriceable } from './reservations.pricing.js';
 import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { inTransaction } from '../../core/db/transaction.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
+
+/**
+ * Prices a stay INSIDE the caller's transaction. The repository does not know about rate
+ * plans; the service hands it this. It must read through the `trx` it is given — a second
+ * pool connection taken while the booking's lock is held is how a busy pool deadlocks itself.
+ */
+export type StayPricer = (
+  trx: Transaction<Database>,
+  stay: Pick<ReservationRow, 'room_id' | 'check_in_date' | 'check_out_date'>,
+  reservation: ReservationRow
+) => Promise<ReservationPricing | NotPriceable>;
+
+/** Everything `update` can do besides the plain column update, all under the booking's lock. */
+export interface ReservationUpdateOptions {
+  reconcile?: boolean;
+  taxRateBps?: number;
+  /** Runs on the row as it is UNDER THE LOCK, before anything is written; throw to refuse. */
+  validate?: (current: ReservationRow) => void;
+  /**
+   * A date / unit change: move what the booking owes by (new stay − old stay), in this same
+   * transaction. See repriceStayChange.
+   */
+  repriceStay?: StayPricer;
+  /**
+   * A discount change: re-agree the price of an unpaid PENDING booking from the row as it now
+   * is, in this same transaction. See refreezeUnpaid.
+   */
+  refreeze?: StayPricer;
+}
 
 export class ReservationsRepository {
   constructor(private readonly db: Kysely<Database>) {}
@@ -39,15 +71,21 @@ export class ReservationsRepository {
       .execute();
   }
 
-  /** The property a room belongs to (room → building → property), or null. */
-  async roomPropertyId(roomId: string): Promise<string | null> {
-    const row = await this.db
+  /**
+   * The property a room belongs to (room → building → property), or null.
+   *
+   * `includeDeleted` is for a booking's OWN room: a unit that was soft-deleted after it was
+   * booked is still where that booking is. Without it the property scope guard answered null,
+   * every by-id read of the booking became "not found", and it vanished from the board.
+   */
+  async roomPropertyId(roomId: string, opts: { includeDeleted?: boolean } = {}): Promise<string | null> {
+    let q = this.db
       .selectFrom('rooms')
       .leftJoin('buildings', 'buildings.id', 'rooms.building_id')
       .select('buildings.property_id as property_id')
-      .where('rooms.id', '=', roomId)
-      .where('rooms.deleted_at', 'is', null)
-      .executeTakeFirst();
+      .where('rooms.id', '=', roomId);
+    if (!opts.includeDeleted) q = q.where('rooms.deleted_at', 'is', null);
+    const row = await q.executeTakeFirst();
     return row?.property_id ?? null;
   }
 
@@ -239,21 +277,24 @@ export class ReservationsRepository {
     update: UpdateReservation,
     meta: ReservationRequestMeta,
     roomMove?: { fromRoomId: string; toRoomId: string },
-    opts: { reconcile?: boolean; taxRateBps?: number; capture?: { before?: ReservationRow } } = {}
+    opts: ReservationUpdateOptions = {}
   ): Promise<ReservationRow | undefined> {
     return inTransaction(this.db, async (trx) => {
-      // (Re-test round 3) An edit that re-prices needs the stay as it was immediately
-      // before THIS write — read under the row lock, so two edits at once each see the
-      // other's result instead of the same stale "before" (a 4-night stay billed as 3).
-      if (opts.capture) {
-        opts.capture.before = await trx
-          .selectFrom('reservations')
-          .selectAll()
-          .where('id', '=', id)
-          .where('deleted_at', 'is', null)
-          .forNoKeyUpdate()
-          .executeTakeFirst();
-      }
+      // (Round 4) EVERY edit takes the booking's row lock first and reads the booking as it is
+      // NOW, under that lock. Two edits at once used to each work from the row as it was when
+      // THEY started, then re-price in separate transactions afterwards — so the second change
+      // was priced against a stale figure and the folio ended up billing nights nobody had.
+      // The loser of the race now waits here and starts from the winner's committed result.
+      const before = await trx
+        .selectFrom('reservations')
+        .selectAll()
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .forNoKeyUpdate()
+        .executeTakeFirst();
+      if (!before) return undefined;
+      opts.validate?.(before);
+
       const updated = await trx
         .updateTable('reservations')
         .set({ ...update, updated_at: sql`now()` })
@@ -284,6 +325,15 @@ export class ReservationsRepository {
         (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(update.status);
       if (updated && (ended || opts.reconcile)) {
         await reconcileReceivable(trx, id, meta, { taxRateBps: opts.taxRateBps });
+      }
+      // The price follows the edit in the SAME transaction, still under the lock: the edit and
+      // its effect on the invoice commit together or not at all. (They used to commit apart, and
+      // a failure to re-price was only logged — leaving a booking whose dates and bill disagreed.)
+      if (updated && opts.repriceStay) {
+        await this.repriceStayChange(trx, before, updated, meta, opts.repriceStay);
+      }
+      if (updated && opts.refreeze) {
+        await this.refreezeUnpaid(trx, updated, meta, opts.refreeze);
       }
       // A booking that ends lets go of any hold still waiting on its payment (re-test 3).
       if (updated && ended) {
@@ -386,8 +436,10 @@ export class ReservationsRepository {
    * `refreeze`: re-price a PENDING booking with NOTHING paid whose total was frozen, after
    * a price-changing edit (dates, unit, discount). Freezing at creation would otherwise
    * turn every such edit into a silent mismatch between folio and invoice. Never touches a
-   * booking that has had money or has been confirmed — a confirmed price is an agreement
-   * (date/room changes after that are a known follow-up, H6).
+   * booking that has had money or has been confirmed — a confirmed price is an agreement.
+   *
+   * `adjust`: move a confirmed / part-paid booking's agreed price by `agreed.delta` (see
+   * repriceStayChange). The delta is added to the total AS IT STANDS UNDER THE LOCK.
    */
   async agreePrice(
     id: string,
@@ -395,64 +447,151 @@ export class ReservationsRepository {
     meta: ReservationRequestMeta,
     mode: 'ensure' | 'refreeze' | 'adjust' = 'ensure'
   ): Promise<void> {
-    await inTransaction(this.db, async (trx) => {
-      const reservation = await lockReservation(trx, id);
-      if (!reservation) return;
+    await inTransaction(this.db, (trx) => this.agreePriceIn(trx, id, agreed, meta, mode));
+  }
 
-      if (agreed && agreed.total > 0) {
-        let freeze = reservation.folio_total_amount == null;
-        if (mode === 'refreeze') {
-          const paid = (await paidToDate(trx, [id])).get(id) ?? 0;
-          freeze =
-            reservation.status === 'PENDING' &&
-            reservation.folio_total_amount != null &&
-            reservation.folio_total_amount !== agreed.total &&
-            paid === 0;
-        } else if (mode === 'adjust') {
-          // repriceAfterEdit passes the DELTA (new stay − old stay); it is applied to the
-          // total as it stands under this lock, not to a figure read before it. Two edits
-          // racing each add their own change instead of the second overwriting the first.
-          if (agreed.delta != null && reservation.folio_total_amount != null) {
-            agreed = { ...agreed, total: Math.max(0, reservation.folio_total_amount + agreed.delta) };
-          }
-          freeze = reservation.folio_total_amount !== agreed.total;
-        }
-        if (freeze) {
-          await trx
-            .updateTable('reservations')
-            .set({
-              folio_total_amount: agreed.total,
-              folio_currency: agreed.currency,
-              updated_by: meta.userId,
-              updated_at: sql`now()`,
-            })
-            .where('id', '=', id)
-            .execute();
-          await trx.insertInto('audit_logs').values({
-            request_id: meta.requestId ?? null,
-            user_id: meta.userId,
-            action: 'UPDATE',
-            entity: 'reservations',
-            entity_id: id,
-            diff: {
-              folio_total_amount: agreed.total,
-              ...(mode === 'adjust' ? { from: reservation.folio_total_amount } : {}),
-              reason:
-                mode === 'refreeze'
-                  ? 'price re-agreed after edit'
-                  : mode === 'adjust'
-                    ? 'price adjusted for changed dates or unit'
-                    : 'price agreed',
-            },
-            ip_address: meta.ip ?? null,
-          }).execute();
-        }
+  private async agreePriceIn(
+    trx: Transaction<Database>,
+    id: string,
+    agreed: { total: number; currency: string; taxRateBps: number; delta?: number } | null,
+    meta: ReservationRequestMeta,
+    mode: 'ensure' | 'refreeze' | 'adjust'
+  ): Promise<void> {
+    const reservation = await lockReservation(trx, id);
+    if (!reservation) return;
+
+    // A price adjustment is the one place a total may legitimately become 0 (a comp stay)
+    // and the one place it is derived from the locked row, so it is resolved first.
+    if (agreed && mode === 'adjust' && agreed.delta != null && reservation.folio_total_amount != null) {
+      const next = reservation.folio_total_amount + agreed.delta;
+      // No clipping at zero: a negative total means refunds already taken off this booking
+      // exceed what the changed stay costs, and quietly flooring it would misstate what the
+      // guest is owed. Refuse the edit (it rolls back whole) and let a person decide.
+      if (next < 0) {
+        throw AppError.conflict(
+          `This change would take the booking’s agreed price below zero (${describeThebe(next)}), because earlier refunds have already reduced it. Ask the owner to review the refunds before changing these dates.`
+        );
       }
+      agreed = { ...agreed, total: next };
+    }
 
-      await reconcileReceivable(trx, id, meta, {
-        taxRateBps: agreed?.taxRateBps,
-        currency: agreed?.currency,
-      });
+    if (agreed && (agreed.total > 0 || (mode === 'adjust' && agreed.total === 0))) {
+      let freeze = reservation.folio_total_amount == null;
+      if (mode === 'refreeze') {
+        const paid = (await paidToDate(trx, [id])).get(id) ?? 0;
+        freeze =
+          reservation.status === 'PENDING' &&
+          reservation.folio_total_amount != null &&
+          reservation.folio_total_amount !== agreed.total &&
+          paid === 0;
+      } else if (mode === 'adjust') {
+        freeze = reservation.folio_total_amount !== agreed.total;
+      }
+      if (freeze) {
+        await trx
+          .updateTable('reservations')
+          .set({
+            folio_total_amount: agreed.total,
+            folio_currency: agreed.currency,
+            updated_by: meta.userId,
+            updated_at: sql`now()`,
+          })
+          .where('id', '=', id)
+          .execute();
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'reservations',
+          entity_id: id,
+          diff: {
+            folio_total_amount: agreed.total,
+            ...(mode === 'adjust' ? { from: reservation.folio_total_amount } : {}),
+            reason:
+              mode === 'refreeze'
+                ? 'price re-agreed after edit'
+                : mode === 'adjust'
+                  ? 'price adjusted for changed dates or unit'
+                  : 'price agreed',
+          },
+          ip_address: meta.ip ?? null,
+        }).execute();
+      }
+    }
+
+    await reconcileReceivable(trx, id, meta, {
+      taxRateBps: agreed?.taxRateBps,
+      currency: agreed?.currency,
     });
+  }
+
+  /**
+   * (Round 4) After a date or unit change, move what the booking owes — INSIDE the edit's own
+   * transaction, with the booking still locked.
+   *
+   * It used to run after the edit had committed, in a second transaction, working from the
+   * `before` / `after` rows of ITS edit. With two edits in flight each priced a delta against
+   * a different "before", the deltas no longer telescoped, and a clip at zero hid the rest:
+   * three parallel edits left the folio and invoice P5,130 above the price of the final dates
+   * (or below it). Now there is no "later" and no stale row: `before` is read under the lock
+   * (it IS the previous edit's committed result) and `after` is what this edit just wrote, so
+   * the deltas of any number of racing edits add up to exactly (final stay − original stay).
+   *
+   * An unpaid PENDING booking is simply re-priced from scratch. Every other live booking —
+   * CONFIRMED (paid or not, invariant 3), part-paid, CHECKED_IN — moves by the DIFFERENCE
+   * between the stay as it was and as it is, both at today's rates. That is still not a full
+   * re-price of the agreed total: negotiated rates and refunds already lowered off the total
+   * (owner decision: a refund never puts the guest back in debt) must survive a date change.
+   * When nothing has been negotiated or refunded the two are identical, and the folio equals
+   * the recomputed price of the final dates.
+   */
+  private async repriceStayChange(
+    trx: Transaction<Database>,
+    before: ReservationRow,
+    after: ReservationRow,
+    meta: ReservationRequestMeta,
+    price: StayPricer
+  ): Promise<void> {
+    if (after.folio_total_amount == null) return; // never priced — nothing agreed to move
+    if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(after.status)) return;
+
+    const paid = (await paidToDate(trx, [after.id])).get(after.id) ?? 0;
+    if (after.status === 'PENDING' && paid === 0) {
+      await this.refreezeUnpaid(trx, after, meta, price);
+      return;
+    }
+
+    const was = await price(trx, before, before);
+    const now = await price(trx, after, after);
+    if (!was.priceable || !now.priceable) return;
+    const delta = now.total_amount - was.total_amount;
+    if (delta === 0) return;
+
+    await this.agreePriceIn(
+      trx,
+      after.id,
+      { total: after.folio_total_amount + delta, delta, currency: now.currency, taxRateBps: now.tax_rate_bps },
+      meta,
+      'adjust'
+    );
+  }
+
+  /** Re-agree the price of an unpaid PENDING booking from the row as it now stands (under the lock). */
+  private async refreezeUnpaid(
+    trx: Transaction<Database>,
+    current: ReservationRow,
+    meta: ReservationRequestMeta,
+    price: StayPricer
+  ): Promise<void> {
+    if (current.status !== 'PENDING' || current.folio_total_amount == null) return;
+    const priced = await price(trx, current, current);
+    if (!priced.priceable) return;
+    await this.agreePriceIn(
+      trx,
+      current.id,
+      { total: priced.total_amount, currency: priced.currency, taxRateBps: priced.tax_rate_bps },
+      meta,
+      'refreeze'
+    );
   }
 }

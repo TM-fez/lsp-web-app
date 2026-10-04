@@ -14,6 +14,19 @@ export class RoomsRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * A unit even if it has since been soft-deleted. Only for resolving what a booking already
+   * made against it points at (its unit type for pricing); nothing new may be booked on a
+   * deleted unit, so every other read keeps using findById.
+   */
+  async findByIdWithDeleted(id: string): Promise<RoomRow | undefined> {
+    return this.db
+      .selectFrom('rooms')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+  }
+
   // Case-insensitive lookup of an active room by code (used to enforce uniqueness).
   // Code uniqueness is scoped to the building (block) — see migration 051. Two
   // blocks (or properties) may each reuse a code; only a clash within the same

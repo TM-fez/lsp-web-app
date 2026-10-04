@@ -224,7 +224,7 @@ describe('ReservationsService', () => {
     let rooms: any, pricing: any, payments: any, paid: ReservationsService;
 
     beforeEach(() => {
-      rooms = { findById: vi.fn().mockResolvedValue({ id: 'room-1', type: 'STANDARD' }) };
+      rooms = { findByIdWithDeleted: vi.fn().mockResolvedValue({ id: 'room-1', type: 'STANDARD' }) };
       pricing = { getActivePlan: vi.fn(), priceStay: vi.fn() };
       // The whole money chain (quote → hold → intent → settle → receipt → open invoice) is
       // ONE transaction inside PaymentsRepository.recordDeskPayment; its atomicity and
@@ -459,34 +459,56 @@ describe('ReservationsService', () => {
       expect(agreePrice).toHaveBeenCalledWith('res-e', null, expect.anything(), 'ensure');
     });
 
-    it('re-prices an unpaid PENDING booking whose total was frozen when its dates change', async () => {
+    // (Round 4) The price follows a date edit INSIDE the edit's own transaction: the service no
+    // longer re-prices afterwards. It hands the repository the stay pricer, and the repository
+    // (real SQL — see tests/integration/modules/concurrent-edits.test.ts) does the rest.
+    it('hands the repository a stay pricer when the dates change, so the edit and its re-price are one transaction', async () => {
       repository.findById.mockResolvedValue({ ...live, folio_total_amount: 100_000 } as any);
       repository.checkAvailability.mockResolvedValue(true);
       repository.update.mockResolvedValue({ ...live, folio_total_amount: 100_000 } as any);
+      const svc2 = new ReservationsService(repository, { findByIdWithDeleted: vi.fn() } as any, {} as any);
 
-      await svc.modifyReservation('res-e', { check_out_date: new Date('2026-09-04') } as any, { userId: 'u1' } as any);
+      await svc2.modifyReservation('res-e', { check_out_date: new Date('2026-09-04') } as any, { userId: 'u1' } as any);
 
-      expect(agreePrice).toHaveBeenCalledWith('res-e', expect.objectContaining({ total: 112_000 }), expect.anything(), 'refreeze');
+      const opts = repository.update.mock.calls[0]![4] as Record<string, unknown>;
+      expect(typeof opts.repriceStay).toBe('function');
+      expect(typeof opts.validate).toBe('function');
+      expect(agreePrice).not.toHaveBeenCalled(); // nothing is priced outside the transaction any more
     });
 
-    it('does not re-price on an edit that cannot change the price', async () => {
+    it('does not ask for a re-price on an edit that cannot change the price', async () => {
       repository.findById.mockResolvedValue({ ...live, folio_total_amount: 100_000 } as any);
       repository.update.mockResolvedValue(live as any);
+      const svc2 = new ReservationsService(repository, { findByIdWithDeleted: vi.fn() } as any, {} as any);
 
-      await svc.modifyReservation('res-e', { notes: 'late arrival' } as any, { userId: 'u1' } as any);
+      await svc2.modifyReservation('res-e', { notes: 'late arrival' } as any, { userId: 'u1' } as any);
 
-      expect(agreePrice).not.toHaveBeenCalled();
+      const opts = repository.update.mock.calls[0]![4] as Record<string, unknown>;
+      expect(opts.repriceStay).toBeUndefined();
     });
 
-    it('never fails the edit because the receivable could not be re-priced', async () => {
+    it('refuses a change that leaves check-out on or before check-in, judged against the locked row', async () => {
       repository.findById.mockResolvedValue({ ...live, folio_total_amount: 100_000 } as any);
       repository.checkAvailability.mockResolvedValue(true);
       repository.update.mockResolvedValue(live as any);
-      agreePrice.mockRejectedValue(new Error('deadlock'));
+      const svc2 = new ReservationsService(repository, { findByIdWithDeleted: vi.fn() } as any, {} as any);
+      await svc2.modifyReservation('res-e', { check_out_date: new Date('2026-09-04') } as any, { userId: 'u1' } as any);
+
+      const validate = (repository.update.mock.calls[0]![4] as { validate: (r: unknown) => void }).validate;
+      // A parallel edit moved check-in to the 5th while this one only sets check-out to the 4th.
+      expect(() => validate({ ...live, check_in_date: new Date('2026-09-05') })).toThrow(/Check-out date must be after check-in/);
+      expect(() => validate(live)).not.toThrow();
+    });
+
+    it('a failure to move the price now fails the whole edit instead of being logged and swallowed', async () => {
+      repository.findById.mockResolvedValue({ ...live, folio_total_amount: 100_000 } as any);
+      repository.checkAvailability.mockResolvedValue(true);
+      repository.update.mockRejectedValue(new Error('deadlock'));
+      const svc2 = new ReservationsService(repository, { findByIdWithDeleted: vi.fn() } as any, {} as any);
 
       await expect(
-        svc.modifyReservation('res-e', { check_out_date: new Date('2026-09-04') } as any, { userId: 'u1' } as any),
-      ).resolves.toBeDefined();
+        svc2.modifyReservation('res-e', { check_out_date: new Date('2026-09-04') } as any, { userId: 'u1' } as any),
+      ).rejects.toThrow('deadlock');
     });
   });
 
