@@ -34,13 +34,14 @@ let propA: string, propB: string, bldA: string, bldB: string, roomA: string, roo
 let contactId: string, reservationId: string, woId: string, invoiceId: string;
 const f: Record<string, string> = {};
 
-const READ = ['files.read', 'files.create'];
+const READ = ['files.read', 'files.create', 'files.library'];
 const as = (sub: string, role: string, permissions: string[]) => {
   mockState.user = { sub, role, permissions };
 };
 const asReception = () => as(reception, 'reception', [...READ, 'files.guest_documents.read']);
 const asAccounts = () => as(accounts, 'accounts', READ);
-const asContractor = () => as(contractor, 'contractor', READ);
+// Contractors hold files.read / files.create for their job photos — not the library.
+const asContractor = () => as(contractor, 'contractor', ['files.read', 'files.create']);
 
 const get = (path: string) => request(app).get(path).set('Authorization', 'Bearer t');
 const ids = (res: request.Response) => (res.body.data as Array<{ id: string }>).map((r) => r.id);
@@ -154,10 +155,10 @@ describe('P6 Files library', () => {
     expect((await get(`/files/${f.passport}/download`)).status).toBe(404);
   });
 
-  it('shows a contractor only their own uploads and their jobs’ photos', async () => {
+  it('keeps contractors out of the library screen; they still open their own job photos', async () => {
     asContractor();
-    const res = await get(`/files/library?search=${uniq}&limit=100`);
-    expect(ids(res).sort()).toEqual([f.repair].sort());
+    expect((await get(`/files/library?search=${uniq}&limit=100`)).status).toBe(403);
+    expect((await get(`/files/${f.repair}`)).status).toBe(200);
     expect((await get(`/files/${f.contractorstray}`)).status).toBe(404);
   });
 
