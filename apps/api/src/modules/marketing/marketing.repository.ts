@@ -1,10 +1,14 @@
 import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { contactVisibleSql } from '../../core/scope/contactScope.js';
+import type { ContactViewer } from '../crm/crm.types.js';
 
 // One row per contact with the booking history the segmentation needs. Correlated
 // subqueries (not a join) so multiple invoices/reservations per contact don't
 // double-count. Company-wide: a customer is a customer across the whole estate
 // (contacts are not property-scoped), matching how crm.contacts already behaves.
+// (Owner decision 2026-10-04) …except for staff limited to some properties: `viewer`
+// narrows the guests to those they may see, by the same rule as the guest list.
 export interface CustomerStat {
   id: string;
   name: string;
@@ -20,7 +24,8 @@ export interface CustomerStat {
 export class MarketingRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async customerStats(): Promise<CustomerStat[]> {
+  async customerStats(viewer?: ContactViewer): Promise<CustomerStat[]> {
+    const visible = viewer ? contactVisibleSql('c', viewer.propertyIds, viewer.userId) : sql<boolean>`true`;
     const r = await sql<CustomerStat>`
       SELECT
         c.id, c.name, c.email, c.phone, c.company, c.previous_stays,
@@ -35,7 +40,7 @@ export class MarketingRepository {
            WHERE r.contact_id = c.id AND r.deleted_at IS NULL
              AND r.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT')) AS last_stay_days
       FROM contacts c
-      WHERE c.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL AND ${visible}
     `.execute(this.db);
     return r.rows;
   }

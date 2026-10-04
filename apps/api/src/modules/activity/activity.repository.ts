@@ -5,7 +5,8 @@ import type { Database } from '../../db/types.js';
 // noise, and staff pay, which is nobody else's business. The feed never renders the
 // diff, so no figure leaked — but "Tumelo updated a record" against staff_compensation
 // still tells the whole team that somebody's salary was touched, and by whom.
-const HIDE = ['auth_login', 'refresh_token', 'staff_compensation'];
+// (2026-10-04) A password change is equally personal — and says nothing to the team.
+const HIDE = ['auth_login', 'refresh_token', 'staff_compensation', 'user_password'];
 
 // entity_id is TEXT, not UUID (migration 009), so it cannot be cast blindly — one
 // non-uuid row would fail the whole query and blank the feed. Guarded here instead.
@@ -99,13 +100,31 @@ export class ActivityRepository {
                      JOIN rooms rm ON rm.id = r.room_id
                      JOIN buildings b ON b.id = rm.building_id WHERE i.id = s.eid)
                 -- An intent hangs off a hold, which knows the room directly or through
-                -- its reservation.
+                -- its reservation — or (migration 071) off an invoice settled with no hold,
+                -- which knows its booking. The invoice half used to resolve to nothing, so
+                -- every Invoices-page settlement showed in every property's feed.
                 WHEN 'payment_intents' THEN
                   (SELECT b.property_id FROM payment_intents pi
-                     JOIN holds h ON h.id = pi.hold_id
+                     LEFT JOIN holds h ON h.id = pi.hold_id
+                     LEFT JOIN invoices pinv ON pinv.id = pi.invoice_id
                      JOIN rooms rm ON rm.id = coalesce(
-                       h.room_id, (SELECT res.room_id FROM reservations res WHERE res.id = h.reservation_id))
+                       h.room_id,
+                       (SELECT res.room_id FROM reservations res WHERE res.id = coalesce(h.reservation_id, pinv.reservation_id)))
                      JOIN buildings b ON b.id = rm.building_id WHERE pi.id = s.eid)
+                -- (Owner decision 2026-10-04) A guest belongs to the properties they have
+                -- booked at. Booked here → this property; booked only elsewhere → a value
+                -- that never matches (so another property's guest stays out); never booked
+                -- → global, like the guest list (core/scope/contactScope.ts).
+                WHEN 'contacts' THEN
+                  (SELECT CASE
+                            WHEN bool_or(b.property_id = ${propertyId ?? null}::uuid) THEN ${propertyId ?? null}::uuid
+                            ELSE '00000000-0000-0000-0000-000000000000'::uuid
+                          END
+                     FROM reservations r
+                     JOIN rooms rm ON rm.id = r.room_id
+                     JOIN buildings b ON b.id = rm.building_id
+                    WHERE (r.contact_id = s.eid OR r.billing_contact_id = s.eid) AND r.deleted_at IS NULL
+                   HAVING count(*) > 0)
                 WHEN 'buildings' THEN
                   (SELECT bl.property_id FROM buildings bl WHERE bl.id = s.eid)
                 WHEN 'properties' THEN s.eid

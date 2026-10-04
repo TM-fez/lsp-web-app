@@ -111,7 +111,7 @@ export async function findRefreshTokenByHash(
 ): Promise<RefreshTokenRecord | null> {
   const row = await db
     .selectFrom('refresh_tokens')
-    .select(['id', 'user_id', 'token_hash', 'expires_at', 'revoked', 'session_id'])
+    .select(['id', 'user_id', 'token_hash', 'expires_at', 'revoked', 'revoked_at', 'session_id'])
     .where('token_hash', '=', hash)
     .executeTakeFirst();
 
@@ -123,6 +123,7 @@ export async function findRefreshTokenByHash(
     tokenHash: row.token_hash,
     expiresAt: row.expires_at,
     revoked: row.revoked,
+    revokedAt: row.revoked_at,
     sessionId: row.session_id,
   };
 }
@@ -153,15 +154,26 @@ export async function findLiveSession(
 export async function revokeRefreshToken(id: string): Promise<void> {
   await db
     .updateTable('refresh_tokens')
-    .set({ revoked: true })
+    .set({ revoked: true, revoked_at: new Date() })
     .where('id', '=', id)
     .execute();
+}
+
+/** End one login session: every still-live refresh token in it. Returns how many. */
+export async function revokeSession(sessionId: string): Promise<number> {
+  const res = await db
+    .updateTable('refresh_tokens')
+    .set({ revoked: true, revoked_at: new Date() })
+    .where('session_id', '=', sessionId)
+    .where('revoked', '=', false)
+    .executeTakeFirst();
+  return Number(res.numUpdatedRows);
 }
 
 export async function revokeAllUserRefreshTokens(userId: string): Promise<void> {
   await db
     .updateTable('refresh_tokens')
-    .set({ revoked: true })
+    .set({ revoked: true, revoked_at: new Date() })
     .where('user_id', '=', userId)
     .where('revoked', '=', false)
     .execute();
@@ -188,7 +200,7 @@ export async function changeOwnPassword(
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
     await trx.updateTable('users').set({ password_hash: passwordHash, updated_at: new Date() }).where('id', '=', userId).execute();
-    let revoke = trx.updateTable('refresh_tokens').set({ revoked: true }).where('user_id', '=', userId).where('revoked', '=', false);
+    let revoke = trx.updateTable('refresh_tokens').set({ revoked: true, revoked_at: new Date() }).where('user_id', '=', userId).where('revoked', '=', false);
     if (keepSessionId) revoke = revoke.where('session_id', '<>', keepSessionId);
     const revoked = await revoke.executeTakeFirst();
     await trx.insertInto('audit_logs').values({

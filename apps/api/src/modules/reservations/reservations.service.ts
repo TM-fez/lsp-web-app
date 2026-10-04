@@ -157,7 +157,12 @@ export class ReservationsService {
       paid_amount: paid,
       outstanding_amount: outstanding,
       credit_amount: credit,
-      payment_state: paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
+      // A complimentary stay (agreed at P0 — e.g. a 100% discount) owes nothing and was
+      // never going to be paid; calling it UNPAID sent staff looking for a missing invoice.
+      payment_state:
+        total === 0 && source === 'FOLIO' && outstanding === 0
+          ? 'PAID'
+          : paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
       total_source: source,
       invoices,
     };

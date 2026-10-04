@@ -205,12 +205,25 @@ export class HousekeepingRepository {
     return q.orderBy('sort_order', 'asc').orderBy('created_at', 'asc').execute();
   }
 
+  // (Re-test 2026-10-04) The cleaning standard is what every turn is signed off against;
+  // editing it wrote no audit row, so nobody could tell who loosened it or when.
   async createChecklistItem(label: string, sortOrder: number, meta: HousekeepingRequestMeta): Promise<HousekeepingChecklistItemRow> {
-    return this.db
-      .insertInto('housekeeping_checklist_items')
-      .values({ label, sort_order: sortOrder, created_by: meta.userId, updated_by: meta.userId })
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    return this.db.transaction().execute(async (trx) => {
+      const item = await trx
+        .insertInto('housekeeping_checklist_items')
+        .values({ label, sort_order: sortOrder, created_by: meta.userId, updated_by: meta.userId })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: 'CREATE',
+        entity: 'housekeeping_checklist_items',
+        entity_id: item.id,
+        diff: { label, sort_order: sortOrder },
+      }).execute();
+      return item;
+    });
   }
 
   async updateChecklistItem(
@@ -218,12 +231,34 @@ export class HousekeepingRepository {
     patch: { label?: string; sort_order?: number; active?: boolean },
     meta: HousekeepingRequestMeta,
   ): Promise<HousekeepingChecklistItemRow | undefined> {
-    return this.db
-      .updateTable('housekeeping_checklist_items')
-      .set({ ...patch, updated_by: meta.userId, updated_at: sql`now()` })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
+    return this.db.transaction().execute(async (trx) => {
+      const before = await trx
+        .selectFrom('housekeeping_checklist_items')
+        .selectAll()
+        .where('id', '=', id)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!before) return undefined;
+      const item = await trx
+        .updateTable('housekeeping_checklist_items')
+        .set({ ...patch, updated_by: meta.userId, updated_at: sql`now()` })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      const diff: Record<string, { from: unknown; to: unknown }> = {};
+      for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
+        if (patch[key] !== undefined && patch[key] !== before[key]) diff[key] = { from: before[key], to: patch[key] };
+      }
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: 'UPDATE',
+        entity: 'housekeeping_checklist_items',
+        entity_id: id,
+        diff,
+      }).execute();
+      return item;
+    });
   }
 
   /** Item ids already ticked on a task. */

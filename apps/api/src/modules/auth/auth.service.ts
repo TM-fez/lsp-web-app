@@ -128,12 +128,32 @@ export async function login(
   return { tokens: { accessToken, rawRefreshToken: raw }, user };
 }
 
+/** Two tabs refreshing together present the same token seconds apart — not theft. */
+const REUSE_GRACE_MS = 30_000;
+
 export async function refresh(
   rawRefreshToken: string,
   meta: RequestMeta
 ): Promise<{ tokens: TokenPair; user: AuthUser }> {
   const hash = authRepo.hashRefreshToken(rawRefreshToken);
   const tokenRow = await authRepo.findRefreshTokenByHash(hash);
+
+  // (Re-test 2026-10-04) A token that was already rotated away, presented again well after
+  // it was revoked, means someone else holds a copy. End the whole session so the copy
+  // dies with it. Within the grace window it is two tabs refreshing at once — refuse
+  // that one request, leave the session alone.
+  if (tokenRow?.revoked && tokenRow.revokedAt && Date.now() - tokenRow.revokedAt.getTime() > REUSE_GRACE_MS) {
+    const ended = await authRepo.revokeSession(tokenRow.sessionId);
+    await writeAuditLog({
+      request_id: meta.requestId ?? null,
+      user_id: tokenRow.userId,
+      action: 'DELETE',
+      entity: 'refresh_token',
+      entity_id: tokenRow.id,
+      diff: JSON.stringify({ reuse_detected: true, session_ended: tokenRow.sessionId, tokens_revoked: ended }),
+      ip_address: meta.ip ?? null,
+    });
+  }
 
   if (!tokenRow || tokenRow.revoked || tokenRow.expiresAt < new Date()) {
     throw AppError.unauthorized('Refresh token is invalid or has expired');

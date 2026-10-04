@@ -45,6 +45,8 @@ export interface RefreshTokensTable {
   token_hash: string;
   expires_at: Date;
   revoked: Generated<boolean>;
+  // (078) When it was revoked — tells a stolen token's reuse from a two-tab race.
+  revoked_at: Date | null;
   // (H7, migration 072) One login = one session; rotation carries it forward.
   session_id: string;
   created_at: Generated<Date>;

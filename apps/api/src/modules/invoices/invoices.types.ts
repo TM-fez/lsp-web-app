@@ -60,6 +60,8 @@ export const InvoiceListQuerySchema = z.object({
   outstanding: queryBool.optional(),
   /** Open AND past their due date (Africa/Gaborone today). */
   overdue: queryBool.optional(),
+  /** (Re-test 2026-10-04) Open and NOT yet overdue — money still coming in on time. */
+  incoming: queryBool.optional(),
   /** Invoice number, guest or bill-to name, unit code or name. */
   search: z.string().trim().min(1).max(100).optional(),
   /** Issue-date range, inclusive, Africa/Gaborone days. */
@@ -80,6 +82,7 @@ export interface InvoiceFilters {
   hold_id?: string;
   outstanding?: boolean;
   overdue?: boolean;
+  incoming?: boolean;
   search?: string;
   from?: string;
   to?: string;

@@ -26,6 +26,14 @@ export interface ContactFilters {
   // 100 rows a page against 1,341 contacts, so sorting client-side would rank the page, not
   // the guest base — and quietly hide the very accounts it is meant to surface.
   sort?: 'recent' | 'stays';
+  /** (2026-10-04) Limit to the guests this viewer may see — see core/scope/contactScope. */
+  visibleTo?: ContactViewer;
+}
+
+/** Who is asking, for guest visibility. `propertyIds: null` = every property (admin). */
+export interface ContactViewer {
+  propertyIds: string[] | null;
+  userId: string;
 }
 
 export interface PaginationOptions {

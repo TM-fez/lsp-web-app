@@ -1,13 +1,14 @@
 import { ContactsRepository } from './contacts.repository.js';
 import { AppError } from '../../../core/errors/AppError.js';
 import type { ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
-import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta, CreateContactDTO, UpdateContactDTO } from '../crm.types.js';
+import type { ContactFilters, ContactViewer, PaginationOptions, PaginatedResult, CRMRequestMeta, CreateContactDTO, UpdateContactDTO } from '../crm.types.js';
 
 export class ContactsService {
   constructor(private readonly repository: ContactsRepository) {}
 
-  async getContactById(id: string): Promise<ContactRow> {
-    const contact = await this.repository.findById(id);
+  /** A guest the viewer may not see is "not found" — a 403 would confirm it exists. */
+  async getContactById(id: string, viewer?: ContactViewer): Promise<ContactRow> {
+    const contact = await this.repository.findById(id, viewer);
     if (!contact) {
       throw AppError.notFound(`Contact with id ${id} not found`);
     }
@@ -30,9 +31,9 @@ export class ContactsService {
     return this.repository.create(newContact, meta);
   }
 
-  async updateContact(id: string, dto: UpdateContactDTO, meta: CRMRequestMeta): Promise<ContactRow> {
-    // Ensure contact exists
-    await this.getContactById(id);
+  async updateContact(id: string, dto: UpdateContactDTO, meta: CRMRequestMeta, viewer?: ContactViewer): Promise<ContactRow> {
+    // Ensure contact exists (and is one this person may see)
+    await this.getContactById(id, viewer);
     
     const updatePayload: UpdateContact = {
       ...dto,
@@ -46,9 +47,9 @@ export class ContactsService {
     return updated;
   }
 
-  async deleteContact(id: string, meta: CRMRequestMeta): Promise<void> {
-    // Ensure contact exists
-    await this.getContactById(id);
+  async deleteContact(id: string, meta: CRMRequestMeta, viewer?: ContactViewer): Promise<void> {
+    // Ensure contact exists (and is one this person may see)
+    await this.getContactById(id, viewer);
 
     const success = await this.repository.softDelete(id, meta);
     if (!success) {

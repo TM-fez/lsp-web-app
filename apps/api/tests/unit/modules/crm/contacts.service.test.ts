@@ -25,7 +25,7 @@ describe('ContactsService', () => {
 
       const result = await service.getContactById('1');
       expect(result).toEqual(mockContact);
-      expect(repository.findById).toHaveBeenCalledWith('1');
+      expect(repository.findById).toHaveBeenCalledWith('1', undefined);
     });
 
     it('should throw error if contact not found', async () => {

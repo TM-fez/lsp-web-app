@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
 import { app } from '../../src/app.js';
 import { db } from '../../src/config/db.js';
 
@@ -94,5 +95,38 @@ describe('H7: an access token stops working when its session ends', () => {
     expect(refreshed.status).toBe(200);
     expect(refreshed.body.user.role).toBe('housekeeping');
     expect((await me(refreshed.body.accessToken)).status).toBe(200);
+  });
+});
+
+describe('refresh-token reuse (re-test 2026-10-04)', () => {
+  const cookieOf = (res: request.Response) =>
+    (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('lsp_refresh='))!.split(';')[0]!;
+  const hashOf = (cookie: string) => createHash('sha256').update(cookie.slice('lsp_refresh='.length)).digest('hex');
+
+  it('a stolen, already-rotated token used later ends the whole session', async () => {
+    const u = await makeUser('reuse');
+    const { token, cookie: oldCookie } = await login(u.email);
+    const rotated = await request(app).post('/api/v1/auth/refresh').set('Cookie', oldCookie);
+    expect(rotated.status).toBe(200);
+    const newCookie = cookieOf(rotated);
+
+    // The old copy turns up a minute after it was rotated away.
+    await db.updateTable('refresh_tokens').set({ revoked_at: new Date(Date.now() - 60_000) })
+      .where('token_hash', '=', hashOf(oldCookie)).execute();
+    expect((await request(app).post('/api/v1/auth/refresh').set('Cookie', oldCookie)).status).toBe(401);
+
+    // Neither copy works any more, nor the access token from that login.
+    expect((await request(app).post('/api/v1/auth/refresh').set('Cookie', newCookie)).status).toBe(401);
+    expect((await me(token)).status).toBe(401);
+  });
+
+  it('two tabs refreshing at once is not theft — the session survives', async () => {
+    const u = await makeUser('race');
+    const { cookie } = await login(u.email);
+    const first = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(first.status).toBe(200);
+    // The second tab arrives moments later with the same (now rotated) token.
+    expect((await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie)).status).toBe(401);
+    expect((await me(first.body.accessToken)).status).toBe(200);
   });
 });

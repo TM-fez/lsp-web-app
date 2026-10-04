@@ -1,3 +1,4 @@
+import type { ContactViewer } from '../crm/crm.types.js';
 import {
   isLlmConfigured as realIsLlmConfigured,
   generateText as realGenerateText,
@@ -109,8 +110,8 @@ export class MarketingService {
   ) {}
 
   /** Deterministic guest segmentation — always works, even with the LLM dark. */
-  async getSegments(): Promise<SegmentsResponse> {
-    const rows = await this.repo.customerStats();
+  async getSegments(viewer?: ContactViewer): Promise<SegmentsResponse> {
+    const rows = await this.repo.customerStats(viewer);
 
     const buckets = new Map<SegmentKey, { count: number; spend: number; members: Array<{ name: string; spend: number; stays: number }> }>();
     for (const key of SEGMENT_KEYS) buckets.set(key, { count: 0, spend: 0, members: [] });
@@ -165,11 +166,12 @@ export class MarketingService {
   async getSegmentMembers(
     key: SegmentKey,
     opts: { search?: string; limit?: number } = {},
+    viewer?: ContactViewer,
   ): Promise<SegmentMembersResponse> {
     const limit = Math.min(Math.max(opts.limit ?? 500, 1), 2000);
     const needle = (opts.search ?? '').trim().toLowerCase();
 
-    const rows = await this.repo.customerStats();
+    const rows = await this.repo.customerStats(viewer);
     const all: SegmentMember[] = [];
 
     for (const row of rows) {
@@ -208,8 +210,8 @@ export class MarketingService {
     };
   }
 
-  async generateCampaign(dto: GenerateCampaignDTO): Promise<CampaignResponse> {
-    const { segments } = await this.getSegments();
+  async generateCampaign(dto: GenerateCampaignDTO, viewer?: ContactViewer): Promise<CampaignResponse> {
+    const { segments } = await this.getSegments(viewer);
     const seg = segments.find((s) => s.key === dto.segment)!; // dto.segment is enum-validated
     if (!this.llm.isLlmConfigured()) {
       return { configured: false, segment: dto.segment, channel: dto.channel, copy: null };

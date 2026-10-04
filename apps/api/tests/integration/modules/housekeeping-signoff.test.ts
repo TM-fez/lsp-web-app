@@ -230,6 +230,14 @@ describe('Three-stage housekeeping flow (live DB)', () => {
       .send({ active: false });
     expect(retired.status).toBe(200);
     expect(retired.body.active).toBe(false);
+    // Both changes to the standard are on the record, with who made them (re-test 2026-10-04).
+    const audit = await db.selectFrom('audit_logs').select(['action', 'user_id', 'diff'])
+      .where('entity', '=', 'housekeeping_checklist_items').where('entity_id', '=', added.body.id)
+      .orderBy('created_at').execute();
+    expect(audit.map((a) => a.action)).toEqual(['CREATE', 'UPDATE']);
+    expect(audit.every((a) => a.user_id === managerId)).toBe(true);
+    expect(audit[1]!.diff).toMatchObject({ active: { from: true, to: false } });
+    await db.deleteFrom('audit_logs').where('entity_id', '=', added.body.id).execute();
     await db.deleteFrom('housekeeping_checklist_items').where('id', '=', added.body.id).execute();
 
     // Turnaround: our signed-off turn is inside the 30-day window.

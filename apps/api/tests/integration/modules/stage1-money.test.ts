@@ -853,6 +853,11 @@ describe('4. GET /invoices honours the filters it is asked for', () => {
     expect((await run({ property_id: propA, outstanding: true })).mine).toEqual(['NOPROP', 'OVERDUE', 'PART']);
   });
 
+  // Re-test 2026-10-04: "Incoming" = owed but not late — the other half of "Unpaid".
+  it('incoming: open and NOT yet overdue', async () => {
+    expect((await run({ property_id: propA, incoming: true })).mine).toEqual(['PART']);
+  });
+
   it('overdue: open AND past the due date, by the property calendar', async () => {
     const r = await run({ property_id: propA, overdue: true });
     expect(r.mine).toEqual(['NOPROP', 'OVERDUE']);

@@ -8,6 +8,8 @@ export interface InvoiceListParams {
   outstanding?: boolean;
   /** Open and past the due date. */
   overdue?: boolean;
+  /** Open and not yet overdue. */
+  incoming?: boolean;
   /** Invoice number, guest / bill-to name or unit. */
   search?: string;
   /** Issue-date range, YYYY-MM-DD, inclusive. */
