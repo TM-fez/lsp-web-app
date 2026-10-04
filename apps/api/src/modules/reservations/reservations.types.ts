@@ -162,6 +162,8 @@ export interface ReservationFolio {
   total_amount: number;
   paid_amount: number;
   outstanding_amount: number;
+  /** Paid beyond the agreed total — a refund due (e.g. a stay shortened after payment). */
+  credit_amount: number;
   payment_state: 'UNPAID' | 'PART_PAID' | 'PAID';
   total_source: 'FOLIO' | 'PRICED';
   invoices: FolioInvoiceLine[];

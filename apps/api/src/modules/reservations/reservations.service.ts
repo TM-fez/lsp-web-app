@@ -4,7 +4,7 @@ import { PricingService } from '../pricing/pricing.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
-import { describeThebe } from '../../core/money/folio.js';
+import { describeThebe, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
@@ -137,9 +137,18 @@ export class ReservationsService {
     const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
     const invoices = await this.repository.folioInvoices(id);
 
-    // Clamped at zero: an overpayment is a refund waiting to happen, not a negative
-    // debt. The invoice lines below still show the full story.
-    const outstanding = Math.max(0, total - paid);
+    // (Re-test 2026-10-04) A cancelled or no-show booking owes nothing — its open invoice
+    // is voided (owner decision 2026-10-02 (b)) and Finance counts 0 — but the folio kept
+    // reporting `total − paid` as a debt. The two now agree.
+    const closed = (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(reservation.status);
+
+    // Clamped at zero: an overpayment is not a negative debt. It IS money the guest is
+    // owed back — a stay shortened after payment brought the agreed total under what was
+    // paid, and the folio used to show a plain "PAID" with nothing to say a refund was
+    // due. It is reported as `credit_amount`. (On a closed booking whether money paid is
+    // returned is the cancellation terms' call, not arithmetic — no credit is implied.)
+    const outstanding = closed ? 0 : Math.max(0, total - paid);
+    const credit = closed ? 0 : Math.max(0, paid - total);
 
     return {
       reservation_id: id,
@@ -147,6 +156,7 @@ export class ReservationsService {
       total_amount: total,
       paid_amount: paid,
       outstanding_amount: outstanding,
+      credit_amount: credit,
       payment_state: paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
       total_source: source,
       invoices,

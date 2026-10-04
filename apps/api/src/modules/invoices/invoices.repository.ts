@@ -538,21 +538,31 @@ export class InvoicesRepository {
         // frozen, and those still include the original at full value.
         const total = await agreedTotal(trx, reservation);
         if (total != null) {
-          const lowered = Math.max(0, total - refundInvoice.total_amount);
-          await trx
-            .updateTable('reservations')
-            .set({ folio_total_amount: lowered, updated_by: meta.userId, updated_at: sql`now()` })
-            .where('id', '=', reservation.id)
-            .execute();
-          await trx.insertInto('audit_logs').values({
-            request_id: meta.requestId ?? null,
-            user_id: meta.userId,
-            action: 'UPDATE',
-            entity: 'reservations',
-            entity_id: reservation.id,
-            diff: { folio_total_amount: { from: total, to: lowered }, reason: 'refund lowers the agreed total' },
-            ip_address: meta.ip ?? null,
-          }).execute();
+          // (Re-test 2026-10-04) Money paid BEYOND the agreed total — a stay shortened
+          // after payment — is already the guest's (the folio shows it as a refund due).
+          // Handing that back is settling what the house owes, not a concession, so only
+          // the part of a refund that goes past the credit lowers the agreed total.
+          // paidToDate already includes this refund's credit note; add it back for "before".
+          const paidAfter = (await paidToDate(trx, [reservation.id])).get(reservation.id) ?? 0;
+          const creditBefore = Math.max(0, paidAfter + refundInvoice.total_amount - total);
+          const lowerBy = Math.max(0, refundInvoice.total_amount - creditBefore);
+          const lowered = Math.max(0, total - lowerBy);
+          if (lowered !== total) {
+            await trx
+              .updateTable('reservations')
+              .set({ folio_total_amount: lowered, updated_by: meta.userId, updated_at: sql`now()` })
+              .where('id', '=', reservation.id)
+              .execute();
+            await trx.insertInto('audit_logs').values({
+              request_id: meta.requestId ?? null,
+              user_id: meta.userId,
+              action: 'UPDATE',
+              entity: 'reservations',
+              entity_id: reservation.id,
+              diff: { folio_total_amount: { from: total, to: lowered }, reason: 'refund lowers the agreed total' },
+              ip_address: meta.ip ?? null,
+            }).execute();
+          }
         }
         await reconcileReceivable(trx, refundInvoice.reservation_id, meta);
       }
