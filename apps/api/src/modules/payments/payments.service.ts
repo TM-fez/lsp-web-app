@@ -139,6 +139,15 @@ export class PaymentsService {
     if (hold.status !== 'HELD') {
       throw AppError.conflict(`Hold is ${hold.status}; payment cannot proceed`);
     }
+    // (Round 4) A hold past its time is dead even if the sweep has not reached it yet. A swept
+    // hold already refuses payment; letting the unswept one through made the answer depend on
+    // whether the sweep had run. The booking itself is not lost — the desk can still take the
+    // money from the booking, which re-checks the dates under the booking's lock.
+    if (new Date(hold.held_until).getTime() < Date.now()) {
+      throw AppError.conflict(
+        'This hold has expired, so the payment cannot go through it. Take the payment from the booking instead (Record payment) — that checks the dates are still free.',
+      );
+    }
 
     const base = {
       intentId: intent.id,

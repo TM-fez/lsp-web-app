@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { PaymentsService } from './payments.service.js';
 import { PaymentStatusEnum } from './payments.types.js';
 import type { CreatePaymentIntentDTO, AttemptPaymentDTO } from './payments.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class PaymentsController {
   constructor(private readonly service: PaymentsService) {}
@@ -12,8 +13,7 @@ export class PaymentsController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
+      const { page, limit } = parsePageQuery(req.query);
       const status = req.query.status ? PaymentStatusEnum.parse(req.query.status) : undefined;
       const hold_id = req.query.hold_id as string | undefined;
       res.json(await this.service.listIntents({ status, hold_id , property_id: req.activePropertyId }, { page, limit }));

@@ -48,7 +48,7 @@ export class RevenueService {
    * an upper bound would count nights nobody has slept yet.
    */
   async reconcile(
-    window?: { from?: string; toExcl?: string },
+    window?: { from?: string; toExcl?: string; reservationIds?: string[] },
     meta: RevenueRequestMeta = { userId: SWEEP_ACTOR },
     options: { dryRun?: boolean } = {}
   ): Promise<RecogniseResult> {
@@ -118,7 +118,7 @@ export class RevenueService {
     // The other half of agreement: bookings that still have live nights but have
     // stopped earning them. Cancelled after the sweep last ran, no-showed, soft
     // deleted, or pushed back to PENDING.
-    for (const reservationId of await this.repository.findNoLongerEarning()) {
+    for (const reservationId of await this.repository.findNoLongerEarning(window?.reservationIds)) {
       const live = await this.repository.liveNights(reservationId);
       if (!live.length) continue;
 
@@ -142,6 +142,27 @@ export class RevenueService {
     }
 
     return result;
+  }
+
+  /**
+   * Put just these bookings' nights on the ledger NOW (N-11) — called right after a
+   * request that may have changed what they earn, so the accrual P&L is right for a
+   * booking taken a minute ago instead of after the next sweep. `ids` may be booking,
+   * invoice, hold or payment-intent ids; anything that is not one is ignored.
+   *
+   * Same reconcile as the sweep, so it is idempotent: an agreeing booking is untouched.
+   */
+  async reconcileFor(ids: string[], meta: RevenueRequestMeta = { userId: SWEEP_ACTOR }): Promise<RecogniseResult> {
+    const reservationIds = await this.repository.reservationsBehind(ids);
+    if (!reservationIds.length) return this.reconcileNothing();
+    return this.reconcile({ reservationIds }, meta);
+  }
+
+  private reconcileNothing(): RecogniseResult {
+    return {
+      reservations_examined: 0, reservations_changed: 0, nights_written: 0, nights_superseded: 0,
+      reconstructed: 0, nights_reconstructed: 0, amount_reconstructed: 0, amount_written: 0, unpriced: 0,
+    };
   }
 
   /**

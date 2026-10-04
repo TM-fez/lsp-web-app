@@ -15,4 +15,13 @@ export class FinanceController {
       next(err);
     }
   };
+
+  // GET /finance/cancelled-with-money — cancelled bookings that still hold paid money.
+  heldOnCancelled = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await this.service.heldOnCancelled({ propertyId: req.activePropertyId! }));
+    } catch (err) {
+      next(err);
+    }
+  };
 }

@@ -122,11 +122,14 @@ async function teardown(): Promise<void> {
     // occupancy rows the live app may have created for demo bookings (FK → reservations/rooms);
     // must go before reservations + rooms. Only deletes rows tied to demo data.
     ['occupancy', `DELETE FROM occupancy WHERE reservation_id IN (SELECT id FROM reservations WHERE notes LIKE 'DEMO%') OR room_id IN (SELECT id FROM rooms WHERE code LIKE 'DEMO-%')`],
+    // The revenue sweep books ledger rows against demo stays/units as soon as it runs, and they
+    // reference both — without this a second seed run died on a foreign-key error.
+    ['revenue_recognition', `DELETE FROM revenue_recognition WHERE reservation_id IN (SELECT id FROM reservations WHERE notes LIKE 'DEMO%') OR room_id IN (SELECT id FROM rooms WHERE code LIKE 'DEMO-%')`],
     ['operating_expenses', `DELETE FROM operating_expenses WHERE notes = 'DEMO'`],
     ['invoices', `DELETE FROM invoices WHERE number LIKE 'INV-DEMO-%'`],
     ['quotes', `DELETE FROM quotes WHERE breakdown->>'demo' = 'true'`],
     ['reservations', `DELETE FROM reservations WHERE notes LIKE 'DEMO%'`],
-    ['maintenance_work_orders', `DELETE FROM maintenance_work_orders WHERE title LIKE 'DEMO%'`],
+    ['maintenance_work_orders', `DELETE FROM maintenance_work_orders WHERE title LIKE 'DEMO%' OR room_id IN (SELECT id FROM rooms WHERE code LIKE 'DEMO-%')`],
     ['rooms', `DELETE FROM rooms WHERE code LIKE 'DEMO-%'`],
     ['buildings', `DELETE FROM buildings WHERE name LIKE '% [DEMO]'`],
     ['rate_plans', `DELETE FROM rate_plans WHERE name LIKE 'DEMO %'`],
@@ -287,6 +290,19 @@ async function run(): Promise<void> {
       [guest, room.id, iso(checkIn), iso(checkOut), status, `DEMO ${room.type} ${nights}n`, A, bookedAt.toISOString()]
     );
     nRes++;
+
+    // An in-house stay is a reservation AND an open occupancy row AND an occupied unit — the
+    // same three things a real check-in writes. Seeding only the first left the in-house and
+    // check-out screens disagreeing with the reservation list.
+    if (status === 'CHECKED_IN') {
+      await client.query(
+        `INSERT INTO occupancy
+           (reservation_id, room_id, status, checked_in_at, guest_count, created_by, updated_by)
+         VALUES ($1,$2,'CHECKED_IN',$3,$4,$5,$5)`,
+        [resRow.id, room.id, `${iso(checkIn)}T12:00:00Z`, guests, A]
+      );
+      await client.query(`UPDATE rooms SET status = 'OCCUPIED' WHERE id = $1`, [room.id]);
+    }
 
     const { rows: [quoteRow] } = await client.query(
       `INSERT INTO quotes

@@ -1,6 +1,6 @@
 import { FinanceRepository } from './finance.repository.js';
 import type {
-  AgingBucket, AgingBucketKey, FinanceCockpit, FinanceQuery, OutstandingInvoice, PropertyReceivable,
+  AgingBucket, AgingBucketKey, FinanceCockpit, HeldOnCancelled, FinanceQuery, OutstandingInvoice, PropertyReceivable,
 } from './finance.types.js';
 
 const num = (v: string | number | null | undefined) => Number(v ?? 0);
@@ -9,6 +9,18 @@ const UNATTRIBUTED = 'Unattributed';
 
 export class FinanceService {
   constructor(private readonly repo: FinanceRepository) {}
+
+  /** Cancelled / no-show bookings that still hold the guest's money — surfaced, never auto-refunded. */
+  async heldOnCancelled(query: FinanceQuery): Promise<HeldOnCancelled> {
+    const rows = await this.repo.heldOnCancelled(query);
+    return {
+      as_of: new Date().toISOString(),
+      total_held: rows.reduce((sum, r) => sum + r.received, 0),
+      count: rows.length,
+      rows,
+      note: 'These bookings are cancelled but the guest’s money is still with us. Nothing is refunded automatically — decide each one (refund, or keep with a reason).',
+    };
+  }
 
   /** Real-time receivables snapshot, scoped to the caller's ACTIVE property. */
   async getCockpit(query: FinanceQuery): Promise<FinanceCockpit> {

@@ -126,7 +126,10 @@ export class MaintenanceController {
 
   cancel = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const restoreRoom = req.body.restore_room === true;
+      // (Round 4) Put the unit back in use unless the caller says otherwise. The sync itself
+      // keeps it blocked while another HIGH/CRITICAL job is open and never touches a room a
+      // guest is in, so the default is safe.
+      const restoreRoom = req.body?.restore_room !== false;
       const meta = this.getRequestMeta(req);
       const result = await this.service.cancel(req.params.id as string, restoreRoom, meta);
       res.json(result);

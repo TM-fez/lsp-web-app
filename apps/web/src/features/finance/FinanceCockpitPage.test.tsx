@@ -25,6 +25,7 @@ vi.mock('./hooks', () => ({
     },
     isLoading: false, isError: false, refetch: () => {},
   }),
+  useHeldOnCancelled: () => ({ data: { as_of: '', total_held: 0, count: 0, rows: [], note: '' }, isLoading: false, isError: false }),
 }));
 
 import { FinanceCockpitPage } from './FinanceCockpitPage';

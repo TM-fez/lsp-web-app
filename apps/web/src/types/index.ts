@@ -695,6 +695,8 @@ export interface InvoiceList extends Paginated<Invoice> {
     outstanding_count: number;
     overdue_amount: number;
     overdue_count: number;
+    /** What these numbers cover (they ignore the status tab). */
+    scope?: string;
   };
 }
 

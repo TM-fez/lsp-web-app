@@ -25,10 +25,16 @@ describe('HoldsService', () => {
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('maps a unique violation to a 409 conflict', async () => {
+  it('maps a duplicate hold on a quote to a 409 that blames the quote', async () => {
     const { svc, repo } = setup();
-    repo.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
-    await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('already exists');
+    repo.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505', constraint: 'holds_active_quote_unique' }));
+    await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('This quote already has a live hold');
+  });
+
+  it('maps a duplicate hold on a unit to a 409 that blames the unit, not the quote', async () => {
+    const { svc, repo } = setup();
+    repo.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505', constraint: 'holds_active_room_unique' }));
+    await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('That unit is already being held');
   });
 
   it('confirms only a HELD hold', async () => {

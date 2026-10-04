@@ -17,6 +17,7 @@ import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { idempotent } from '../../core/middleware/idempotency.middleware.js';
 import { CreateReservationSchema, UpdateReservationSchema, ClaimOtaBookingSchema, MarkPaidSchema, ConfirmReservationSchema } from './reservations.types.js';
+import { rejectOverlappingHold } from '../holds/holds.conflicts.js';
 
 export function createReservationsRouter(dbInstance = db): Router {
   const router = Router();
@@ -44,7 +45,7 @@ export function createReservationsRouter(dbInstance = db): Router {
   // never moves any, and anyone who can see a booking can see what it owes.
   router.get('/:id/folio', authorize('reservations.read'), controller.getFolio);
 
-  router.post('/', authorize('reservations.create'), validateBody(CreateReservationSchema), controller.createReservation);
+  router.post('/', authorize('reservations.create'), validateBody(CreateReservationSchema), rejectOverlappingHold(dbInstance), controller.createReservation);
 
   router.patch('/:id', authorize('reservations.update'), validateBody(UpdateReservationSchema), controller.modifyReservation);
 

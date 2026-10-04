@@ -2,7 +2,7 @@ import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
 import { invoicePropertyIdSql, invoiceVisibleInProperty } from '../../core/scope/invoiceProperty.js';
 import { propertyToday } from '../../core/time.js';
-import type { AgingBucketKey, FinanceQuery } from './finance.types.js';
+import type { AgingBucketKey, FinanceQuery, HeldOnCancelledRow } from './finance.types.js';
 
 // ONE property rule, shared with the Invoices list (core/scope/invoiceProperty.ts).
 //
@@ -151,5 +151,42 @@ export class FinanceRepository {
       LIMIT ${limit}
     `.execute(this.db);
     return r.rows;
+  }
+
+  /**
+   * (Round 4) Bookings that were cancelled or no-showed but still hold the guest's money.
+   *
+   * "Held" = paid in minus refunds already given (the same arithmetic as the folio's
+   * paid-to-date: PAID/REFUNDED invoices count, a REFUND invoice takes money back out).
+   * Nothing is refunded or released here — the point is that retained money is never
+   * silent. Scoped to the active property through the booking's unit.
+   */
+  async heldOnCancelled(q: FinanceQuery, limit = 200): Promise<HeldOnCancelledRow[]> {
+    const r = await sql<HeldOnCancelledRow>`
+      WITH paid AS (
+        SELECT reservation_id, MAX(currency) AS currency,
+               SUM(CASE WHEN kind = 'REFUND' THEN -total_amount ELSE total_amount END) AS amount
+          FROM invoices
+         WHERE status IN ('PAID','REFUNDED') AND deleted_at IS NULL AND reservation_id IS NOT NULL
+         GROUP BY reservation_id
+      )
+      SELECT r.id AS reservation_id, c.name AS guest_name, rm.code AS room_code, r.status::text AS status,
+             to_char(r.check_in_date, 'YYYY-MM-DD') AS check_in_date,
+             to_char(r.check_out_date, 'YYYY-MM-DD') AS check_out_date,
+             p.currency, p.amount::bigint AS received,
+             to_char(r.updated_at AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM-DD') AS cancelled_on
+        FROM reservations r
+        JOIN paid p ON p.reservation_id = r.id
+        JOIN rooms rm ON rm.id = r.room_id
+        JOIN buildings b ON b.id = rm.building_id
+        LEFT JOIN contacts c ON c.id = r.contact_id
+       WHERE r.deleted_at IS NULL
+         AND r.status IN ('CANCELLED','NO_SHOW')
+         AND p.amount > 0
+         AND b.property_id = ${q.propertyId}
+       ORDER BY p.amount DESC, r.updated_at DESC
+       LIMIT ${limit}
+    `.execute(this.db);
+    return r.rows.map((row) => ({ ...row, received: Number(row.received) }));
   }
 }

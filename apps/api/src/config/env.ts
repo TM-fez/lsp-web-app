@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+// (Round 4, N-12) Pin the PROCESS clock zone to UTC, before anything reads a DATE column.
+// node-postgres turns a `date` into midnight in the process zone and writes a Date back
+// as local time, so with TZ=Africa/Gaborone a stay starting 2028-02-16 was sent as
+// "2028-02-15T22:00:00.000Z", and with a zone west of UTC a date could even be STORED a
+// day early. UTC makes the JSON identical wherever the API runs (it is what Render
+// already uses). Nothing depends on the process zone: business days come from the
+// Africa/Gaborone helpers in core/time.ts (invariant 2). A Date-only value is always
+// 'YYYY-MM-DDT00:00:00.000Z'.
+process.env.TZ = 'UTC';
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3000),
@@ -64,7 +74,9 @@ const schema = z.object({
   // Accrual revenue recognition (G30, modules/revenue). A night is earned on a
   // calendar boundary, so this has nothing urgent about it and self-gates to a day
   // rather than riding the 60s tick.
-  REVENUE_RECOGNITION_INTERVAL_MS: z.coerce.number().int().positive().default(24 * 60 * 60_000),
+  // Hourly safety net (was daily): every booking write also recognises its own nights
+  // straight away (revenue.middleware), and a free-tier host that sleeps would skip whole days.
+  REVENUE_RECOGNITION_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 60_000),
   // The rolling window the sweep reconciles, in days either side of the property day.
   // Settled months do not change, so rescanning years of them nightly would cost real
   // time for a guaranteed no-op; the lookahead is generous because a booking taken a

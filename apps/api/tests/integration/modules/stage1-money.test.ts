@@ -880,7 +880,10 @@ describe('4. GET /invoices honours the filters it is asked for', () => {
     extraInvoiceIds.push(row.id);
   };
   const run = async (filters: Record<string, unknown>) => {
-    const page = await invoicesRepo.findPaginated(filters as never, { page: 1, limit: 100 });
+    // Round 4: narrow every probe to this suite's own invoice numbers (`tag`), so the answer cannot
+    // depend on how many other invoices the shared test database holds (house-wide ones such as
+    // NOPROP match every property and used to be pushed off the first page).
+    const page = await invoicesRepo.findPaginated({ search: tag, ...filters } as never, { page: 1, limit: 100 });
     return { ...page, mine: page.data.filter((r) => Object.values(ids).includes(r.id)).map((r) => r.number.slice(tag.length + 1)).sort() };
   };
 

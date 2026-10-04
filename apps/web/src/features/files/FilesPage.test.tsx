@@ -28,6 +28,10 @@ vi.mock('./hooks', () => ({
   useUploadDocument: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteFile: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+const api = vi.hoisted(() => ({ downloadFile: vi.fn(), openFile: vi.fn() }));
+vi.mock('@/lib/api/files', async (orig) => ({ ...(await orig<object>()), ...api }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('@/store/toast', () => ({ toast: { error: toastError, success: vi.fn(), info: vi.fn() } }));
 vi.mock('@/features/auth/useMyProperties', () => ({ useMyProperties: () => ({ data: [{ id: 'p1', name: 'Village' }] }) }));
 
 import { FilesPage } from './FilesPage';
@@ -74,5 +78,24 @@ describe('FilesPage', () => {
     withPerms(['files.read', 'files.create']);
     renderPage();
     expect(screen.getByRole('button', { name: /Upload document/ })).toBeInTheDocument();
+  });
+
+  // Round 4: the UI tester saw no Download — the library was empty. Every row carries one.
+  it('offers Download and Open on every file row, and saves under the original name', () => {
+    withPerms(['files.read']);
+    renderPage();
+    const downloads = screen.getAllByRole('button', { name: /Download/ });
+    expect(downloads).toHaveLength(rows.length);
+    expect(screen.getAllByRole('button', { name: /Open/ })).toHaveLength(rows.length);
+    fireEvent.click(downloads[1]!);
+    expect(api.downloadFile).toHaveBeenCalledWith('c', 'lease-B2.pdf');
+  });
+
+  it('tells the person when a download fails instead of failing silently', async () => {
+    api.downloadFile.mockRejectedValueOnce(new Error('network down'));
+    withPerms(['files.read']);
+    renderPage();
+    fireEvent.click(screen.getAllByRole('button', { name: /Download/ })[0]!);
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalled());
   });
 });

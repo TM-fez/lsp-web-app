@@ -30,6 +30,8 @@ import { createFinanceRouter } from './modules/finance/finance.routes.js';
 import { createMarketingRouter } from './modules/marketing/marketing.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
 import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
+import { optInPaging } from './core/http/pagination.js';
+import { recogniseRevenueAfterWrite } from './modules/revenue/revenue.middleware.js';
 
 const router = Router();
 
@@ -44,6 +46,10 @@ router.use('/contacts',  createContactsRouter());
 router.use('/leads',     createLeadsRouter());
 
 // ── Sprint 2 — Reservations ───────────────────────────────────────────────────
+router.use(['/reservations', '/payments', '/invoices', '/holds', '/checkins', '/public'], recogniseRevenueAfterWrite());
+
+// Small "everything" lists: ?limit= / ?page= is opt-in; without them the answer is unchanged.
+router.get(['/users', '/payroll/employees', '/expenses', '/operating-expenses'], optInPaging);
 router.use('/reservations', createReservationsRouter());
 
 // ── Sprint 3 — Rooms ──────────────────────────────────────────────────────────

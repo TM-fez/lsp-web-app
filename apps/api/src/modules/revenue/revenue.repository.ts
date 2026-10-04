@@ -33,7 +33,15 @@ export class RevenueRepository {
    * The window bounds by STAY dates, not by booking dates: recognition is about the
    * nights, so a booking made last year for a stay next month belongs to next month.
    */
-  async findRecognisable(window?: { from?: string; toExcl?: string }): Promise<RecognisableReservation[]> {
+  async findRecognisable(window?: {
+    from?: string;
+    toExcl?: string;
+    /** Only these bookings — the targeted reconcile that runs right after a booking changes. */
+    reservationIds?: string[];
+  }): Promise<RecognisableReservation[]> {
+    const only = window?.reservationIds
+      ? sql`AND r.id IN (${sql.join(window.reservationIds.map((id) => sql`${id}::uuid`))})`
+      : sql``;
     const from = window?.from ? sql`AND r.check_out_date > ${window.from}::date` : sql``;
     const toExcl = window?.toExcl ? sql`AND r.check_in_date < ${window.toExcl}::date` : sql``;
 
@@ -70,6 +78,7 @@ export class RevenueRepository {
         AND r.status IN (${sql.join(EARNING_STATUSES.map((s) => sql`${s}`))})
         ${from}
         ${toExcl}
+        ${only}
       ORDER BY r.check_in_date
     `.execute(this.db);
 
@@ -83,17 +92,39 @@ export class RevenueRepository {
    * Kept separate from findRecognisable() because the sweep has to look for the
    * ABSENCE of a reason to earn, which no filter over earning bookings can see.
    */
-  async findNoLongerEarning(): Promise<string[]> {
+  async findNoLongerEarning(reservationIds?: string[]): Promise<string[]> {
+    const only = reservationIds
+      ? sql`AND rr.reservation_id IN (${sql.join(reservationIds.map((id) => sql`${id}::uuid`))})`
+      : sql``;
     const result = await sql<{ reservation_id: string }>`
       SELECT DISTINCT rr.reservation_id
       FROM revenue_recognition rr
       JOIN reservations r ON r.id = rr.reservation_id
       WHERE rr.superseded_at IS NULL
+        ${only}
         AND (r.deleted_at IS NOT NULL
              OR r.status NOT IN (${sql.join(EARNING_STATUSES.map((s) => sql`${s}`))}))
     `.execute(this.db);
 
     return result.rows.map((row) => row.reservation_id);
+  }
+
+  /**
+   * Which bookings do these ids point at? A request may name a booking, an invoice, a
+   * hold or a payment intent (or return one); the ledger cares only about the booking.
+   */
+  async reservationsBehind(ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+    const list = sql.join(ids.map((id) => sql`${id}::uuid`));
+    const result = await sql<{ id: string }>`
+      SELECT id FROM reservations WHERE id IN (${list})
+      UNION SELECT reservation_id FROM invoices WHERE id IN (${list}) AND reservation_id IS NOT NULL
+      UNION SELECT reservation_id FROM holds WHERE id IN (${list}) AND reservation_id IS NOT NULL
+      UNION SELECT h.reservation_id FROM payment_intents pi
+              JOIN holds h ON h.id = pi.hold_id
+             WHERE pi.id IN (${list}) AND h.reservation_id IS NOT NULL
+    `.execute(this.db);
+    return result.rows.map((row) => row.id);
   }
 
   /**

@@ -122,6 +122,11 @@ export interface InvoiceListTotals {
   outstanding_count: number;
   overdue_amount: number;
   overdue_count: number;
+  /**
+   * Plain-English statement of what these four numbers cover, so a "Paid" tab that shows
+   * outstanding money is never mistaken for a bug. Sent with every list response.
+   */
+  scope: string;
 }
 
 export interface InvoiceListResult {

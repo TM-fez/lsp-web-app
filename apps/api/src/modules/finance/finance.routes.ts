@@ -16,5 +16,7 @@ export function createFinanceRouter(dbInstance = db): Router {
   // Shares the management/dashboard permission with reports (A5 Dashboards).
   router.get('/receivables', authorize('reports.read'), requireActiveProperty, controller.receivables);
 
+  router.get('/cancelled-with-money', authorize('reports.read'), requireActiveProperty, controller.heldOnCancelled);
+
   return router;
 }

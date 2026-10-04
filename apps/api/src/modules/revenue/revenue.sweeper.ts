@@ -13,8 +13,16 @@ import type { RecogniseResult } from './revenue.types.js';
  *
  * Recognition is the one sweep with nothing urgent about it: a night is earned on a
  * calendar boundary, so running it every 60 seconds like the hold sweep would be
- * pure noise. It self-gates to REVENUE_RECOGNITION_INTERVAL_MS (a day) and returns
+ * pure noise. It self-gates to REVENUE_RECOGNITION_INTERVAL_MS (an hour since Round 4) and returns
  * zeros in between, exactly as retention and channel sync do.
+ *
+ * ── Round 4 (N-11): the sweep is now the SAFETY NET, not the only path ─────────
+ *
+ * Waiting for the sweep left today's bookings off the accrual P&L. Every successful
+ * write to a booking route now reconciles just the bookings it touched
+ * (revenue.middleware.ts), and the sweep runs hourly and once at start-up, so a host
+ * that sleeps and wakes cannot skip a day. The reasoning below still explains why the
+ * reconcile itself is the single write path.
  *
  * ── Why the sweep, and not a hook on every booking mutation ─────────────────────
  *
