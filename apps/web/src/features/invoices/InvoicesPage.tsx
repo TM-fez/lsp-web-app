@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '@/store/auth';
 import { formatMoney, thebeToPula, pulaToThebe, isPulaAmount } from '@/lib/utils/money';
 import { cn } from '@/lib/utils/cn';
+import { Pager } from '@/components/ui/pager';
 import { useInvoices, useSettleInvoice, useRefundInvoice, useActiveQuotes, useIssueInvoice } from './hooks';
 import type { Invoice, InvoiceStatus } from '@/types';
 
@@ -64,6 +65,9 @@ export function InvoicesPage() {
     return () => clearTimeout(t);
   }, [searchText]);
   const rangeInvalid = !!from && !!to && from > to;
+  const [page, setPage] = useState(1);
+  // A new tab, search or date range starts from page 1.
+  useEffect(() => setPage(1), [filter, search, from, to]);
   const { data, isLoading, isError, refetch } = useInvoices({
     status: STATUS_TABS[filter],
     outstanding: filter === 'OUTSTANDING' ? true : undefined,
@@ -73,6 +77,7 @@ export function InvoicesPage() {
     from: from && !rangeInvalid ? from : undefined,
     to: to && !rangeInvalid ? to : undefined,
     limit: 100,
+    page,
   });
   const filtered = !!search || !!from || !!to || filter !== 'ALL';
   const settle = useSettleInvoice();
@@ -305,6 +310,7 @@ export function InvoicesPage() {
           </table>
         </div>
       )}
+      {data && <Pager page={page} limit={data.limit} total={data.total} onPage={setPage} />}
 
       <Dialog open={!!refunding} onOpenChange={(o) => !o && setRefunding(null)}>
         <DialogContent>

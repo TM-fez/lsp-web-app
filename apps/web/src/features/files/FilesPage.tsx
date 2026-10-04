@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FolderOpen, Upload, Download, Trash2, Search, Lock } from 'lucide-react';
+import { FolderOpen, Upload, Download, ExternalLink, Trash2, Search, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
 import { useMyProperties } from '@/features/auth/useMyProperties';
-import { openFile, type LibraryCategory, type LibraryFile, type FilingCategory } from '@/lib/api/files';
+import { openFile, downloadFile, type LibraryCategory, type LibraryFile, type FilingCategory } from '@/lib/api/files';
 import { cn } from '@/lib/utils/cn';
 import { useFilesLibrary, useUploadDocument, useDeleteFile } from './hooks';
 
@@ -275,7 +275,10 @@ function FileRow({ file, canDelete }: FileRowProps) {
       <td className="px-4 py-3 text-right">
         <div className="flex justify-end gap-1">
           <Button variant="ghost" size="sm" onClick={() => openFile(file.id)} title="Open">
-            <Download className="h-4 w-4" /> Open
+            <ExternalLink className="h-4 w-4" /> Open
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => downloadFile(file.id, file.original_name)} title="Download">
+            <Download className="h-4 w-4" /> Download
           </Button>
           {canDelete &&
             (confirming ? (

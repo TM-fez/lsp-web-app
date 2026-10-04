@@ -130,9 +130,27 @@ describe('Financial Cockpit — receivables (live DB)', () => {
     expect(c.summary.oldest_days).toBeGreaterThanOrEqual(44);
   });
 
-  it('reports REFUND invoices as a separate payable, not a receivable', async () => {
-    const c = await service.getCockpit({ propertyId: propA });
-    expect(c.summary.refunds_payable).toBeGreaterThanOrEqual(20_000);
+  // Re-test round 3: refunds_payable summed OPEN refund invoices — but a credit note is
+  // born PAID, so it was always 0. It is now what live bookings have been paid beyond
+  // their agreed total (a stay shortened after payment): money owed back to guests.
+  it('reports money owed back to guests (paid beyond the agreed total), per property', async () => {
+    const before = (await service.getCockpit({ propertyId: propA })).summary.refunds_payable;
+    const res = (await db.insertInto('reservations').values({
+      contact_id: guestId, room_id: roomA, check_in_date: daysAgo(-60), check_out_date: daysAgo(-62),
+      status: 'CONFIRMED', folio_total_amount: 100_000, created_by: userId, updated_by: userId,
+    } as never).returning('id').executeTakeFirstOrThrow()).id;
+    const paid = (await db.insertInto('invoices').values({
+      number: `FIN-OVERPAID-${res.slice(0, 8)}`, reservation_id: res, kind: 'DEPOSIT', status: 'PAID',
+      subtotal_amount: 120_000, tax_rate_bps: 0, tax_amount: 0, total_amount: 120_000,
+      issued_by: userId, created_by: userId, updated_by: userId,
+    } as never).returning('id').executeTakeFirstOrThrow()).id;
+    try {
+      expect((await service.getCockpit({ propertyId: propA })).summary.refunds_payable).toBe(before + 20_000);
+      expect((await service.getCockpit({ propertyId: propB })).summary.refunds_payable).toBe(0);
+    } finally {
+      await db.deleteFrom('invoices').where('id', '=', paid).execute();
+      await db.deleteFrom('reservations').where('id', '=', res).execute();
+    }
   });
 
   it('buckets receivables by issue age, always returning the four buckets in order', async () => {

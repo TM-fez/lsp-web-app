@@ -151,6 +151,36 @@ export async function findLiveSession(
   return row ? { active: row.active, role: row.role, roleId: row.role_id } : null;
 }
 
+/**
+ * (Re-test round 3) Rotate a refresh token atomically: issue the new one and revoke the
+ * old one in ONE transaction, the revoke conditional on the old one still being live.
+ * Two refreshes racing with the same token both used to mint a new token — a forked
+ * session with two live tokens. Now exactly one wins; the loser gets false (→ 401).
+ * Both writes commit together, so there is still no moment with no live token (H7).
+ */
+export async function rotateRefreshToken(
+  oldId: string,
+  next: { userId: string; tokenHash: string; expiresAt: Date; sessionId: string }
+): Promise<boolean> {
+  return db.transaction().execute(async (trx) => {
+    const revoked = await trx
+      .updateTable('refresh_tokens')
+      .set({ revoked: true, revoked_at: new Date() })
+      .where('id', '=', oldId)
+      .where('revoked', '=', false)
+      .returning('id')
+      .executeTakeFirst();
+    if (!revoked) return false;
+    await trx.insertInto('refresh_tokens').values({
+      user_id: next.userId,
+      token_hash: next.tokenHash,
+      expires_at: next.expiresAt,
+      session_id: next.sessionId,
+    }).execute();
+    return true;
+  });
+}
+
 export async function revokeRefreshToken(id: string): Promise<void> {
   await db
     .updateTable('refresh_tokens')

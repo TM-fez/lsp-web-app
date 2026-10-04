@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { RouteGuard } from './RouteGuard';
+import { titleForPath } from './nav';
 
 /**
  * The authed frame. On a desktop the sidebar sits beside the page as it always has. Below
@@ -14,8 +15,10 @@ export function AppShell() {
   const location = useLocation();
 
   // Picking a page closes the phone menu; it should never stay over the screen you chose.
+  // The tab title follows the page, so several open tabs can be told apart.
   useEffect(() => {
     setNavOpen(false);
+    document.title = titleForPath(location.pathname);
   }, [location.pathname]);
 
   return (

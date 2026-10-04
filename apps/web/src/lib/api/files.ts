@@ -21,6 +21,23 @@ export async function openFile(id: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * (Re-test 3) Save a copy under its original name — the library only had "Open", which
+ * shows a PDF in a tab but leaves the user to find "save" themselves (and on a phone,
+ * often can't). Auth-gated like openFile, so it fetches the blob and clicks a link.
+ */
+export async function downloadFile(id: string, filename: string): Promise<void> {
+  const res = await api.get(`/files/${id}/download`, { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // ── (P6) The Files library ────────────────────────────────────────────────────
 
 export type LibraryCategory =

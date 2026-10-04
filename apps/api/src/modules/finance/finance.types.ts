@@ -47,7 +47,7 @@ export interface FinanceCockpit {
     total_receivable: number; // thebe — open DEPOSIT + BALANCE
     open_invoices: number;
     oldest_days: number;      // age of the oldest open receivable (0 when none)
-    refunds_payable: number;  // thebe — open REFUND invoices (we owe the guest)
+    refunds_payable: number;  // thebe — paid beyond the agreed total on live bookings (we owe the guest)
     overdue_amount: number;   // thebe — the part of total_receivable past its due date
     overdue_count: number;
   };

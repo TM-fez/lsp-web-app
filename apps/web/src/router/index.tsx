@@ -107,5 +107,7 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  // (Re-test 3) A natural guess at the address; it fell through to the cockpit.
+  { path: '/owner-statements', element: <Navigate to="/owners" replace /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ]);

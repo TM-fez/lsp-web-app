@@ -55,14 +55,40 @@ export class FinanceRepository {
         COALESCE(SUM(i.total_amount) FILTER (WHERE i.kind IN ('DEPOSIT','BALANCE')), 0) AS total_receivable,
         COUNT(*) FILTER (WHERE i.kind IN ('DEPOSIT','BALANCE')) AS open_invoices,
         COALESCE(MAX(${AGE_DAYS}) FILTER (WHERE i.kind IN ('DEPOSIT','BALANCE')), 0) AS oldest_days,
-        COALESCE(SUM(i.total_amount) FILTER (WHERE i.kind = 'REFUND'), 0) AS refunds_payable,
         COALESCE(SUM(i.total_amount) FILTER (WHERE i.kind IN ('DEPOSIT','BALANCE') AND ${PAST_DUE}), 0) AS overdue_amount,
         COUNT(*) FILTER (WHERE i.kind IN ('DEPOSIT','BALANCE') AND ${PAST_DUE}) AS overdue_count
       FROM invoices i
       WHERE ${OPEN}
         ${inProperty(q.propertyId)}
     `.execute(this.db);
-    return r.rows[0]!;
+    return { ...r.rows[0]!, refunds_payable: await this.refundsPayable(q) };
+  }
+
+  /**
+   * (Re-test round 3) What the house owes guests back: on each live booking, money paid
+   * beyond the agreed total (a stay shortened after payment) — the folio's credit_amount.
+   * This used to sum OPEN refund invoices, but a refund is recorded already paid
+   * (a credit note is born PAID), so the figure was always 0.
+   */
+  private async refundsPayable(q: FinanceQuery): Promise<number> {
+    const r = await sql<{ owed: string | number | null }>`
+      WITH paid AS (
+        SELECT reservation_id,
+               SUM(CASE WHEN kind = 'REFUND' THEN -total_amount ELSE total_amount END) AS amount
+          FROM invoices
+         WHERE status IN ('PAID','REFUNDED') AND deleted_at IS NULL AND reservation_id IS NOT NULL
+         GROUP BY reservation_id
+      )
+      SELECT COALESCE(SUM(GREATEST(0, p.amount - r.folio_total_amount)), 0) AS owed
+        FROM reservations r
+        JOIN paid p ON p.reservation_id = r.id
+        ${q.propertyId ? sql`JOIN rooms rm ON rm.id = r.room_id JOIN buildings b ON b.id = rm.building_id` : sql``}
+       WHERE r.deleted_at IS NULL
+         AND r.folio_total_amount IS NOT NULL
+         AND r.status NOT IN ('CANCELLED','NO_SHOW')
+         ${q.propertyId ? sql`AND b.property_id = ${q.propertyId}` : sql``}
+    `.execute(this.db);
+    return Number(r.rows[0]?.owed ?? 0);
   }
 
   // Receivables split into ageing buckets by issue age. Only the non-empty buckets

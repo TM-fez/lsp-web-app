@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -199,8 +199,13 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const valid =
     !!guest && !!roomId && datesOrdered && (isEdit || checkIn >= todayISO()) && !unavailable;
 
+  // (Re-test 3) A double click on "Create reservation" sent a second request before the
+  // button re-rendered disabled; the server refused the overlap, but the user saw a
+  // confusing "not available" toast on top of the success. A ref drops the second click.
+  const submitting = useRef(false);
   async function submit() {
-    if (!valid || !guest) return;
+    if (!valid || !guest || submitting.current) return;
+    submitting.current = true;
     const payload = {
       contact_id: guest.id,
       room_id: roomId,
@@ -220,6 +225,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
       onOpenChange(false);
     } catch {
       /* hook surfaces the error toast; keep the drawer open */
+    } finally {
+      submitting.current = false;
     }
   }
 
