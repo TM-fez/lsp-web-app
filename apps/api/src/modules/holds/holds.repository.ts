@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, HoldRow } from '../../db/types.js';
 import { inTransaction } from '../../core/db/transaction.js';
+import { ReservationsRepository } from '../reservations/reservations.repository.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { HoldFilters, HoldStatus, HoldRequestMeta } from './holds.types.js';
 
@@ -13,6 +14,16 @@ interface CreateHoldParams {
 
 export class HoldsRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /**
+   * (R5 retest) May a booking-less hold sit on this unit for these nights? Same answer as a
+   * booking would get — the unit's status, other bookings, and a serious repair's dates
+   * (ReservationsRepository.checkAvailability is the one definition). A hold used to be
+   * placeable over a booked or under-repair night, then fail only when it was paid.
+   */
+  async unitFreeForHold(roomId: string, checkIn: Date, checkOut: Date): Promise<boolean> {
+    return new ReservationsRepository(this.db).checkAvailability(roomId, checkIn, checkOut);
+  }
 
   async findById(id: string): Promise<HoldRow | undefined> {
     return this.db

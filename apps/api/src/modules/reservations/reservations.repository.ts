@@ -9,6 +9,7 @@ import { inTransaction } from '../../core/db/transaction.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
 import { repairWindowOverlaps } from '../../core/availability/repairWindows.js';
+import { assertNoCompetingHold } from '../holds/holds.conflicts.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 /**
@@ -89,6 +90,15 @@ export class ReservationsRepository {
     if (!opts.includeDeleted) q = q.where('rooms.deleted_at', 'is', null);
     const row = await q.executeTakeFirst();
     return row?.property_id ?? null;
+  }
+
+  /**
+   * (R5 retest) A booking moved onto nights that a booking-less hold covers. POST
+   * /reservations already refused this (rejectOverlappingHold); an EDIT that changes the
+   * dates or the unit did not, so a hold could be quietly overrun by a move.
+   */
+  async assertNoCompetingHold(roomId: string, checkIn: Date, checkOut: Date): Promise<void> {
+    await assertNoCompetingHold(this.db, roomId, checkIn, checkOut);
   }
 
   async checkAvailability(roomId: string, checkIn: Date, checkOut: Date, excludeReservationId?: string): Promise<boolean> {

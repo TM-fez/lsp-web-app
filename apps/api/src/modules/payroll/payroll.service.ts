@@ -69,6 +69,16 @@ export class PayrollService {
       if (!scope.allProperties && !(scope.ids ?? []).includes(dto.home_property_id)) {
         throw AppError.badRequest('Choose one of your own properties as their home property.');
       }
+      // (R5 retest) …and a limited user may only move a home they already hold. Otherwise a
+      // CBD accountant could pull a shared person's pay off the Village's books onto CBD's.
+      if (!scope.allProperties) {
+        const current = await this.repo.currentHome(userId);
+        if (current !== dto.home_property_id && !(scope.ids ?? []).includes(current ?? '')) {
+          throw AppError.forbidden(
+            'This person’s pay is costed to a property you don’t manage. Ask someone who works across all properties to move it.',
+          );
+        }
+      }
     } else if (dto.home_property_id === null && !scope.allProperties) {
       throw AppError.badRequest('Only someone who works across all properties can make a salary company-level.');
     }

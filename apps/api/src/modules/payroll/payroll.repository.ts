@@ -167,6 +167,18 @@ export class PayrollRepository {
     return new Set(rows.map((r) => r.notes ?? ''));
   }
 
+  /** Where this person's pay is costed today (their home, or the default rule). */
+  async currentHome(userId: string): Promise<string | null> {
+    const r = await sql<{ home: string | null }>`
+      SELECT ${HOME_PROPERTY} AS home FROM staff_compensation sc WHERE sc.user_id = ${userId}::uuid`.execute(this.db);
+    if (r.rows[0]) return r.rows[0].home;
+    // No pay set yet: the default rule on memberships alone.
+    const m = await sql<{ home: string | null }>`
+      SELECT up.property_id AS home FROM user_properties up JOIN properties p ON p.id = up.property_id
+       WHERE up.user_id = ${userId}::uuid ORDER BY p.name, p.id LIMIT 1`.execute(this.db);
+    return m.rows[0]?.home ?? null;
+  }
+
   /** Is this an active property the staff member works in? (Their home must be one.) */
   async isMemberOf(userId: string, propertyId: string): Promise<boolean> {
     const row = await this.db

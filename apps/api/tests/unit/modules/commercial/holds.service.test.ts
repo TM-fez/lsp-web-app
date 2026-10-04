@@ -6,6 +6,7 @@ function setup() {
     findById: vi.fn(),
     findPaginated: vi.fn(),
     create: vi.fn(async (p: any) => ({ id: 'h1', status: 'HELD', ...p })),
+    unitFreeForHold: vi.fn(async () => true),
     markStatus: vi.fn(async (id: string, status: string, reason: string | null) => ({ id, status, release_reason: reason })),
     incrementRetry: vi.fn(async (id: string) => ({ id, status: 'HELD', retry_count: 1 })),
     releaseExpired: vi.fn(async () => 2),
