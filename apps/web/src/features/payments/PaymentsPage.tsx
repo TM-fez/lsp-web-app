@@ -25,6 +25,10 @@ import type { PaymentIntent, PaymentStatus, PaymentMethod } from '@/types';
 
 // "Needs attention" leads: it is the only tab anyone has to act on, and a screen whose
 // default view is a wall of successful payments buries the one that failed.
+//
+// (Re-test 2026-10-04) But it is empty whenever nothing has failed — so after recording
+// payments, Accounts opened the page, saw "no payments" and reported it broken. The page
+// now opens on "Needs attention" only when something needs attention, else on All.
 const FILTERS: { key: PaymentStatus | 'ATTENTION' | 'ALL'; label: string }[] = [
   { key: 'ATTENTION', label: 'Needs attention' },
   { key: 'ALL', label: 'All' },
@@ -65,18 +69,20 @@ function fmtTime(iso: string): string {
 }
 
 export function PaymentsPage() {
-  const [filter, setFilter] = useState<PaymentStatus | 'ATTENTION' | 'ALL'>('ATTENTION');
+  // null = not chosen yet: decided by whether anything needs attention (see FILTERS).
+  const [chosen, setFilter] = useState<PaymentStatus | 'ATTENTION' | 'ALL' | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   // ATTENTION spans two statuses, so it is filtered client-side over the same page the
   // other tabs read; everything else pushes the filter to the server.
   const { data, isLoading, isError, refetch } = usePayments(
-    filter === 'ALL' || filter === 'ATTENTION' ? {} : { status: filter },
+    chosen === null || chosen === 'ALL' || chosen === 'ATTENTION' ? {} : { status: chosen },
   );
 
   const all = data?.data ?? [];
-  const payments = filter === 'ATTENTION' ? all.filter(needsAttention) : all;
   const attentionCount = all.filter(needsAttention).length;
+  const filter = chosen ?? (attentionCount > 0 ? 'ATTENTION' : 'ALL');
+  const payments = filter === 'ATTENTION' ? all.filter(needsAttention) : all;
 
   return (
     <div className="flex flex-col gap-8">

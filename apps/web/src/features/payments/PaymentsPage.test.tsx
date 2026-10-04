@@ -14,7 +14,8 @@ const row = (over: Partial<PaymentIntent>): PaymentIntent => ({
   ...over,
 });
 
-const rows: PaymentIntent[] = [
+let rows: PaymentIntent[] = [];
+const seed: PaymentIntent[] = [
   row({ id: 'ok', guest_name: 'Neo Kgosi', status: 'PAID' }),
   // Settled from the Invoices page, which never asked how the guest paid.
   row({ id: 'inv', guest_name: 'Tebogo Sithole', status: 'PAID', method: 'OTHER', hold_id: null, invoice_id: 'i9' }),
@@ -48,13 +49,25 @@ vi.mock('./hooks', () => ({
 import { PaymentsPage } from './PaymentsPage';
 
 describe('PaymentsPage', () => {
-  beforeEach(() => detail.mockClear());
+  beforeEach(() => {
+    detail.mockClear();
+    rows = seed;
+  });
 
   // A screen that opens on a wall of successful payments buries the one that failed.
   it('opens on what needs chasing, not on everything', () => {
     render(<PaymentsPage />);
     expect(screen.getByText('Charity Chipondeni')).toBeInTheDocument();
     expect(screen.queryByText('Neo Kgosi')).not.toBeInTheDocument();
+  });
+
+  // Re-test 2026-10-04: with nothing failed, "Needs attention" is empty — opening on it
+  // made the page read as broken right after payments were recorded.
+  it('opens on All when nothing needs attention', () => {
+    rows = seed.filter((r) => r.status === 'PAID');
+    render(<PaymentsPage />);
+    expect(screen.getByText('Neo Kgosi')).toBeInTheDocument();
+    expect(screen.getByText('Tebogo Sithole')).toBeInTheDocument();
   });
 
   it('labels a settlement with no recorded method honestly, not as raw OTHER', () => {

@@ -160,3 +160,27 @@ export function homePathFor(hasPerm: (perm: string) => boolean): string | null {
   }
   return best?.to ?? null;
 }
+
+/**
+ * The permission a screen needs, by URL — the nav's own `perm`, longest-prefix match, so
+ * `/maintenance/all` needs what `/maintenance` needs and `/invoices/:id/print` what
+ * `/invoices` needs. Null means "any signed-in user" (Settings) or "not a nav screen".
+ *
+ * (Re-test 2026-10-04) Typing a URL used to open any screen: the server refused the data,
+ * so the page rendered an empty shell or "the server didn't respond". RouteGuard reads
+ * this to show a plain "no access" page instead. `/` is left to HomeRoute, which already
+ * redirects anyone without the cockpit to their own home.
+ */
+export function permForPath(pathname: string): string | null {
+  let best: { perm: string | null; len: number } | null = null;
+  for (const ws of WORKSPACES) {
+    for (const item of ws.items) {
+      if (!item.built || item.to === '/') continue;
+      const matches = pathname === item.to || pathname.startsWith(item.to + '/');
+      if (matches && (!best || item.to.length > best.len)) {
+        best = { perm: item.perm ?? null, len: item.to.length };
+      }
+    }
+  }
+  return best?.perm ?? null;
+}

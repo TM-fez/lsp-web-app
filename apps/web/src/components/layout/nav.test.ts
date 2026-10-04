@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceForPath, landingRoute, homePathFor } from './nav';
+import { workspaceForPath, landingRoute, homePathFor, permForPath } from './nav';
 
 describe('workspaceForPath', () => {
   it('maps built routes to their workspace', () => {
@@ -84,5 +84,19 @@ describe('homePathFor', () => {
 
   it('returns null when no built screen is permitted', () => {
     expect(homePathFor(perms())).toBeNull();
+  });
+});
+
+describe('permForPath', () => {
+  it('maps a screen, and its sub-pages, to the permission its nav item needs', () => {
+    expect(permForPath('/invoices')).toBe('invoices.read');
+    expect(permForPath('/invoices/abc/print')).toBe('invoices.read');
+    expect(permForPath('/maintenance/all')).toBe('maintenance.read');
+    expect(permForPath('/payroll')).toBe('payroll.read');
+  });
+
+  it('leaves Settings open to everyone, and / to HomeRoute', () => {
+    expect(permForPath('/settings')).toBeNull();
+    expect(permForPath('/')).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { RouteGuard } from './RouteGuard';
 
 /**
  * The authed frame. On a desktop the sidebar sits beside the page as it always has. Below
@@ -23,7 +24,9 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenNav={() => setNavOpen(true)} />
         <main className="min-h-0 flex-1 overflow-auto bg-cream px-4 py-5 md:px-8 md:py-7">
-          <Outlet />
+          <RouteGuard>
+            <Outlet />
+          </RouteGuard>
         </main>
       </div>
     </div>
