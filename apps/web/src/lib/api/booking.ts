@@ -1,4 +1,5 @@
 import { api } from './client';
+import { idempotencyConfig } from './idempotency';
 import type {
   Contact,
   Room,
@@ -16,8 +17,8 @@ export async function searchContacts(search: string): Promise<Contact[]> {
   return data.data;
 }
 
-export async function createContact(input: { name: string; email?: string; phone?: string }): Promise<Contact> {
-  const { data } = await api.post<Contact>('/contacts', { type: 'individual', ...input });
+export async function createContact(input: { name: string; email?: string; phone?: string }, idempotencyKey?: string): Promise<Contact> {
+  const { data } = await api.post<Contact>('/contacts', { type: 'individual', ...input }, idempotencyConfig(idempotencyKey));
   return data;
 }
 
@@ -59,8 +60,8 @@ export async function createPaymentIntent(input: {
   hold_id: string;
   method: PaymentMethod;
   purpose?: 'DEPOSIT' | 'BALANCE';
-}): Promise<PaymentIntent> {
-  const { data } = await api.post<PaymentIntent>('/payments', { purpose: 'DEPOSIT', ...input });
+}, idempotencyKey?: string): Promise<PaymentIntent> {
+  const { data } = await api.post<PaymentIntent>('/payments', { purpose: 'DEPOSIT', ...input }, idempotencyConfig(idempotencyKey));
   return data;
 }
 

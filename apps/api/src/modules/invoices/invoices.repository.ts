@@ -473,7 +473,8 @@ export class InvoicesRepository {
     originalId: string,
     refundInvoice: UnnumberedInvoice,
     reason: string,
-    meta: InvoiceRequestMeta
+    meta: InvoiceRequestMeta,
+    opts: { duplicateGuard?: boolean } = {}
   ): Promise<InvoiceRow> {
     return inTransaction(this.db, async (trx) => {
       if (refundInvoice.reservation_id) await lockReservation(trx, refundInvoice.reservation_id);
@@ -504,9 +505,55 @@ export class InvoicesRepository {
       const already = await refundedSoFar(trx, originalId);
       const left = original.total_amount - already;
       if (refundInvoice.total_amount > left) {
-        throw AppError.badRequest(
-          `Only ${formatThebe(left, original.currency)} of this invoice is left to refund.`
-        );
+        // After an earlier refund this is a matter of state, not a malformed request —
+        // typically the other half of a double click — so it is a 409 that says what has
+        // already gone back. Asking for more than the whole invoice stays a 400.
+        const msg = `Only ${formatThebe(left, original.currency)} of this invoice is left to refund.`;
+        if (already > 0) {
+          throw AppError.conflict(`${msg} ${formatThebe(already, original.currency)} has already been refunded on it.`);
+        }
+        throw AppError.badRequest(msg);
+      }
+
+      // Double-submit guard for callers that sent no Idempotency-Key: the same amount on
+      // the same invoice by the same person within seconds is a repeat click far more often
+      // than a deliberate second refund. (Two refunds that both fit are otherwise legitimate,
+      // so this is a short window, not a rule.) Decided under the invoice lock, so of N
+      // parallel identical requests exactly one gets through.
+      if (opts.duplicateGuard !== false) {
+        const recent = await trx
+          .selectFrom('invoices')
+          .select('id')
+          .where('refund_of_invoice_id', '=', originalId)
+          .where('kind', '=', 'REFUND')
+          .where('deleted_at', 'is', null)
+          .where('total_amount', '=', refundInvoice.total_amount)
+          .where('created_by', '=', meta.userId)
+          .where('created_at', '>', sql<Date>`now() - make_interval(secs => ${DUPLICATE_REFUND_WINDOW_SECONDS})`)
+          .limit(1)
+          .executeTakeFirst();
+        if (recent) {
+          throw AppError.conflict('This looks like a duplicate refund — wait or use a different amount.');
+        }
+      }
+
+      // A booking whose paid total is above its agreed total (a stay shortened after
+      // payment) owes the guest that credit back. Refunding more than the credit is no
+      // longer "settling what the house owes" — it would eat into money for nights that
+      // were actually stayed — so it is refused here, to the thebe, under the booking lock.
+      if (refundInvoice.reservation_id) {
+        const reservation = (await lockReservation(trx, refundInvoice.reservation_id))!;
+        const agreed = await agreedTotal(trx, reservation);
+        if (agreed != null) {
+          const paidNow = (await paidToDate(trx, [reservation.id])).get(reservation.id) ?? 0;
+          const credit = Math.max(0, paidNow - agreed);
+          if (credit > 0 && refundInvoice.total_amount > credit) {
+            throw AppError.conflict(
+              `This booking was shortened after payment, so only ${formatThebe(credit, original.currency)} is owed back to the guest. ` +
+                `That is the most that can be refunded until the stay changes.`
+            );
+          }
+        }
       }
 
       // A credit note takes the next number in the same series as the invoice it
@@ -580,6 +627,9 @@ export class InvoicesRepository {
 }
 
 /** Thebe already handed back on an invoice: the sum of the credit notes that point at it. */
+/** A repeat of the same refund inside this many seconds, with no Idempotency-Key, is refused. */
+const DUPLICATE_REFUND_WINDOW_SECONDS = 10;
+
 export async function refundedSoFar(trx: Kysely<Database>, invoiceId: string): Promise<number> {
   const row = await trx
     .selectFrom('invoices')

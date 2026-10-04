@@ -11,7 +11,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
-import { formatMoney, thebeToPula, pulaToThebe, isPulaAmount } from '@/lib/utils/money';
+import { formatMoney, thebeToPula, pulaToThebe } from '@/lib/utils/money';
+import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { AmountError } from '@/components/ui/amount-error';
 import { cn } from '@/lib/utils/cn';
 import { Pager } from '@/components/ui/pager';
 import { useInvoices, useSettleInvoice, useRefundInvoice, useActiveQuotes, useIssueInvoice } from './hooks';
@@ -100,6 +102,9 @@ export function InvoicesPage() {
   const [refunding, setRefunding] = useState<Invoice | null>(null);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  // One key per time the dialog opens: a double click, or a retry after a slow network,
+  // replays the same refund instead of recording a second one. A fresh open = a new key.
+  const [refundKey, setRefundKey] = useState('');
 
   // A part-refunded invoice can be refunded again — but only up to what is left.
   const refundable = (inv: Invoice) => inv.total_amount - (inv.refunded_amount ?? 0);
@@ -107,14 +112,19 @@ export function InvoicesPage() {
     setRefunding(inv);
     setAmount(thebeToPula(refundable(inv)));
     setReason('');
+    setRefundKey(newIdempotencyKey());
   };
 
+  // Valid = a real Pula amount (dot decimals, ≤ 2 places), above zero and no more than is
+  // still refundable on this invoice. One rule for the button and for the submit.
+  const refundThebe = pulaToThebe(amount);
+  const refundAmountOk = !Number.isNaN(refundThebe) && refundThebe > 0 && !!refunding && refundThebe <= refundable(refunding);
+
   const submitRefund = () => {
-    if (!refunding) return;
-    const thebe = pulaToThebe(amount);
-    if (!isPulaAmount(amount) || Number.isNaN(thebe) || thebe <= 0 || thebe > refundable(refunding) || !reason.trim()) return;
+    // refund.isPending: a second click before the button re-renders disabled is dropped.
+    if (!refunding || refund.isPending || !refundAmountOk || !reason.trim()) return;
     refund.mutate(
-      { id: refunding.id, amount: thebe, reason: reason.trim() },
+      { id: refunding.id, amount: refundThebe, reason: reason.trim(), idempotencyKey: refundKey },
       { onSuccess: () => setRefunding(null) },
     );
   };
@@ -325,6 +335,12 @@ export function InvoicesPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="refund-amount">Amount (Pula)</Label>
               <Input id="refund-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <AmountError value={amount} />
+              {!Number.isNaN(refundThebe) && refunding && refundThebe > refundable(refunding) && (
+                <p role="alert" className="text-[11px] text-terra">
+                  Only {formatMoney(refundable(refunding), refunding.currency)} can still be refunded on this invoice.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="refund-reason">Reason</Label>
@@ -334,7 +350,7 @@ export function InvoicesPage() {
               <Button variant="outline" onClick={() => setRefunding(null)}>Cancel</Button>
               <Button
                 variant="primary"
-                disabled={busy || !reason.trim() || Number.isNaN(pulaToThebe(amount)) || pulaToThebe(amount) <= 0 || (refunding ? pulaToThebe(amount) > refunding.total_amount : true)}
+                disabled={busy || refund.isPending || !reason.trim() || !refundAmountOk}
                 onClick={submitRefund}
               >
                 Record refund

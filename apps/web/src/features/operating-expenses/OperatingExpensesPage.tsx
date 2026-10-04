@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Banknote, Plus, Pencil, Trash2, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ import { uploadFile, openFile } from '@/lib/api/files';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
 import { formatMoney, pulaToThebe, thebeToPula } from '@/lib/utils/money';
+import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { AmountError } from '@/components/ui/amount-error';
 import { todayISO } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
 import { useOperatingExpenses, useCreateOperatingExpense, useUpdateOperatingExpense, useDeleteOperatingExpense } from './hooks';
@@ -98,6 +100,12 @@ export function OperatingExpensesPage() {
   // button disabled — two identical cost rows. A ref is set synchronously, so the second
   // click in the same tick is dropped.
   const inFlight = useRef(false);
+  // One Idempotency-Key per cost being entered: a retry of the same click replays the first
+  // instead of adding the cost twice. Renewed whenever the dialog opens and after each save.
+  const createKey = useRef('');
+  useEffect(() => {
+    if (editing === 'new') createKey.current = newIdempotencyKey();
+  }, [editing]);
   const submit = (andAnother = false) => {
     if (!valid || inFlight.current) return;
     inFlight.current = true;
@@ -112,12 +120,18 @@ export function OperatingExpensesPage() {
       receipt_file_id: form.receipt_file_id,
     };
     if (editing === 'new') {
-      create.mutate(payload, {
+      create.mutate({ input: payload, idempotencyKey: createKey.current }, {
         onSettled: done,
-        onSuccess: () => andAnother
-          // keep the dialog open for rapid entry; carry date + category forward
-          ? setForm((f) => ({ ...emptyForm(), category: f.category, incurred_on: f.incurred_on }))
-          : setEditing(null),
+        onSuccess: () => {
+          // The next cost in "save & add another" is a NEW request, so it gets a new key.
+          createKey.current = newIdempotencyKey();
+          if (andAnother) {
+            // keep the dialog open for rapid entry; carry date + category forward
+            setForm((f) => ({ ...emptyForm(), category: f.category, incurred_on: f.incurred_on }));
+          } else {
+            setEditing(null);
+          }
+        },
       });
     } else if (editing) {
       update.mutate({ id: editing.id, input: payload }, { onSettled: done, onSuccess: () => setEditing(null) });
@@ -260,6 +274,7 @@ export function OperatingExpensesPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="oe-amount">Amount (Pula)</Label>
               <Input id="oe-amount" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" />
+              <AmountError value={form.amount} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="oe-prop">Property</Label>

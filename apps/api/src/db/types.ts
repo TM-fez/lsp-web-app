@@ -52,6 +52,21 @@ export interface RefreshTokensTable {
   created_at: Generated<Date>;
 }
 
+// (081) Idempotency keys — a served request's stored response, so a double-submit replays it.
+export interface IdempotencyKeysTable {
+  id: Generated<string>;
+  user_id: string;
+  endpoint: string;
+  key: string;
+  request_hash: string;
+  state: Generated<'IN_PROGRESS' | 'COMPLETED'>;
+  response_status: number | null;
+  response_body: unknown | null;
+  created_at: Generated<Date>;
+  completed_at: Date | null;
+  expires_at: Generated<Date>;
+}
+
 export interface FilesTable {
   id: Generated<string>;
   original_name: string;
@@ -601,6 +616,7 @@ export interface Database {
   user_permissions: UserPermissionsTable;
   users: UsersTable;
   refresh_tokens: RefreshTokensTable;
+  idempotency_keys: IdempotencyKeysTable;
   files: FilesTable;
   contacts: ContactsTable;
   leads: LeadsTable;

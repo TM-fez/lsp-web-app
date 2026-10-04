@@ -23,9 +23,12 @@ import {
   useFolio,
   useConfirmReservation,
 } from './hooks';
-import { nights, statusLabel, statusTone, paymentTone, paymentLabel, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
+import { nights, statusLabel, statusTone, paymentTone, paymentLabel, isOpen, fmtDate, sourceLabel, SOURCES, discountBlockedReason, parseDiscountInput } from './util';
 import { todayISO } from '@/lib/utils/date';
 import { formatMoney, isPulaAmount, pulaToThebe } from '@/lib/utils/money';
+import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { errMessage } from '@/lib/api/errors';
+import { AmountError } from '@/components/ui/amount-error';
 import { useAuthStore } from '@/store/auth';
 import type { Reservation, ReservationSource, Room, PaymentMethod } from '@/types';
 
@@ -79,6 +82,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   // negotiable". It no longer is.
   const showDiscountTools =
     isEdit && canRequestDiscount && ['PENDING', 'CONFIRMED'].includes(reservation!.status);
+  // …but the SERVER only takes a new discount while the booking is PENDING (409 otherwise),
+  // so the form is offered only then; a confirmed booking gets the reason in words instead.
+  const discountBlocked = isEdit ? discountBlockedReason(reservation!.status) : null;
   // Recording a payment needs BOTH: raising the intent and settling it are separate
   // permissions, and reception holds only the first — so the button stays hidden
   // rather than showing them an action that 403s halfway through.
@@ -139,6 +145,17 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const payAmountWellFormed = payAmount.trim() === '' || isPulaAmount(payAmount);
   const payAmountValid =
     payAmountThebe === null || (payAmountWellFormed && payAmountThebe > 0 && payAmountThebe <= outstanding);
+  // One Idempotency-Key per time the drawer opens: pressing "Yes — record" twice, or a retry
+  // after a slow network, replays the same payment instead of taking it twice. The server
+  // forgets a key whose request was refused, so fixing the amount and re-sending is fine.
+  const [discountFailure, setDiscountFailure] = useState<string | null>(null);
+  const payKey = useRef('');
+  useEffect(() => {
+    if (!open) return;
+    payKey.current = newIdempotencyKey();
+    // A discount error from a previous visit to this drawer is not news any more.
+    setDiscountFailure(null);
+  }, [open]);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
@@ -260,14 +277,27 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     }
   }
 
+  // What was typed in the discount box, in the units the API wants (whole percent / thebe).
+  const parsedDiscount = parseDiscountInput(discType, discValue);
+
   function applyDiscount() {
-    if (!reservation || !discValue) return;
-    const value = discType === 'PERCENT' ? Math.round(parseFloat(discValue)) : Math.round(parseFloat(discValue) * 100);
-    setDiscM.mutate({
-      id: reservation.id,
-      input: { discount_type: discType, discount_value: value, discount_reason: discReason.trim() || null },
-    });
+    if (!reservation || parsedDiscount.value === null || setDiscM.isPending) return;
+    setDiscountFailure(null);
+    setDiscM.mutate(
+      {
+        id: reservation.id,
+        input: { discount_type: discType, discount_value: parsedDiscount.value, discount_reason: discReason.trim() || null },
+      },
+      { onError: (e) => setDiscountFailure(errMessage(e)) },
+    );
   }
+
+  // A refused discount / approval / removal is also shown IN the drawer, not only as a toast
+  // that fades: the person has to see why the price did not change (the hook still toasts).
+  const discountMutate = (m: typeof approveDisc | typeof removeDisc) => {
+    setDiscountFailure(null);
+    m.mutate(reservation!.id, { onError: (e: unknown) => setDiscountFailure(errMessage(e)) });
+  };
 
   // ── Read-only view for closed reservations (checked-in/out, cancelled) ───────
   if (isEdit && !editable) {
@@ -625,11 +655,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 <p className="text-[11px] text-muted">
                   In pula. Outstanding: {formatMoney(outstanding)}.
                 </p>
-                {!payAmountWellFormed && (
-                  <p className="text-[11px] text-terra">
-                    Enter an amount in pula with at most two decimal places, e.g. 1250.50.
-                  </p>
-                )}
+                <AmountError value={payAmount} />
                 {payAmountWellFormed && payAmountThebe !== null && payAmountThebe > outstanding && (
                   <p className="text-[11px] text-terra">
                     That is more than this booking still owes.
@@ -684,6 +710,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                           amount: payAmountThebe ?? undefined,
                           reference: payReference.trim() || null,
                         },
+                        idempotencyKey: payKey.current,
                       });
                       onOpenChange(false);
                     } catch {
@@ -761,6 +788,12 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 </p>
               )}
 
+              {discountFailure && (
+                <p role="alert" className="rounded-md border border-terra/40 bg-terra/5 px-3 py-2 text-xs text-terra">
+                  {discountFailure}
+                </p>
+              )}
+
               {reservation!.discount_value != null ? (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-cream-2/60 px-3 py-2.5">
                   <div className="min-w-0">
@@ -782,35 +815,46 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                   </div>
                   <div className="flex shrink-0 gap-2">
                     {!reservation!.discount_approved_at && canApproveDiscount && (
-                      <Button size="sm" variant="primary" disabled={busy} onClick={() => approveDisc.mutate(reservation!.id)}>
+                      <Button size="sm" variant="primary" disabled={busy} onClick={() => discountMutate(approveDisc)}>
                         Approve
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeDisc.mutate(reservation!.id)}>
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => discountMutate(removeDisc)}>
                       Remove
                     </Button>
                   </div>
                 </div>
+              ) : discountBlocked ? (
+                <p className="rounded-md border border-line bg-cream-2/40 px-3 py-2 text-xs text-muted">{discountBlocked}</p>
               ) : (
                 <>
                   <div className="grid grid-cols-[8.5rem_1fr] gap-3">
                     <Select
                       value={discType}
-                      onChange={(e) => setDiscType(e.target.value as 'PERCENT' | 'FIXED')}
+                      onChange={(e) => {
+                        setDiscType(e.target.value as 'PERCENT' | 'FIXED');
+                        setDiscValue('');
+                      }}
                       disabled={busy}
                     >
                       <option value="PERCENT">Percent %</option>
                       <option value="FIXED">Amount (P)</option>
                     </Select>
                     <Input
-                      type="number"
-                      min="1"
-                      placeholder={discType === 'PERCENT' ? 'e.g. 15' : 'e.g. 200'}
+                      inputMode="decimal"
+                      aria-label={discType === 'PERCENT' ? 'Discount percentage' : 'Discount amount in pula'}
+                      placeholder={discType === 'PERCENT' ? 'e.g. 15' : 'e.g. 200.00'}
                       value={discValue}
-                      onChange={(e) => setDiscValue(e.target.value)}
+                      onChange={(e) => {
+                        setDiscValue(e.target.value);
+                        setDiscountFailure(null);
+                      }}
                       disabled={busy}
                     />
                   </div>
+                  {parsedDiscount.error && (
+                    <p role="alert" className="text-[11px] text-terra">{parsedDiscount.error}</p>
+                  )}
                   <Input
                     placeholder="Reason (e.g. loyal guest, corporate)"
                     value={discReason}
@@ -821,7 +865,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                     <span className="text-xs text-muted">
                       {canApproveDiscount ? 'Applies immediately.' : 'Needs Tameem’s sign-off before it counts.'}
                     </span>
-                    <Button size="sm" variant="outline" disabled={busy || !discValue} onClick={applyDiscount}>
+                    <Button size="sm" variant="outline" disabled={busy || parsedDiscount.value === null} onClick={applyDiscount}>
                       {canApproveDiscount ? 'Apply discount' : 'Request discount'}
                     </Button>
                   </div>

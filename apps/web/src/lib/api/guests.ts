@@ -1,4 +1,5 @@
 import { api } from './client';
+import { idempotencyConfig } from './idempotency';
 import type { Contact, ContactType, Paginated } from '@/types';
 
 export interface CreateGuestInput {
@@ -35,8 +36,8 @@ export async function listGuests(
   return data;
 }
 
-export async function createGuest(input: CreateGuestInput): Promise<Contact> {
-  const { data } = await api.post<Contact>('/contacts', input);
+export async function createGuest(input: CreateGuestInput, idempotencyKey?: string): Promise<Contact> {
+  const { data } = await api.post<Contact>('/contacts', input, idempotencyConfig(idempotencyKey));
   return data;
 }
 

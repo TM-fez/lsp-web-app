@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
 import { formatMoney, pulaToThebe, thebeToPula } from '@/lib/utils/money';
+import { AmountError } from '@/components/ui/amount-error';
 import { cn } from '@/lib/utils/cn';
 import { useEmployees, usePayrollSummary, useUpsertCompensation, usePostPayroll } from './hooks';
 import type { EmployeePay, PayFrequency } from '@/types';
@@ -165,6 +166,7 @@ export function PayrollPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pay-amt">Gross pay (Pula)</Label>
               <Input id="pay-amt" inputMode="decimal" value={form.gross} onChange={(e) => setForm({ ...form, gross: e.target.value })} placeholder="0.00" />
+              <AmountError value={form.gross} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pay-freq">Frequency</Label>

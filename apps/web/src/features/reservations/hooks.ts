@@ -110,7 +110,8 @@ export function useRemoveReservation() {
 export function useMarkPaid() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: MarkPaidInput }) => markReservationPaid(id, input),
+    mutationFn: ({ id, input, idempotencyKey }: { id: string; input: MarkPaidInput; idempotencyKey?: string }) =>
+      markReservationPaid(id, input, idempotencyKey),
     onSuccess: () => {
       // Deliberately not "confirmed ✓": a PART payment leaves a balance owing, and a
       // tick beside "confirmed" is exactly how staff come to believe a booking is

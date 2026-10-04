@@ -1,4 +1,5 @@
 import { api } from './client';
+import { idempotencyConfig } from './idempotency';
 import type { OperatingExpense, OperatingExpenseCategory, RecurringCost } from '@/types';
 
 export interface OpexListParams {
@@ -24,8 +25,8 @@ export async function listOperatingExpenses(params: OpexListParams): Promise<Ope
   return data.data;
 }
 
-export async function createOperatingExpense(input: OpexInput): Promise<OperatingExpense> {
-  const { data } = await api.post<OperatingExpense>('/operating-expenses', input);
+export async function createOperatingExpense(input: OpexInput, idempotencyKey?: string): Promise<OperatingExpense> {
+  const { data } = await api.post<OperatingExpense>('/operating-expenses', input, idempotencyConfig(idempotencyKey));
   return data;
 }
 

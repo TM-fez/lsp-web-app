@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { pulaToThebe, thebeToPula, pctToBps, bpsToPct } from '@/lib/utils/money';
+import { AmountError } from '@/components/ui/amount-error';
 import { useCreateRatePlan, useUpdateRatePlan, useDeleteRatePlan } from './hooks';
 import type { RatePlanInput } from '@/lib/api/pricing';
 import type { RatePlan, UnitType } from '@/types';
@@ -248,6 +249,7 @@ function RateField({
         {label} ({currency || 'BWP'})
       </Label>
       <Input id={id} inputMode="decimal" placeholder="0.00" value={value} onChange={(e) => onChange(e.target.value)} />
+      <AmountError value={value} />
     </div>
   );
 }
