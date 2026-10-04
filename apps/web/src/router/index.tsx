@@ -36,6 +36,7 @@ import { EnquirePage } from '@/features/stay/EnquirePage';
 import { FilesPage } from '@/features/files/FilesPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { homePathFor } from '@/components/layout/nav';
+import { RouteGuard } from '@/components/layout/RouteGuard';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
@@ -63,16 +64,16 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       // Chrome-less, authed — opens clean for printing / save-as-PDF.
-      { path: '/invoices/:id/print', element: <InvoiceDocumentPage /> },
-      { path: '/reports/print', element: <ReportStatementPage /> },
-      { path: '/owners/print', element: <OwnerStatementPrintPage /> },
+      { path: '/invoices/:id/print', element: <RouteGuard><InvoiceDocumentPage /></RouteGuard> },
+      { path: '/reports/print', element: <RouteGuard><ReportStatementPage /></RouteGuard> },
+      { path: '/owners/print', element: <RouteGuard><OwnerStatementPrintPage /></RouteGuard> },
       {
         // Requires an active property to be chosen before any scoped screen loads.
         element: <PropertyGate />,
         children: [
           // Chrome-less full-screen tablet board (Phase 3) — no sidebar/topbar,
           // meant to be pinned on a housekeeping tablet.
-          { path: '/housekeeping/board', element: <HousekeepingBoardPage /> },
+          { path: '/housekeeping/board', element: <RouteGuard><HousekeepingBoardPage /></RouteGuard> },
           {
             element: <AppShell />,
             children: [
