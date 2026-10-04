@@ -1,3 +1,4 @@
+import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import type { Request, Response, NextFunction } from 'express';
 import { PropertiesService } from './properties.service.js';
 import {
@@ -18,9 +19,13 @@ export class PropertiesController {
     };
   }
 
-  list = async (_req: Request, res: Response, next: NextFunction) => {
+  list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.listWithBuildings());
+      // (Re-test 3) A CBD-only user saw every property and all 25 units here. Admins see
+      // all; anyone else only the properties they belong to.
+      const ids = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      const all = await this.service.listWithBuildings();
+      res.json(ids === null ? all : all.filter((p) => ids.includes(p.id)));
     } catch (err) {
       next(err);
     }

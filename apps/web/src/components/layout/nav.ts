@@ -84,11 +84,13 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Admin',
     icon: Settings,
     items: [
-      { to: '/properties', label: 'Properties', icon: Building2, perm: 'properties.read', built: true },
+      // (Re-test 3) Setting up properties is admin work; everyone else still reads their own
+      // property through the picker (/auth/me), not this screen.
+      { to: '/properties', label: 'Properties', icon: Building2, perm: 'properties.update', built: true },
       { to: '/rooms', label: 'Rooms', icon: BedDouble, perm: 'rooms.read', built: true },
       { to: '/pricing', label: 'Pricing', icon: Tags, perm: 'pricing.read', built: true },
       { to: '/users', label: 'Users & Roles', icon: ShieldCheck, perm: 'users.read', built: true },
-      { to: '/files', label: 'Files', icon: FolderOpen, perm: 'files.read', built: true },
+      { to: '/files', label: 'Files', icon: FolderOpen, perm: 'files.library', built: true },
       { to: '/settings', label: 'Settings', icon: Settings, built: true },
     ],
   },

@@ -25,7 +25,7 @@ export function createFilesRouter(dbInstance = db): Router {
   router.post('/upload', authorize('files.create'), controller.uploadMiddleware, controller.uploadFile);
   router.get('/', authorize('files.read'), controller.listFiles);
   // (P6) The categorised library. Declared before '/:id' so 'library' is not read as an id.
-  router.get('/library', authorize('files.read'), controller.library);
+  router.get('/library', authorize('files.library'), controller.library);
   router.patch('/:id/classify', authorize('files.create'), validateBody(ClassifyFileSchema), controller.classify);
   router.get('/:id', authorize('files.read'), controller.getFile);
   router.get('/:id/download', authorize('files.read'), controller.downloadFile);
