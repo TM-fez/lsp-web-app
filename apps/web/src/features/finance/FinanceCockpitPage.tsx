@@ -3,6 +3,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils/cn';
 import { useReceivables } from './hooks';
+import { HeldOnCancelledSection } from './HeldOnCancelledSection';
 import type { AgingBucket, AgingBucketKey, OutstandingInvoice, PropertyReceivable } from '@/types';
 
 // Ageing runs fresh → stale: forest (current) through terra to a deep red (90+).
@@ -198,6 +199,8 @@ export function FinanceCockpitPage() {
                   </table>
                 </div>
               </section>
+
+              <HeldOnCancelledSection />
             </>
           )}
         </>

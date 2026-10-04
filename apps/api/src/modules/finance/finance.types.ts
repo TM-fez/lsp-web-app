@@ -62,3 +62,25 @@ export interface FinanceQuery {
   // to default to "everything this user can reach", so the two screens disagreed.)
   propertyId: string;
 }
+
+/** One cancelled / no-show booking that still holds guest money (Round 4). */
+export interface HeldOnCancelledRow {
+  reservation_id: string;
+  guest_name: string | null;
+  room_code: string | null;
+  status: 'CANCELLED' | 'NO_SHOW';
+  check_in_date: string;   // YYYY-MM-DD
+  check_out_date: string;
+  currency: string;
+  received: number;        // thebe — paid in, net of refunds already given
+  cancelled_on: string;    // YYYY-MM-DD, when the booking last changed (property day)
+}
+
+export interface HeldOnCancelled {
+  as_of: string;
+  total_held: number;      // thebe — sum of `received`
+  count: number;
+  rows: HeldOnCancelledRow[];
+  /** Plain-English reminder that nothing here is refunded automatically. */
+  note: string;
+}
