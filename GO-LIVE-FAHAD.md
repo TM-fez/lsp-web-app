@@ -129,11 +129,12 @@ These are the built-but-dormant features. Each just needs its access key entered
 
 ---
 
-## Decisions we need from you *(not blockers, but pending)*
+## Decisions you've made
 
-- **Card payments (DPO):** currently switched off on purpose — you paused this on 2 July. Do you want to **resume it** for launch or **leave it off**?
-- **Booking.com guest details:** should staff **copy guest info manually** from the extranet (no build), or should we build the **full automated connection** (needs separate Booking.com approval)?
-- **One small favour:** forward us a single real Booking.com "new booking" notification email — that lets us build automatic guest-detail capture later, against a real example rather than guesswork.
+- 👤 **Card payments (DPO) — ✅ decided 4 Oct 2026: keep off for now.** Guests pay at reception or by bank transfer; unpaid invoices now print your bank details and the invoice number to use as the reference. We can switch cards on later once you have DPO's keys.
+- 👤 **Booking.com guest details — ✅ decided 4 Oct 2026: staff copy them by hand.** No Booking.com approval needed. When staff fill in the guest on a Booking.com booking, it becomes a normal guest record.
+- 👤 **Smallest payment — ✅ decided 4 Oct 2026: no minimum.** Staff can record any amount up to what is owed.
+- **One small favour, still open:** forward us a single real Booking.com "new booking" notification email. With a real example we can later fill in most guest details automatically, instead of guessing at the format.
 
 ---
 
