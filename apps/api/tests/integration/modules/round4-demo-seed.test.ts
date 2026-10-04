@@ -17,6 +17,7 @@ const base = new URL(process.env['DATABASE_URL'] ?? 'postgresql://lsp:lsp@localh
 const admin = new URL(base); admin.pathname = '/postgres';
 const scratchUrl = new URL(base); scratchUrl.pathname = `/${scratch}`;
 let canCreate = false;
+let reseeded = false;
 let rows: Array<{ reservation_id: string; status: string; occupancy_rows: number; room_status: string }> = [];
 
 const run = (script: string, ...args: string[]) =>
@@ -50,7 +51,17 @@ beforeAll(async () => {
        FROM reservations r JOIN rooms rm ON rm.id = r.room_id
       WHERE r.status = 'CHECKED_IN' AND r.notes LIKE 'DEMO%'`,
   )).rows;
+  // What a running app leaves behind on demo data: a ledger row and a repair on a demo unit.
+  await s.query(
+    `INSERT INTO revenue_recognition (reservation_id, room_id, stay_date, amount, tax_amount, tax_rate_bps, total_source)
+     SELECT id, room_id, check_in_date, 1000, 0, 0, 'PRICED' FROM reservations WHERE notes LIKE 'DEMO%' AND status = 'CHECKED_IN' LIMIT 1`,
+  );
+  await s.query(
+    `INSERT INTO maintenance_work_orders (room_id, title, priority, status, reported_by)
+     SELECT rm.id, 'hand-made repair', 'LOW', 'OPEN', (SELECT id FROM users LIMIT 1) FROM rooms rm WHERE rm.code LIKE 'DEMO-%' LIMIT 1`,
+  );
   await s.end();
+  try { run('src/db/seed-demo.ts'); reseeded = true; } catch { reseeded = false; }
 }, 240_000);
 
 afterAll(async () => {
@@ -67,5 +78,10 @@ describe('demo seed in-house stays', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.filter((r) => r.occupancy_rows !== 1)).toEqual([]);
     expect(rows.filter((r) => r.room_status !== 'OCCUPIED')).toEqual([]);
+  });
+
+  it('can be run again after the app has booked revenue or repairs against demo data', (ctx) => {
+    if (!canCreate) return ctx.skip();
+    expect(reseeded).toBe(true);
   });
 });
