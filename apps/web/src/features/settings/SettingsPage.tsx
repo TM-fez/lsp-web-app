@@ -50,6 +50,7 @@ const meetsRules = (p: string) =>
 
 function PasswordCard() {
   const change = useChangePassword();
+  const email = useAuthStore((s) => s.user?.email ?? '');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -73,6 +74,9 @@ function PasswordCard() {
   return (
     <Section icon={<KeyRound className="h-4 w-4" />} title="My account" hint="Change the password you sign in with. Your other devices will be signed out.">
       <form onSubmit={onSubmit} className="grid gap-4 sm:max-w-md">
+        {/* Browsers and password managers expect a username beside a password-change
+            form (the console warned about it — re-test 3); hidden, read-only. */}
+        <input type="text" name="username" autoComplete="username" value={email} readOnly hidden />
         <Field id="pw-current" label="Current password">
           <Input id="pw-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
         </Field>

@@ -186,3 +186,22 @@ export function permForPath(pathname: string): string | null {
   }
   return best?.perm ?? null;
 }
+
+/**
+ * (Re-test round 3) The browser-tab title for a screen — every page used to share one
+ * title, so a row of open tabs all read the same. Longest-prefix match on the nav, like
+ * permForPath; anything else (and the cockpit) gets the plain product name.
+ */
+export function titleForPath(pathname: string): string {
+  let best: { label: string; len: number } | null = null;
+  for (const ws of WORKSPACES) {
+    for (const item of ws.items) {
+      if (!item.built) continue;
+      const matches = item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(item.to + '/');
+      if (matches && (!best || item.to.length > best.len)) {
+        best = { label: item.to === '/' ? 'Cockpit' : `${item.label}${ws.id === 'FINANCE' && item.label === 'Cockpit' ? ' · Finance' : ''}`, len: item.to.length };
+      }
+    }
+  }
+  return best ? `${best.label} · Lifestyle` : 'Lifestyle Operations';
+}

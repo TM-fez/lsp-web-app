@@ -1,9 +1,7 @@
 import type { ReportsResponse } from '@/types';
+import { csvCell, downloadCsv } from '@/lib/utils/csv';
 
-const cell = (v: string | number) => {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+const cell = csvCell;
 const pula = (thebe: number) => (thebe / 100).toFixed(2);
 
 /** Build + download a P&L CSV (summary, monthly series, per-property) for accountants. */
@@ -32,11 +30,5 @@ export function downloadPnlCsv(data: ReportsResponse, from: string, to: string):
     ),
   ];
 
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `lsp-pnl-${from}-to-${to}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(`lsp-pnl-${from}-to-${to}.csv`, rows);
 }

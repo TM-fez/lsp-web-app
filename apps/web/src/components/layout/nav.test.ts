@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceForPath, landingRoute, homePathFor, permForPath } from './nav';
+import { workspaceForPath, landingRoute, homePathFor, permForPath, titleForPath } from './nav';
 
 describe('workspaceForPath', () => {
   it('maps built routes to their workspace', () => {
@@ -98,5 +98,15 @@ describe('permForPath', () => {
   it('leaves Settings open to everyone, and / to HomeRoute', () => {
     expect(permForPath('/settings')).toBeNull();
     expect(permForPath('/')).toBeNull();
+  });
+});
+
+describe('titleForPath', () => {
+  it('names the tab after the screen', () => {
+    expect(titleForPath('/invoices')).toBe('Invoices · Lifestyle');
+    expect(titleForPath('/maintenance/all')).toBe('Maintenance · Lifestyle');
+    expect(titleForPath('/finance')).toBe('Cockpit · Finance · Lifestyle');
+    expect(titleForPath('/')).toBe('Cockpit · Lifestyle');
+    expect(titleForPath('/nowhere')).toBe('Lifestyle Operations');
   });
 });

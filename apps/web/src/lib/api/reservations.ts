@@ -8,6 +8,7 @@ export interface ReservationListParams {
   room_id?: string;
   contact_id?: string;
   property_id?: string;
+  page?: number;
 }
 
 export interface CreateReservationInput {

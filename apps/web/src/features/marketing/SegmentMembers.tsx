@@ -1,3 +1,4 @@
+import { csvCell, downloadCsv } from '@/lib/utils/csv';
 import { useState } from 'react';
 import { Download, Phone, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -145,28 +146,18 @@ function MemberRow({ member: m }: { member: SegmentMember }) {
   );
 }
 
-const cell = (v: string | number | null) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
 /** The list as a CSV — for handing to whoever is making the calls, or for an SMS upload. */
 export function downloadMembersCsv(label: string, members: SegmentMember[]): void {
   const rows = [
     'Name,Phone,Email,Company,Stays,Imported stays,Spend (BWP),Days since last stay',
     ...members.map((m) =>
       [
-        cell(m.name), cell(m.phone), cell(m.email), cell(m.company),
+        csvCell(m.name), csvCell(m.phone), csvCell(m.email), csvCell(m.company),
         m.total_stays, m.previous_stays,
         m.spend > 0 ? (m.spend / 100).toFixed(2) : '',
         m.last_stay_days ?? '',
       ].join(',')
     ),
   ];
-  const url = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `lifestyle-${label.toLowerCase().replace(/\s+/g, '-')}-guests.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(`lifestyle-${label.toLowerCase().replace(/\s+/g, '-')}-guests.csv`, rows);
 }

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
 import { useReservations } from './hooks';
+import { Pager } from '@/components/ui/pager';
 import { ReservationFormDrawer } from './ReservationFormDrawer';
 import { nights, statusTone, statusLabel, fmtDate, sourceLabel, SOURCES } from './util';
 import type { Reservation, ReservationStatus, ReservationSource } from '@/types';
@@ -25,6 +26,7 @@ export function ReservationsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ReservationStatus>('ALL');
   const [sourceFilter, setSourceFilter] = useState<'ALL' | ReservationSource>('ALL');
+  const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
 
@@ -38,15 +40,19 @@ export function ReservationsPage() {
       search: search.trim() || undefined,
       status: statusFilter === 'ALL' ? undefined : statusFilter,
       source: sourceFilter === 'ALL' ? undefined : sourceFilter,
+      page,
     }),
-    [search, statusFilter, sourceFilter],
+    [search, statusFilter, sourceFilter, page],
   );
+  // A new filter starts from page 1.
+  useEffect(() => setPage(1), [search, statusFilter, sourceFilter]);
 
   const { data, isLoading, isError, isFetching, refetch } = useReservations(params);
   const { data: rooms } = useRooms();
   const reservations = data?.data ?? [];
   const total = data?.total ?? 0;
-  const truncated = total > reservations.length;
+  // More than one page of results — show the pager.
+  const truncated = total > (data?.limit ?? reservations.length);
   const hasQuery = search.trim() !== '' || statusFilter !== 'ALL' || sourceFilter !== 'ALL';
 
   const countLabel = !data
@@ -183,9 +189,7 @@ export function ReservationsPage() {
             })}
           </div>
           {truncated && (
-            <p className="text-xs text-muted">
-              Showing the first {reservations.length} of {total}. Refine your search to narrow results.
-            </p>
+            <Pager page={page} limit={data?.limit ?? reservations.length} total={total} onPage={setPage} />
           )}
         </div>
       )}

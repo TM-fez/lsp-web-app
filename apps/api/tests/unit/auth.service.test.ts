@@ -50,6 +50,7 @@ vi.mock('../../src/modules/auth/auth.repository.js', () => ({
   saveRefreshToken:            vi.fn().mockResolvedValue(undefined),
   findRefreshTokenByHash:      vi.fn(),
   revokeRefreshToken:          vi.fn().mockResolvedValue(undefined),
+  rotateRefreshToken:          vi.fn().mockResolvedValue(true),
   revokeAllUserRefreshTokens:  vi.fn().mockResolvedValue(undefined),
   hashRefreshToken:            vi.fn((raw: string) => `hashed:${raw}`),
 }));
@@ -152,9 +153,17 @@ describe('authService.refresh', () => {
 
     const result = await authService.refresh('some-raw-token', META);
 
-    expect(authRepo.revokeRefreshToken).toHaveBeenCalledWith('token-id-1');
-    expect(authRepo.saveRefreshToken).toHaveBeenCalledOnce();
+    // Issue-new and revoke-old happen together, in one transaction (re-test 3).
+    expect(authRepo.rotateRefreshToken).toHaveBeenCalledWith('token-id-1', expect.objectContaining({ sessionId: REFRESH_TOKEN_RECORD.sessionId }));
     expect(result.tokens.accessToken).toBe('mock.access.token');
+  });
+
+  it('a refresh that loses the rotation race is refused, not forked', async () => {
+    vi.mocked(authRepo.findRefreshTokenByHash).mockResolvedValue(REFRESH_TOKEN_RECORD);
+    vi.mocked(authRepo.findUserById).mockResolvedValue(USER_RECORD);
+    vi.mocked(authRepo.findEffectivePermissions).mockResolvedValue(['contacts:read']);
+    vi.mocked(authRepo.rotateRefreshToken).mockResolvedValueOnce(false);
+    await expect(authService.refresh('some-raw-token', META)).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it('throws 401 for revoked token', async () => {

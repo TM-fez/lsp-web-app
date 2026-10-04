@@ -168,13 +168,14 @@ export async function refresh(
   const accessToken = buildAccessToken(user, tokenRow.sessionId);
   const { raw, hash: newHash } = buildRefreshToken();
 
-  await authRepo.saveRefreshToken({
+  const rotated = await authRepo.rotateRefreshToken(tokenRow.id, {
     userId: user.id,
     tokenHash: newHash,
     expiresAt: refreshTokenExpiresAt(),
     sessionId: tokenRow.sessionId,
   });
-  await authRepo.revokeRefreshToken(tokenRow.id);
+  // Another request rotated this token a moment ago (two tabs): this one loses cleanly.
+  if (!rotated) throw AppError.unauthorized('Refresh token is invalid or has expired');
 
   await writeAuditLog({
     request_id: meta.requestId ?? null,
