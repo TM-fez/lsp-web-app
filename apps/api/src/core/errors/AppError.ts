@@ -28,6 +28,10 @@ export class AppError extends Error {
     return new AppError(409, 'Conflict', message);
   }
 
+  static payloadTooLarge(message: string) {
+    return new AppError(413, 'Payload Too Large', message);
+  }
+
   static internal(message = 'Internal Server Error') {
     return new AppError(500, 'Internal Server Error', message);
   }

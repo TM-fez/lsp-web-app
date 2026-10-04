@@ -92,7 +92,7 @@ describe('Stage 1 money — end to end', () => {
     expect(plan.status).toBe(201);
     ratePlanId = plan.body.id;
 
-    const room = await api('post', '/rooms').send({
+    const room = await api('post', '/rooms', propertyId).send({
       name: `S1 Unit ${stamp}`, code: `S1-${stamp}`, type: 'CONFERENCE', capacity: 4, building_id: buildingId,
     });
     expect(room.status).toBe(201);

@@ -20,8 +20,8 @@ export class FilesController {
         // Note: Multer might not have parsed req.body completely yet if file is first in form-data
         const isPublic = req.body.is_public === 'true' || req.query.is_public === 'true';
         
-        // Multer doesn't give precise file size in stream, using 0 as placeholder since service 
-        // will ideally enforce it during streaming or via multer limits.
+        // Only a fast early refusal: Content-Length is the whole multipart body (and absent
+        // on a chunked upload). The size stored is the bytes actually written — see upload().
         const sizeBytes = Number(req.headers['content-length'] || 0);
 
         this.service.upload(
@@ -38,10 +38,14 @@ export class FilesController {
       }
     };
 
+    // `defParamCharset` is a real multer 2 option missing from @types/multer.
     const upload = multer({
       storage,
-      limits: { fileSize: MAX_FILE_SIZE_BYTES }
-    });
+      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+      // Filenames are UTF-8 in every browser; busboy's default (latin1) turned
+      // "Kgalagadi_ŋ.pdf" or an accented name into mojibake (re-test 2026-10-04).
+      defParamCharset: 'utf8',
+    } as multer.Options);
 
     this.uploadMiddleware = upload.single('file');
   }
@@ -63,6 +67,7 @@ export class FilesController {
       userId: user.sub,
       canSeeGuestDocuments: user.permissions.includes('files.guest_documents.read'),
       isContractor: user.role === 'contractor',
+      canManageFiles: user.permissions.includes('files.delete'),
       accessiblePropertyIds: await accessiblePropertyIdsForUser(user.sub, user.role),
     };
   }

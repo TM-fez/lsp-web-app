@@ -149,11 +149,14 @@ export class RoomsController {
 /**
  * (H6) A unit's iCal feed token publishes its calendar to anyone holding it, and its QR
  * token checks a guest in. Both rode along on every rooms read, so housekeeping,
- * maintenance and accounts could lift them. Only someone who can manage the unit (and
- * rotate the tokens — rooms.update) sees them; everyone else gets the room without.
+ * maintenance and accounts could lift them.
+ *
+ * (Re-test 2026-10-04) rooms.update was too wide a key — maintenance and operations hold
+ * it to flag units. Only rooms.channel.manage (admin, migration 076) sees the tokens now;
+ * the unit drawer's channel-sync and QR boxes hide themselves when they are absent.
  */
 function withoutSecrets<T extends object>(req: Request, room: T): T {
-  if (req.user?.permissions.includes('rooms.update')) return room;
+  if (req.user?.permissions.includes('rooms.channel.manage')) return room;
   const rest = { ...room } as Record<string, unknown>;
   delete rest.ical_token;
   delete rest.guest_qr_token;

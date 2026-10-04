@@ -13,6 +13,29 @@ import type { LibraryQueryDTO, ClassifyFileDTO } from './files.types.js';
 // Drivers + factory live in files.storage.ts; re-exported so existing imports keep working.
 export { LocalStorageDriver, S3StorageDriver, createStorageAdapter, type StorageAdapter } from './files.storage.js';
 
+const TOO_LARGE = `That file is too large — the limit is ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB.`;
+
+/** Magic bytes per allowed type: does the file at `p` start the way its claimed type must? */
+async function contentMatchesMime(p: string, mime: string): Promise<boolean> {
+  const fh = await fs.promises.open(p, 'r');
+  try {
+    const buf = Buffer.alloc(12);
+    const { bytesRead } = await fh.read(buf, 0, 12, 0);
+    const b = buf.subarray(0, bytesRead);
+    const ascii = (from: number, to: number) => b.subarray(from, to).toString('latin1');
+    switch (mime) {
+      case 'image/jpeg': return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+      case 'image/png': return b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      case 'image/gif': return ascii(0, 4) === 'GIF8';
+      case 'image/webp': return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+      case 'application/pdf': return ascii(0, 5) === '%PDF-';
+      default: return false;
+    }
+  } finally {
+    await fh.close();
+  }
+}
+
 export class FilesService {
   constructor(
     private readonly repository: FilesRepository,
@@ -31,8 +54,10 @@ export class FilesService {
       throw AppError.badRequest(`Disallowed MIME type: ${mimeType}`);
     }
 
-    if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-      throw AppError.badRequest(`File size exceeds limit of ${MAX_FILE_SIZE_BYTES} bytes`);
+    // Early refusal when the client declared a size. Content-Length covers the whole form
+    // so it can only over-estimate; a chunked upload declares nothing and is caught below.
+    if (sizeBytes > MAX_FILE_SIZE_BYTES + 64 * 1024) {
+      throw AppError.payloadTooLarge(TOO_LARGE);
     }
 
     // Hash the stream while writing to a temporary file
@@ -56,6 +81,19 @@ export class FilesService {
 
       const checksum = hash.digest('hex');
       const { size: actualBytes } = await fs.promises.stat(tempPath);
+
+      // (Re-test 2026-10-04) A chunked upload over the limit used to be cut off at 10 MB by
+      // multer and then SAVED — a truncated file row nobody asked for — before multer
+      // reported the limit as a 500. busboy marks the stream `truncated`; refuse before
+      // anything is stored.
+      if ((inputStream as { truncated?: boolean }).truncated || actualBytes > MAX_FILE_SIZE_BYTES) {
+        throw AppError.payloadTooLarge(TOO_LARGE);
+      }
+      // The browser's Content-Type is whatever the client says. Check the file's own first
+      // bytes match the type it claims, so an executable can't be stored as "image/png".
+      if (!(await contentMatchesMime(tempPath, mimeType))) {
+        throw AppError.badRequest('That file’s contents don’t match its type. Upload a real PDF or image.');
+      }
 
       // Duplicate prevention (storage-only dedupe) — but the DB row alone doesn't
       // prove the binary survived (an ephemeral disk wipes on redeploy), so verify
@@ -83,7 +121,7 @@ export class FilesService {
         stored_name: existing ? existing.stored_name : `${checksum}.${ext}`,
         mime_type: mimeType,
         extension: ext,
-        size_bytes: sizeBytes,
+        size_bytes: actualBytes,
         checksum,
         // Where THIS upload verified/wrote the binary — the active driver, not
         // whatever the first-ever upload of these bytes used.
