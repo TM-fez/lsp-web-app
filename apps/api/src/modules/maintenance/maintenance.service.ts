@@ -66,8 +66,8 @@ export class MaintenanceService {
         cost_amount: data.cost_amount ?? null,
       } as any, meta, trx);
 
-      // Update room to MAINTENANCE
-      await this.repo.updateRoomStatus(data.room_id, 'MAINTENANCE', meta, trx);
+      // Only a HIGH / CRITICAL job takes the unit out of use (see syncRoomForMaintenance).
+      await this.repo.syncRoomForMaintenance(data.room_id, meta, trx);
 
       return created;
     });
@@ -188,8 +188,8 @@ export class MaintenanceService {
         completed_by: meta.userId,
       }, meta, trx);
 
-      // Restore room status
-      await this.repo.updateRoomStatus(order.room_id, 'AVAILABLE', meta, trx);
+      // Back in use only if no other serious job is still open on the unit.
+      await this.repo.syncRoomForMaintenance(order.room_id, meta, trx);
 
       return updated;
     });
@@ -230,7 +230,7 @@ export class MaintenanceService {
       }, meta, trx);
 
       if (restoreRoom) {
-        await this.repo.updateRoomStatus(order.room_id, 'AVAILABLE', meta, trx);
+        await this.repo.syncRoomForMaintenance(order.room_id, meta, trx);
       }
 
       return updated;
@@ -255,6 +255,14 @@ export class MaintenanceService {
         cost_reconciled_by: null,
         cost_reconciled_at: null,
       }, meta);
+    }
+    // A priority change can start or end the unit's block.
+    if (data.priority !== undefined && data.priority !== order.priority) {
+      return this.repo.transaction(async (trx) => {
+        const updated = await this.repo.update(id, data, meta, trx);
+        await this.repo.syncRoomForMaintenance(order.room_id, meta, trx);
+        return updated;
+      });
     }
     return this.repo.update(id, data, meta);
   }

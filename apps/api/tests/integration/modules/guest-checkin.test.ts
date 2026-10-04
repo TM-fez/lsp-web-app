@@ -115,6 +115,21 @@ describe('Guest self check-in (live DB)', () => {
     expect(res.self_checkin_at).not.toBeNull();
   });
 
+  // Re-test round 3: the QR page is unauthenticated — a second submission (another
+  // person, a typo) used to overwrite the details the first guest gave.
+  it('never overwrites details already on file; a difference is noted on the booking for staff', async () => {
+    await service.submitSelfCheckin(
+      { token: stayToken, name: 'Someone Else', email: 'other@evil.example', phone: '+267 70 000 000' },
+      { ip: '203.0.113.10' },
+    );
+    const contact = await db.selectFrom('contacts').selectAll().where('id', '=', contactId).executeTakeFirstOrThrow();
+    expect(contact).toMatchObject({ name: 'Neo Kgosi', email: 'neo@real.example', phone: '+267 71 234 567' });
+    const res = await db.selectFrom('reservations').select('notes').where('id', '=', reservationId).executeTakeFirstOrThrow();
+    expect(res.notes).toMatch(/not applied, please check: name “Someone Else”, email other@evil.example, phone \+267 70 000 000/);
+    const audit = await db.selectFrom('audit_logs').select('id').where('entity', '=', 'reservations').where('entity_id', '=', reservationId).execute();
+    expect(audit.length).toBeGreaterThanOrEqual(2); // both check-ins are on the record
+  });
+
   it('reports already-checked-in once the guest has confirmed', async () => {
     const info = await service.getCheckinInfo(stayToken);
     expect(info.already_checked_in).toBe(true);

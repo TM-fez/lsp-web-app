@@ -443,11 +443,12 @@ export class ReservationsService {
    * Failure is logged, not thrown: the edit has committed, and the receivable self-heals
    * on the next touch.
    */
-  private async repriceAfterEdit(before: ReservationRow, meta: ReservationRequestMeta): Promise<void> {
+  private async repriceAfterEdit(before: ReservationRow, after: ReservationRow, meta: ReservationRequestMeta): Promise<void> {
     if (!this.pricing || !this.rooms) return;
     try {
-      const after = await this.repository.findById(before.id);
-      if (!after || after.folio_total_amount == null) return;
+      // `before` / `after` are this edit's own two sides (read under the row lock by
+      // repository.update) — not a fresh read, which a concurrent edit may have moved.
+      if (after.folio_total_amount == null) return;
       if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(after.status)) return;
 
       const paid = (await this.repository.paidToDate([after.id])).get(after.id) ?? 0;
@@ -465,6 +466,7 @@ export class ReservationsService {
         after.id,
         {
           total: Math.max(0, after.folio_total_amount + delta),
+          delta,
           currency: now.currency,
           taxRateBps: now.tax_rate_bps,
         },
@@ -645,12 +647,14 @@ export class ReservationsService {
       existing.status === 'CHECKED_IN' && !!dto.room_id && dto.room_id !== existing.room_id;
 
     let updated: ReservationRow | undefined;
+    const capture: { before?: ReservationRow } = {};
     try {
       updated = await this.repository.update(
         id,
         updatePayload,
         meta,
-        movingInHouse ? { fromRoomId: existing.room_id, toRoomId: roomId } : undefined
+        movingInHouse ? { fromRoomId: existing.room_id, toRoomId: roomId } : undefined,
+        { capture }
       );
     } catch (e) {
       if (isReservationOverlapError(e)) {
@@ -662,7 +666,7 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
     if (dto.check_in_date || dto.check_out_date || dto.room_id) {
-      await this.repriceAfterEdit(existing, meta);
+      await this.repriceAfterEdit(capture.before ?? existing, updated, meta);
     }
     return updated;
   }

@@ -36,7 +36,11 @@ export class CheckinsRepository {
   async findReservation(id: string) {
     return this.db
       .selectFrom('reservations')
-      .select(['id', 'status', 'room_id', 'contact_id'])
+      .select([
+        'id', 'status', 'room_id', 'contact_id',
+        sql<string>`to_char(check_in_date, 'YYYY-MM-DD')`.as('check_in_day'),
+        sql<string>`to_char(check_out_date, 'YYYY-MM-DD')`.as('check_out_day'),
+      ])
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
@@ -45,7 +49,7 @@ export class CheckinsRepository {
   async findRoom(id: string) {
     return this.db
       .selectFrom('rooms')
-      .select(['id', 'status', 'housekeeping_status'])
+      .select(['id', 'status', 'housekeeping_status', 'capacity'])
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();

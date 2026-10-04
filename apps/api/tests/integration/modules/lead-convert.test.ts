@@ -113,4 +113,28 @@ describe('Lead → booking conversion (live DB)', () => {
       service.convertLead(leadLost, { room_id: roomId, check_in_date: inDays(8), check_out_date: inDays(10) }, meta(), propId),
     ).rejects.toThrow(/lost/i);
   });
+
+  // Re-test round 3: five parallel conversions of one enquiry made four bookings.
+  it('converts an enquiry once, however many clicks arrive together', async () => {
+    const lead = (await db.insertInto('leads').values({ title: 'Parallel', status: 'QUALIFIED', contact_id: contactId, created_by: userId, updated_by: userId })
+      .returning('id').executeTakeFirstOrThrow()).id;
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () =>
+        service.convertLead(lead, { room_id: roomId, check_in_date: inDays(30), check_out_date: inDays(32) }, meta(), propId)),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<{ reservation: { id: string } }>[];
+    expect(ok).toHaveLength(1);
+    const made = await db.selectFrom('reservations').select('id').where('room_id', '=', roomId)
+      .where('check_in_date', '=', new Date(inDays(30))).where('deleted_at', 'is', null).execute();
+    expect(made).toHaveLength(1);
+
+    // A conversion that fails (the unit is now taken) leaves the enquiry as it was.
+    const other = (await db.insertInto('leads').values({ title: 'Clash', status: 'QUALIFIED', contact_id: contactId, created_by: userId, updated_by: userId })
+      .returning('id').executeTakeFirstOrThrow()).id;
+    await expect(service.convertLead(other, { room_id: roomId, check_in_date: inDays(30), check_out_date: inDays(32) }, meta(), propId)).rejects.toThrow();
+    expect((await db.selectFrom('leads').select('status').where('id', '=', other).executeTakeFirstOrThrow()).status).toBe('QUALIFIED');
+
+    await db.deleteFrom('leads').where('id', 'in', [lead, other]).execute();
+    await db.deleteFrom('reservations').where('id', '=', ok[0]!.value.reservation.id).execute();
+  });
 });

@@ -21,6 +21,7 @@ describe('MaintenanceService', () => {
       update: vi.fn(),
       softDelete: vi.fn(),
       updateRoomStatus: vi.fn(),
+      syncRoomForMaintenance: vi.fn(),
       roomPropertyId: vi.fn().mockResolvedValue('p1'),
       workOrderPropertyId: vi.fn().mockResolvedValue('p1'),
       transaction: vi.fn(async (cb) => cb({} as any)),
@@ -37,11 +38,13 @@ describe('MaintenanceService', () => {
     service = new MaintenanceService(repo, filesRepo, notifications);
   });
 
-  it('openWorkOrder sets room status to MAINTENANCE', async () => {
+  // Re-test 3: the unit's status follows its open serious jobs (syncRoomForMaintenance,
+  // covered against the real DB in maintenance.test.ts) rather than flipping blindly.
+  it('openWorkOrder re-syncs the unit status in the same transaction', async () => {
     repo.create.mockResolvedValue({ id: 'm1' } as any);
     await service.openWorkOrder({ room_id: 'r1', title: 'Fix sink', priority: 'HIGH' }, { userId: 'u1' });
     expect(repo.create).toHaveBeenCalled();
-    expect(repo.updateRoomStatus).toHaveBeenCalledWith('r1', 'MAINTENANCE', { userId: 'u1' }, expect.anything());
+    expect(repo.syncRoomForMaintenance).toHaveBeenCalledWith('r1', { userId: 'u1' }, expect.anything());
   });
 
   describe('notifications', () => {
@@ -113,7 +116,7 @@ describe('MaintenanceService', () => {
       { userId: 'u1' },
       expect.anything(),
     );
-    expect(repo.updateRoomStatus).toHaveBeenCalledWith('r1', 'AVAILABLE', { userId: 'u1' }, expect.anything());
+    expect(repo.syncRoomForMaintenance).toHaveBeenCalledWith('r1', { userId: 'u1' }, expect.anything());
   });
 
   it('rejects an illegal transition with a 409 AppError, not a generic 500', async () => {

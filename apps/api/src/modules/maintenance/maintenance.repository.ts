@@ -204,6 +204,32 @@ export class MaintenanceRepository {
     }
   }
 
+  /**
+   * (Re-test round 3) Put the unit's status in line with its open repairs.
+   *
+   * Every new work order used to flip the unit to MAINTENANCE — a LOW "dripping tap"
+   * included — and that blocks the unit for every date, for everyone. Completing or
+   * cancelling ANY order flipped it straight back to AVAILABLE, even with another
+   * serious job still open, or a guest in the room (OCCUPIED → AVAILABLE).
+   *
+   * Now: a unit is under MAINTENANCE while it has an open HIGH or CRITICAL order; LOW /
+   * MEDIUM jobs are done around the guests. An OCCUPIED or OUT_OF_SERVICE unit is never
+   * touched here — check-out and the out-of-service switch own those states.
+   */
+  async syncRoomForMaintenance(roomId: string, meta: { userId: string; requestId?: string }, trx: DB = this.db) {
+    const room = await trx.selectFrom('rooms').select('status').where('id', '=', roomId)
+      .where('deleted_at', 'is', null).forUpdate().executeTakeFirst();
+    if (!room || room.status === 'OCCUPIED' || room.status === 'OUT_OF_SERVICE') return;
+    const blocking = await trx.selectFrom('maintenance_work_orders').select('id')
+      .where('room_id', '=', roomId)
+      .where('deleted_at', 'is', null)
+      .where('status', 'not in', ['COMPLETED', 'CANCELLED'])
+      .where('priority', 'in', ['HIGH', 'CRITICAL'])
+      .limit(1).executeTakeFirst();
+    const want = blocking ? 'MAINTENANCE' : 'AVAILABLE';
+    if (room.status !== want) await this.updateRoomStatus(roomId, want, meta, trx);
+  }
+
   async updateRoomStatus(roomId: string, status: 'AVAILABLE' | 'MAINTENANCE', meta: { userId: string, requestId?: string }, trx: DB = this.db) {
     const updated = await trx.updateTable('rooms')
       .set({ status, updated_by: meta.userId, updated_at: sql`now()` })

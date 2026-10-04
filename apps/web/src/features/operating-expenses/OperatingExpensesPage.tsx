@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Banknote, Plus, Pencil, Trash2, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,8 +94,14 @@ export function OperatingExpensesPage() {
   const thebe = pulaToThebe(form.amount);
   const valid = form.description.trim().length > 0 && !Number.isNaN(thebe) && thebe > 0 && /^\d{4}-\d{2}-\d{2}$/.test(form.incurred_on);
 
+  // (Re-test 3) A fast double click fired two creates before `busy` re-rendered the
+  // button disabled — two identical cost rows. A ref is set synchronously, so the second
+  // click in the same tick is dropped.
+  const inFlight = useRef(false);
   const submit = (andAnother = false) => {
-    if (!valid) return;
+    if (!valid || inFlight.current) return;
+    inFlight.current = true;
+    const done = () => { inFlight.current = false; };
     const payload = {
       category: form.category,
       description: form.description.trim(),
@@ -107,13 +113,16 @@ export function OperatingExpensesPage() {
     };
     if (editing === 'new') {
       create.mutate(payload, {
+        onSettled: done,
         onSuccess: () => andAnother
           // keep the dialog open for rapid entry; carry date + category forward
           ? setForm((f) => ({ ...emptyForm(), category: f.category, incurred_on: f.incurred_on }))
           : setEditing(null),
       });
     } else if (editing) {
-      update.mutate({ id: editing.id, input: payload }, { onSuccess: () => setEditing(null) });
+      update.mutate({ id: editing.id, input: payload }, { onSettled: done, onSuccess: () => setEditing(null) });
+    } else {
+      done();
     }
   };
 

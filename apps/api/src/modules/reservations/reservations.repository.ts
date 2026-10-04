@@ -239,9 +239,21 @@ export class ReservationsRepository {
     update: UpdateReservation,
     meta: ReservationRequestMeta,
     roomMove?: { fromRoomId: string; toRoomId: string },
-    opts: { reconcile?: boolean; taxRateBps?: number } = {}
+    opts: { reconcile?: boolean; taxRateBps?: number; capture?: { before?: ReservationRow } } = {}
   ): Promise<ReservationRow | undefined> {
     return inTransaction(this.db, async (trx) => {
+      // (Re-test round 3) An edit that re-prices needs the stay as it was immediately
+      // before THIS write — read under the row lock, so two edits at once each see the
+      // other's result instead of the same stale "before" (a 4-night stay billed as 3).
+      if (opts.capture) {
+        opts.capture.before = await trx
+          .selectFrom('reservations')
+          .selectAll()
+          .where('id', '=', id)
+          .where('deleted_at', 'is', null)
+          .forNoKeyUpdate()
+          .executeTakeFirst();
+      }
       const updated = await trx
         .updateTable('reservations')
         .set({ ...update, updated_at: sql`now()` })
@@ -379,7 +391,7 @@ export class ReservationsRepository {
    */
   async agreePrice(
     id: string,
-    agreed: { total: number; currency: string; taxRateBps: number } | null,
+    agreed: { total: number; currency: string; taxRateBps: number; delta?: number } | null,
     meta: ReservationRequestMeta,
     mode: 'ensure' | 'refreeze' | 'adjust' = 'ensure'
   ): Promise<void> {
@@ -397,7 +409,12 @@ export class ReservationsRepository {
             reservation.folio_total_amount !== agreed.total &&
             paid === 0;
         } else if (mode === 'adjust') {
-          // repriceAfterEdit has already worked out the new agreed total (old + delta).
+          // repriceAfterEdit passes the DELTA (new stay − old stay); it is applied to the
+          // total as it stands under this lock, not to a figure read before it. Two edits
+          // racing each add their own change instead of the second overwriting the first.
+          if (agreed.delta != null && reservation.folio_total_amount != null) {
+            agreed = { ...agreed, total: Math.max(0, reservation.folio_total_amount + agreed.delta) };
+          }
           freeze = reservation.folio_total_amount !== agreed.total;
         }
         if (freeze) {

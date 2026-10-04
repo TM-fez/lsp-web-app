@@ -1221,6 +1221,23 @@ describe('8. Stage 3: reports count refunds and cash by when it moved; edits mov
     expect((await reservations.getFolio(b.id)).total_amount).toBe(250_000);
   });
 
+  // Re-test round 3: two edits at once both priced from the same stale "before" and the
+  // second overwrote the first's total — a 4-night stay billed as 3.
+  it('two date edits at the same moment leave the price matching the stay that won', async () => {
+    for (let i = 0; i < 4; i++) {
+      const start = 960 + i * 10;
+      const b = await booking({ startOffset: start, status: 'CONFIRMED', folioTotal: STAY });
+      await Promise.allSettled([
+        reservations.modifyReservation(b.id, { check_out_date: dateOnly(start + 4) } as never, meta()),
+        reservations.modifyReservation(b.id, { check_out_date: dateOnly(start + 3) } as never, meta()),
+      ]);
+      const row = await db.selectFrom('reservations').select(['check_in_date', 'check_out_date', 'folio_total_amount'])
+        .where('id', '=', b.id).executeTakeFirstOrThrow();
+      const nights = Math.round((new Date(row.check_out_date).getTime() - new Date(row.check_in_date).getTime()) / 86_400_000);
+      expect(row.folio_total_amount).toBe(NIGHTLY * nights);
+    }
+  });
+
   // Re-test 2026-10-04: a paid stay shortened by a night showed "PAID" and nothing else.
   it('a paid stay shortened afterwards shows the refund due — and refunding it does not cut the price again', async () => {
     const b = await booking({ startOffset: 950 });

@@ -1,6 +1,11 @@
+import { todayInPropertyTZ } from '../../../src/core/time.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CheckinsService } from '../../../src/modules/checkins/checkins.service';
 import { CheckinsRepository } from '../../../src/modules/checkins/checkins.repository';
+
+// A stay that includes today (Gaborone), so the arrival-window checks pass.
+const day = (n: number) => { const d = new Date(`${todayInPropertyTZ()}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const STAY_DAYS = { check_in_day: day(0), check_out_day: day(2) };
 
 describe('CheckinsService', () => {
   let service: CheckinsService;
@@ -36,7 +41,7 @@ describe('CheckinsService', () => {
     // desk never collected the money; it just meant the booking was never made, so the
     // room they slept in read as free to everyone else.
     it('checks in a PENDING (unpaid) booking — some guests settle after the stay', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY' } as any);
       repository.checkIn.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN' } as any);
 
@@ -52,19 +57,19 @@ describe('CheckinsService', () => {
       ['CHECKED_OUT', 'checked out booking cannot be checked in'],
       ['NO_SHOW', 'no show booking cannot be checked in'],
     ])('refuses a %s booking', async (status, message) => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status, room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status, room_id: 'rm1', ...STAY_DAYS } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow(message);
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
     it('sends a BLOCKED Booking.com row to the claim flow rather than checking it in', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'BLOCKED', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'BLOCKED', room_id: 'rm1', ...STAY_DAYS } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow('claim it to a guest');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
     it('tells you plainly when the guest is already checked in', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CHECKED_IN', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CHECKED_IN', room_id: 'rm1', ...STAY_DAYS } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow('already checked in');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
@@ -72,28 +77,28 @@ describe('CheckinsService', () => {
     // The money gate is gone; the OPERATIONAL gates below must be untouched. A unit
     // that is occupied or unclean still cannot take a guest, paid or not.
     it('still refuses an unpaid guest when the room is not READY', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'PENDING', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'DIRTY' } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow('not ready');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
     it('throws 409 when the room is not AVAILABLE', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'OCCUPIED' } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow('not available');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
     it('throws 409 when the room is not READY (housekeeping)', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'DIRTY' } as any);
       await expect(service.checkIn(dto, meta)).rejects.toThrow('not ready');
       expect(repository.checkIn).not.toHaveBeenCalled();
     });
 
     it('checks in when reservation is CONFIRMED and room AVAILABLE + READY', async () => {
-      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1' } as any);
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY' } as any);
       repository.checkIn.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN' } as any);
 
@@ -120,20 +125,49 @@ describe('CheckinsService', () => {
 
     it('throws 400 when checkout time precedes check-in', async () => {
       const checkedIn = new Date('2026-07-02T10:00:00Z');
-      repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: checkedIn, reservation_id: 'res1', room_id: 'rm1' } as any);
+      repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: checkedIn, reservation_id: 'res1', room_id: 'rm1', ...STAY_DAYS } as any);
       await expect(
         service.checkOut('occ1', { checked_out_at: new Date('2026-07-01T10:00:00Z') } as any, meta)
       ).rejects.toThrow('before check-in');
     });
 
     it('checks out an active occupancy', async () => {
-      repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: new Date('2020-01-01'), reservation_id: 'res1', room_id: 'rm1' } as any);
+      repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: new Date('2020-01-01'), reservation_id: 'res1', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.checkOut.mockResolvedValue({ id: 'occ1', status: 'CHECKED_OUT' } as any);
 
       const result = await service.checkOut('occ1', {} as any, meta);
 
       expect(result.status).toBe('CHECKED_OUT');
       expect(repository.checkOut).toHaveBeenCalledWith('occ1', 'res1', 'rm1', expect.any(Date), undefined, meta);
+    });
+  });
+
+  // Re-test round 3: check-in validation was loose.
+  describe('arrival window and capacity', () => {
+    it('refuses a check-in weeks before the stay', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', check_in_day: day(40), check_out_day: day(42) } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY', capacity: 2 } as any);
+      await expect(service.checkIn({ reservation_id: 'res1', guest_count: 1 } as any, { userId: 'u1' })).rejects.toThrow(/check the guest in on arrival/);
+    });
+
+    it('refuses more guests than the unit sleeps', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY', capacity: 2 } as any);
+      await expect(service.checkIn({ reservation_id: 'res1', guest_count: 500 } as any, { userId: 'u1' })).rejects.toThrow(/sleeps 2/);
+    });
+
+    it('refuses a check-in time in the future', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY', capacity: 2 } as any);
+      const future = new Date(Date.now() + 5 * 86_400_000);
+      await expect(service.checkIn({ reservation_id: 'res1', guest_count: 1, checked_in_at: future } as any, { userId: 'u1' })).rejects.toThrow(/in the future/);
+    });
+
+    it('turns a parallel double check-in into a conflict, not a 500', async () => {
+      repository.findReservation.mockResolvedValue({ id: 'res1', status: 'CONFIRMED', room_id: 'rm1', ...STAY_DAYS } as any);
+      repository.findRoom.mockResolvedValue({ id: 'rm1', status: 'AVAILABLE', housekeeping_status: 'READY', capacity: 2 } as any);
+      repository.checkIn.mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }));
+      await expect(service.checkIn({ reservation_id: 'res1', guest_count: 1 } as any, { userId: 'u1' })).rejects.toMatchObject({ statusCode: 409 });
     });
   });
 });
