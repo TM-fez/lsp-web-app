@@ -666,6 +666,16 @@ describe('3. Every flow that creates money owed or received leaves a consistent 
     expect(all[0]!.status).toBe('VOID');
   });
 
+  // Re-test 2026-10-04: Finance said 0 for a cancelled booking while its folio still
+  // reported the whole stay as owed.
+  it('a cancelled booking’s folio owes nothing, matching Finance', async () => {
+    const b = await booking();
+    await reservations.markPaid(b.id, { method: 'CASH', amount: 100_000 } as never, meta());
+    await reservations.cancelReservation(b.id, meta());
+    const folio = await reservations.getFolio(b.id);
+    expect(folio).toMatchObject({ paid_amount: 100_000, outstanding_amount: 0, credit_amount: 0 });
+  });
+
   it('a no-show owes nothing — its open invoice is voided (owner decision 2026-10-02)', async () => {
     const b = await booking();
     await reservations.confirmWithoutPayment(b.id, {} as never, meta());
@@ -1151,6 +1161,23 @@ describe('8. Stage 3: reports count refunds and cash by when it moved; edits mov
     // Shortening by one night takes one night off again.
     await reservations.modifyReservation(b.id, { check_out_date: dateOnly(942) } as never, meta());
     expect((await reservations.getFolio(b.id)).total_amount).toBe(250_000);
+  });
+
+  // Re-test 2026-10-04: a paid stay shortened by a night showed "PAID" and nothing else.
+  it('a paid stay shortened afterwards shows the refund due — and refunding it does not cut the price again', async () => {
+    const b = await booking({ startOffset: 950 });
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+    await reservations.modifyReservation(b.id, { check_out_date: dateOnly(951) } as never, meta());
+
+    const folio = await reservations.getFolio(b.id);
+    expect(folio).toMatchObject({ total_amount: STAY - NIGHTLY, paid_amount: STAY, outstanding_amount: 0, credit_amount: NIGHTLY });
+
+    // Handing the credit back settles what the house owes: the one-night price stands.
+    const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID' && i.kind !== 'REFUND')!;
+    await invoices.refundInvoice(receipt.id, NIGHTLY, 'shortened stay', meta());
+    expect(await reservations.getFolio(b.id)).toMatchObject({
+      total_amount: STAY - NIGHTLY, paid_amount: STAY - NIGHTLY, outstanding_amount: 0, credit_amount: 0,
+    });
   });
 });
 

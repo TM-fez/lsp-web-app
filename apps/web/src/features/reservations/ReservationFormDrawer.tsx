@@ -484,6 +484,24 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       </p>
                     )}
 
+                    {/* (Re-test 2026-10-04) A stay shortened after payment left more paid than
+                        agreed, and the panel just said PAID. */}
+                    {folio.data.credit_amount > 0 && (
+                      <p className="mt-1 text-sm text-terra">
+                        {formatMoney(folio.data.credit_amount)} refund due — the guest has paid more than
+                        the agreed price. Refund it from the receipt on the Invoices page.
+                      </p>
+                    )}
+
+                    {(reservation?.status === 'CANCELLED' || reservation?.status === 'NO_SHOW') && (
+                      <p className="mt-1 text-xs text-muted">
+                        This booking is {reservation.status === 'CANCELLED' ? 'cancelled' : 'a no-show'}, so nothing
+                        is owed.
+                        {folio.data.paid_amount > 0 &&
+                          ' Whether what was paid is returned depends on your cancellation terms — refund it from the Invoices page if so.'}
+                      </p>
+                    )}
+
                     {/* A price that was never agreed on the booking is a live estimate,
                         not a debt. Saying so stops staff quoting a figure the booking
                         does not stand behind. */}
