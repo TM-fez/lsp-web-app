@@ -23,7 +23,10 @@ export const PasswordSchema = z
   .regex(/[A-Z]/, 'Password needs an uppercase letter')
   .regex(/[a-z]/, 'Password needs a lowercase letter')
   .regex(/[0-9]/, 'Password needs a number')
-  .regex(/[^A-Za-z0-9]/, 'Password needs a symbol (e.g. ! or @)');
+  .regex(/[^A-Za-z0-9]/, 'Password needs a symbol (e.g. ! or @)')
+  // (Re-test 2026-10-04) bcrypt only reads the first 72 BYTES; anything after is ignored,
+  // so a longer password silently had a shorter one's strength. Cap it where it is set.
+  .refine((p) => Buffer.byteLength(p, 'utf8') <= 72, 'Password can be at most 72 characters');
 
 export const CreateUserSchema = z.object({
   name: z.string().min(1).max(255),

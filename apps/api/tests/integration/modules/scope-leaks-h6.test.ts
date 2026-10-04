@@ -180,8 +180,8 @@ describe('maintenance: a changed cost needs approving again', () => {
   });
 });
 
-describe('rooms: feed and QR tokens only for people who manage the unit', () => {
-  it('hides both tokens without rooms.update', async () => {
+describe('rooms: feed and QR tokens only for people who manage channel sync', () => {
+  it('hides both tokens without rooms.channel.manage', async () => {
     asAccountsA();
     const one = await get(`/rooms/${roomA}`);
     expect(one.status).toBe(200);
@@ -195,11 +195,41 @@ describe('rooms: feed and QR tokens only for people who manage the unit', () => 
     }
   });
 
-  it('shows them to rooms.update', async () => {
+  // Re-test 2026-10-04: maintenance/operations hold rooms.update (to flag units), which
+  // was enough to read both tokens. It no longer is.
+  it('hides them from operations/maintenance too, though they hold rooms.update', async () => {
     asStaff();
+    const one = await get(`/rooms/${roomA}`);
+    expect(one.status).toBe(200);
+    expect(one.body).not.toHaveProperty('ical_token');
+    expect(one.body).not.toHaveProperty('guest_qr_token');
+    expect((await request(app).post(`/rooms/${roomA}/channel/rotate-token`).set('Authorization', 'Bearer t').set('x-property-id', propA)).status).toBe(403);
+  });
+
+  it('shows them to rooms.channel.manage (admin)', async () => {
+    as(staffId, 'admin', ['rooms.read', 'rooms.update', 'rooms.channel.manage']);
     const one = await get(`/rooms/${roomA}`);
     expect(one.body.ical_token).toBeTruthy();
     expect(one.body.guest_qr_token).toBeTruthy();
+  });
+});
+
+describe('rooms: a unit can only be placed in a building of the active property', () => {
+  // Re-test 2026-10-04: a CBD-only manager could create a unit in a Village block.
+  it('refuses a building in another property, on create and on a move', async () => {
+    as(staffId, 'operations', ['rooms.read', 'rooms.create', 'rooms.update']);
+    const res = await send('post', '/rooms', { name: 'H6 sneak', code: `H6-SNEAK-${uniq}`, building_id: bldB });
+    expect(res.status).toBe(404);
+    expect(await db.selectFrom('rooms').select('id').where('code', '=', `H6-SNEAK-${uniq}`).executeTakeFirst()).toBeUndefined();
+    expect((await send('patch', `/rooms/${roomA}`, { building_id: bldB })).status).toBe(404);
+  });
+
+  it('accepts a building in the active property', async () => {
+    as(staffId, 'operations', ['rooms.read', 'rooms.create', 'rooms.update']);
+    const res = await send('post', '/rooms', { name: 'H6 ok', code: `H6-OK-${uniq}`, building_id: bldA });
+    expect(res.status).toBe(201);
+    await db.deleteFrom('audit_logs').where('entity_id', '=', res.body.id).execute();
+    await db.deleteFrom('rooms').where('id', '=', res.body.id).execute();
   });
 });
 

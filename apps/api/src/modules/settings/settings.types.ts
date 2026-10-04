@@ -27,7 +27,10 @@ export const UpdateSettingsSchema = z.object({
   invoice_footer: text(400),
   invoice_terms_days: z.number().int().min(0, 'Payment terms can’t be negative').max(90, 'Payment terms can be at most 90 days').nullable().optional(),
   website_hold_hours: z.number().int().min(1, 'Hold a booking for at least 1 hour').max(168, 'Hold a booking for at most 7 days (168 hours)').nullable().optional(),
-});
+})
+  // (Re-test 2026-10-04) A misspelt field ("invoice_term_days") used to be dropped
+  // silently and the save reported success. Refuse it so the mistake is visible.
+  .strict();
 export type UpdateSettingsDTO = z.infer<typeof UpdateSettingsSchema>;
 
 export interface SettingsRequestMeta {

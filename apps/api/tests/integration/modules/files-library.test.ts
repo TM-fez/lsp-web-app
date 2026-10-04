@@ -133,7 +133,10 @@ describe('P6 Files library', () => {
     expect(row(res, f.receipt)).toMatchObject({ category: 'INCOME_RECEIPTS', link_kind: 'invoice', link_label: `P6-${uniq}` });
     expect(row(res, f.repair)).toMatchObject({ category: 'REPAIR_PHOTOS', link_kind: 'work_order', link_label: 'P6 leak' });
     expect(row(res, f.unitphoto)).toMatchObject({ category: 'UNIT_PHOTOS', link_kind: 'room' });
-    expect(row(res, f.standalone)).toMatchObject({ category: 'UNFILED', link_kind: null });
+    // Unfiled: visible to its uploader (accounts), not to reception — see the test below.
+    asAccounts();
+    const mine = await get(`/files/library?search=${uniq}&limit=100`);
+    expect(row(mine, f.standalone)).toMatchObject({ category: 'UNFILED', link_kind: null });
   });
 
   it('never shows another property’s documents', async () => {
@@ -156,6 +159,14 @@ describe('P6 Files library', () => {
     const res = await get(`/files/library?search=${uniq}&limit=100`);
     expect(ids(res).sort()).toEqual([f.repair].sort());
     expect((await get(`/files/${f.contractorstray}`)).status).toBe(404);
+  });
+
+  it('keeps an unfiled upload to its uploader (and file managers) until it is filed', async () => {
+    asReception(); // standalone was uploaded by accounts and is not filed yet
+    expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).not.toContain(f.standalone);
+    expect((await get(`/files/${f.standalone}`)).status).toBe(404);
+    as(reception, 'operations', [...READ, 'files.delete']);
+    expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).toContain(f.standalone);
   });
 
   it('filters by category', async () => {

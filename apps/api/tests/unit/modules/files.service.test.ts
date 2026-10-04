@@ -45,7 +45,35 @@ describe('FilesService', () => {
     it('should throw for size exceeding limit', async () => {
       const stream = new Readable();
       await expect(service.upload(stream, 'big.pdf', 'application/pdf', 999999999, false, {} as any))
-        .rejects.toThrow('File size exceeds limit');
+        .rejects.toThrow('too large');
+    });
+
+    // Re-test 2026-10-04: the browser's Content-Type was trusted outright.
+    it('refuses a file whose bytes do not match the type it claims, storing nothing', async () => {
+      const stream = Readable.from([Buffer.from('MZ\x90\x00 not a pdf')]);
+      await expect(service.upload(stream, 'evil.pdf', 'application/pdf', 20, false, {} as any))
+        .rejects.toThrow('don’t match its type');
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(adapter.save).not.toHaveBeenCalled();
+    });
+
+    // A chunked upload declares no size; multer cuts it off at the limit and marks the
+    // stream truncated. It used to be saved anyway — a cut-off file nobody asked for.
+    it('refuses a truncated (over-the-limit) stream, storing nothing', async () => {
+      const stream = Readable.from([Buffer.from('%PDF-1.4 cut off')]);
+      (stream as unknown as { truncated: boolean }).truncated = true;
+      await expect(service.upload(stream, 'big.pdf', 'application/pdf', 0, false, {} as any))
+        .rejects.toThrow('too large');
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(adapter.save).not.toHaveBeenCalled();
+    });
+
+    it('records the bytes actually received, not the request header', async () => {
+      repository.findByChecksum.mockResolvedValue(undefined);
+      repository.create.mockResolvedValue({ id: 'new-id' } as any);
+      const body = Buffer.from('%PDF-1.4 exactly this');
+      await service.upload(Readable.from([body]), 'a.pdf', 'application/pdf', 999_999, false, {} as any);
+      expect(repository.create.mock.calls[0]![0]).toMatchObject({ size_bytes: body.length });
     });
 
     it('should prevent duplicate storage via checksum but create new row', async () => {
@@ -55,7 +83,7 @@ describe('FilesService', () => {
 
       const stream = new Readable({
         read() {
-          this.push('dummy data');
+          this.push('%PDF-1.4 dummy data');
           this.push(null);
         }
       });
@@ -75,7 +103,7 @@ describe('FilesService', () => {
 
       const stream = new Readable({
         read() {
-          this.push('dummy data');
+          this.push('%PDF-1.4 dummy data');
           this.push(null);
         }
       });
@@ -90,7 +118,7 @@ describe('FilesService', () => {
 
       const stream = new Readable({
         read() {
-          this.push('dummy data');
+          this.push('%PDF-1.4 dummy data');
           this.push(null);
         }
       });

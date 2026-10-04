@@ -61,6 +61,8 @@ export interface LibraryViewer {
   canSeeGuestDocuments: boolean;
   /** Contractors see only their own uploads and the photos on their own work orders. */
   isContractor: boolean;
+  /** Holds files.delete (admin / operations): sees everyone's unfiled uploads, to file them. */
+  canManageFiles: boolean;
   /** null = every property (admin); otherwise the properties this user belongs to. */
   accessiblePropertyIds: string[] | null;
 }
@@ -132,6 +134,11 @@ function libraryBase(): RawBuilder<unknown> {
 function viewerWhere(v: LibraryViewer): RawBuilder<unknown> {
   const parts: RawBuilder<unknown>[] = [sql`true`];
   if (!v.canSeeGuestDocuments) parts.push(sql`lib.category <> 'GUEST_DOCUMENTS'`);
+  // (Re-test 2026-10-04) An UNFILED upload is attached to nothing and filed under nothing —
+  // often a document someone uploaded and has not classified yet. It used to be visible to
+  // everyone with files.read. Until it is filed, it belongs to whoever uploaded it, plus
+  // the people who manage files (files.delete) so a stray upload can still be tidied.
+  if (!v.canManageFiles) parts.push(sql`(lib.category <> 'UNFILED' OR lib.created_by = ${v.userId})`);
   if (v.isContractor) {
     parts.push(sql`(lib.created_by = ${v.userId} OR (lib.category = 'REPAIR_PHOTOS' AND lib.assignee = ${v.userId}))`);
   }

@@ -22,6 +22,16 @@ async function one(db: Db, query: ReturnType<typeof sql<{ property_id: string | 
   return res.rows[0]?.property_id ?? null;
 }
 
+/** (Re-test 2026-10-04) A building's property — for create/edit routes that place a unit. */
+export function propertyOfBuilding(db: Db, buildingId: string): Promise<string | null> {
+  return one(
+    db,
+    sql<{ property_id: string | null }>`
+      SELECT b.property_id FROM buildings b WHERE b.id = ${buildingId}
+    `,
+  );
+}
+
 export function propertyOfRoom(db: Db, roomId: string): Promise<string | null> {
   return one(
     db,

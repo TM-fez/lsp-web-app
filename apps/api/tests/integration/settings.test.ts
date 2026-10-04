@@ -91,6 +91,8 @@ describe('P7 business settings', () => {
     expect((await patch({ invoice_terms_days: 91 })).status).toBe(400);
     expect((await patch({ website_hold_hours: 0 })).status).toBe(400);
     expect((await patch({ company_email: 'not-an-email' })).status).toBe(400);
+    // A misspelt field is refused, not silently dropped with a "saved" reply.
+    expect((await patch({ invoice_term_days: 14 })).status).toBe(400);
   });
 
   it('is admin-only — front desk can neither read nor change it', async () => {
@@ -131,6 +133,8 @@ describe('P7 change your own password', () => {
     const token = await login(u.email);
     expect((await changePw(token, { current_password: PASSWORD, new_password: 'short' })).status).toBe(400);
     expect((await changePw(token, { current_password: PASSWORD, new_password: PASSWORD })).status).toBe(400);
+    // bcrypt ignores everything past 72 bytes — refuse rather than silently truncate.
+    expect((await changePw(token, { current_password: PASSWORD, new_password: `Aa1!${'x'.repeat(70)}` })).status).toBe(400);
   });
 
   it('changes it, keeps this device signed in, and signs out every other device', async () => {

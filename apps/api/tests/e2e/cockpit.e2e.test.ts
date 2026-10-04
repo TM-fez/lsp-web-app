@@ -130,6 +130,8 @@ describe('Operations Cockpit — end to end', () => {
     const res = await request(app)
       .post('/api/v1/rooms')
       .set('Authorization', bearer())
+      // A unit is placed in the active property's building (as the web app always sends).
+      .set('X-Property-Id', propertyId)
       .send({ name: `E2E Unit ${stamp}`, code: `E2E-${stamp}`, type: 'STANDARD', capacity: 2, building_id: buildingId });
     expect(res.status).toBe(201);
     roomId = res.body.id;
