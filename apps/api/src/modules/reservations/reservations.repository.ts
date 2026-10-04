@@ -8,6 +8,7 @@ import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../.
 import { inTransaction } from '../../core/db/transaction.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
+import { repairWindowOverlaps } from '../../core/availability/repairWindows.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 /**
@@ -103,6 +104,12 @@ export class ReservationsRepository {
     if (!room || room.status === 'MAINTENANCE' || room.status === 'OUT_OF_SERVICE') {
       return false;
     }
+
+    // (R5, migration 085) A serious repair booked on some of these nights blocks them,
+    // exactly as availability search reads it (core/availability/repairWindows.ts).
+    const repair = await sql<{ blocked: boolean }>`
+      SELECT ${repairWindowOverlaps(sql`${roomId}::uuid`, checkIn, checkOut)} AS blocked`.execute(this.db);
+    if (repair.rows[0]?.blocked) return false;
 
     // Check for overlaps: NewCheckIn < ExistCheckOut AND NewCheckOut > ExistCheckIn
     let query = this.db

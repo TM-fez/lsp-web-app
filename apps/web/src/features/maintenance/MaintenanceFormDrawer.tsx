@@ -71,6 +71,10 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
   const [contractor, setContractor] = useState('');
   const [contractorPhone, setContractorPhone] = useState('');
   const [cost, setCost] = useState('');
+  // (R5) A serious repair can close the unit for just some nights. Empty = every date
+  // until the job is done (the safe default when nobody knows how long it will take).
+  const [blocksFrom, setBlocksFrom] = useState('');
+  const [blocksTo, setBlocksTo] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -83,6 +87,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     setContractor(order?.contractor_name ?? '');
     setContractorPhone(order?.contractor_phone ?? '');
     setCost(order?.cost_amount != null ? String(order.cost_amount / 100) : '');
+    setBlocksFrom(order?.blocks_from ? order.blocks_from.slice(0, 10) : '');
+    setBlocksTo(order?.blocks_to ? order.blocks_to.slice(0, 10) : '');
   }, [open, order]);
 
   const unitLabel = (id: string) => {
@@ -90,7 +96,14 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     return r ? `${r.code} · ${r.name}` : '—';
   };
 
-  const valid = title.trim().length > 0 && (isEdit || roomId !== '');
+  const serious = priority === 'HIGH' || priority === 'CRITICAL';
+  // Both dates or neither, and the unit must be back in use after it closes.
+  const windowValid = (!blocksFrom && !blocksTo) || (!!blocksFrom && !!blocksTo && blocksTo > blocksFrom);
+  // Only a serious job blocks anything; a lower priority clears any window it had.
+  const blockWindow = serious && blocksFrom && blocksTo
+    ? { blocks_from: blocksFrom, blocks_to: blocksTo }
+    : { blocks_from: null, blocks_to: null };
+  const valid = title.trim().length > 0 && (isEdit || roomId !== '') && (!serious || windowValid);
 
   async function submit() {
     if (!valid) return;
@@ -98,7 +111,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
       if (order) {
         await update.mutateAsync({
           id: order.id,
-          input: { title: title.trim(), description: description.trim() || null, priority },
+          input: { title: title.trim(), description: description.trim() || null, priority, ...blockWindow },
         });
       } else {
         await create.mutateAsync({
@@ -109,6 +122,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
           contractor_name: contractor.trim() || null,
           contractor_phone: contractorPhone.trim() || null,
           cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
+          ...blockWindow,
         });
       }
       onOpenChange(false);
@@ -250,6 +264,28 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
               </Select>
             </div>
           </div>
+
+          {serious && (
+            <div className="flex flex-col gap-2 rounded-md border border-line bg-cream/40 p-3">
+              <p className="text-xs text-muted">
+                A high or critical repair takes the unit out of use. Give the dates if you know them —
+                the unit stays bookable on every other night. Leave both empty to close it until the job is done.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="wo-from">Closed from</Label>
+                  <Input id="wo-from" type="date" value={blocksFrom} onChange={(e) => setBlocksFrom(e.target.value)} disabled={busy} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="wo-to">Back in use on</Label>
+                  <Input id="wo-to" type="date" value={blocksTo} onChange={(e) => setBlocksTo(e.target.value)} disabled={busy} />
+                </div>
+              </div>
+              {!windowValid && (
+                <p className="text-xs text-terra">Give both dates, with “back in use” after “closed from” — or leave both empty.</p>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <Label htmlFor="wo-desc">Details (optional)</Label>

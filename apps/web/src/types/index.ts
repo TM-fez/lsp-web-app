@@ -285,6 +285,9 @@ export interface WorkOrder {
   cost_amount: number | null;
   cost_approved_at: string | null;
   cost_reconciled_at: string | null;
+  // (R5) Nights a HIGH/CRITICAL repair closes the unit, [from, to). Null = every date.
+  blocks_from?: string | null;
+  blocks_to?: string | null;
   opened_at: string;
   started_at: string | null;
   completed_at: string | null;

@@ -295,6 +295,10 @@ export interface MaintenanceWorkOrdersTable {
   cost_reconciled_at: Date | null;
   before_file_id: string | null;
   after_file_id: string | null;
+  // (085) Nights a HIGH/CRITICAL repair takes the unit out of use, half-open [from, to).
+  // Both null = no window: the unit is under MAINTENANCE for every date instead.
+  blocks_from: Date | string | null;
+  blocks_to: Date | string | null;
   opened_at: Generated<Date>;
   started_at: Date | null;
   completed_at: Date | null;

@@ -18,9 +18,11 @@ export class AvailabilityService {
   private determineRoomVerdict(
     status: string,
     activeOccupancy: number,
-    overlappingReservations: number
+    overlappingReservations: number,
+    repairWindow = false
   ): { available: boolean; reason: BlockReason | null } {
-    if (status === 'MAINTENANCE') return { available: false, reason: 'MAINTENANCE' };
+    // (R5) A dated repair reads the same as an open-ended one to the person searching.
+    if (status === 'MAINTENANCE' || repairWindow) return { available: false, reason: 'MAINTENANCE' };
     if (status === 'OUT_OF_SERVICE') return { available: false, reason: 'OUT_OF_SERVICE' };
     // r.status OCCUPIED is deliberately NOT consulted (D06): it is a "right now" flag
     // with no dates, so it used to make an in-house unit unbookable for every future
@@ -54,7 +56,8 @@ export class AvailabilityService {
       const { available, reason } = this.determineRoomVerdict(
         sig.status, 
         sig.active_occupancy, 
-        sig.overlapping_reservations
+        sig.overlapping_reservations,
+        sig.repair_window
       );
       return {
         id: sig.id,

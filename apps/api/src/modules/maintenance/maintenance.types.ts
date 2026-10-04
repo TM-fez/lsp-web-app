@@ -16,6 +16,25 @@ export const MaintenancePriorityEnum = z.enum([
   'CRITICAL'
 ]);
 
+// (R5, migration 085) The nights a HIGH / CRITICAL repair takes the unit out of use,
+// half-open like a booking: from the first night closed to the first night back in use.
+// Both or neither — without them the unit is out of use for every date until it's done.
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-14.');
+const blockWindow = {
+  blocks_from: isoDay.optional().nullable(),
+  blocks_to: isoDay.optional().nullable(),
+};
+function windowIsValid(d: { blocks_from?: string | null; blocks_to?: string | null }): boolean {
+  const from = d.blocks_from ?? null;
+  const to = d.blocks_to ?? null;
+  if (from === null && to === null) return true;
+  return from !== null && to !== null && to > from;
+}
+const windowMessage = {
+  message: 'Give both repair dates, with the “back in use” day after the first day closed — or leave both empty.',
+  path: ['blocks_to'],
+};
+
 export const CreateWorkOrderSchema = z.object({
   room_id: z.string().uuid(),
   title: z.string().min(1).max(255),
@@ -25,7 +44,8 @@ export const CreateWorkOrderSchema = z.object({
   contractor_name: z.string().max(255).optional().nullable(),
   contractor_phone: z.string().max(50).optional().nullable(),
   cost_amount: z.number().int().min(0).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional().nullable(), // thebe
-});
+  ...blockWindow,
+}).refine(windowIsValid, windowMessage);
 
 export const UpdateWorkOrderSchema = z.object({
   title: z.string().min(1).max(255).optional(),
@@ -34,7 +54,12 @@ export const UpdateWorkOrderSchema = z.object({
   contractor_name: z.string().max(255).optional().nullable(),
   contractor_phone: z.string().max(50).optional().nullable(),
   cost_amount: z.number().int().min(0).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional().nullable(),
-});
+  ...blockWindow,
+}).refine(
+  // An edit may leave the window alone (neither key sent); when it touches it, both go together.
+  (d) => (d.blocks_from === undefined && d.blocks_to === undefined) || windowIsValid(d),
+  windowMessage
+);
 
 export const CompleteWorkOrderSchema = z.object({
   after_file_id: z.string().uuid().optional().nullable(),

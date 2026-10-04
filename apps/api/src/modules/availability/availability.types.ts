@@ -82,6 +82,7 @@ export interface RoomSignalRow {
   capacity: number;
   overlapping_reservations: number;
   active_occupancy: number;
+  repair_window: boolean; // (R5) a live serious repair is booked on some of these nights
   total_count: number; // window count for pagination
 }
 
