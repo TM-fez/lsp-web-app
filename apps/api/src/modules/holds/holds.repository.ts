@@ -158,15 +158,66 @@ export class HoldsRepository {
     });
   }
 
-  // Auto/smart release: expire HELD rows past their window in one statement.
-  async releaseExpired(): Promise<number> {
-    const res = await this.db
-      .updateTable('holds')
-      .set({ status: 'EXPIRED', release_reason: 'auto-expired', updated_at: sql`now()` })
-      .where('status', '=', 'HELD')
-      .where('held_until', '<', sql<Date>`now()`)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst();
-    return Number(res.numUpdatedRows ?? 0);
+  /**
+   * Auto/smart release: expire HELD rows past their window.
+   *
+   * - No `scope` = the scheduled system sweep: every expired hold in the house, as before.
+   * - With `scope` = a person pressing the button (POST /holds/sweep/release-expired):
+   *   (N-NEW-13) only holds in `propertyIds` (null = every property), and each released
+   *   hold gets its own audit row in the same transaction, so "who released these?" has an
+   *   answer. A hold that belongs to no property (no room, no booking) is only released by
+   *   someone who can see every property.
+   */
+  async releaseExpired(scope?: { propertyIds: string[] | null; meta: HoldRequestMeta }): Promise<number> {
+    if (!scope) {
+      const res = await this.db
+        .updateTable('holds')
+        .set({ status: 'EXPIRED', release_reason: 'auto-expired', updated_at: sql`now()` })
+        .where('status', '=', 'HELD')
+        .where('held_until', '<', sql<Date>`now()`)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst();
+      return Number(res.numUpdatedRows ?? 0);
+    }
+
+    const { propertyIds, meta } = scope;
+    return this.db.transaction().execute(async (trx) => {
+      let q = trx
+        .updateTable('holds')
+        .set({ status: 'EXPIRED', release_reason: 'auto-expired', updated_by: meta.userId, updated_at: sql`now()` })
+        .where('status', '=', 'HELD')
+        .where('held_until', '<', sql<Date>`now()`)
+        .where('deleted_at', 'is', null);
+      if (propertyIds !== null) {
+        q = propertyIds.length === 0
+          ? q.where(sql<boolean>`false`)
+          : q.where(
+              'id',
+              'in',
+              sql<string>`(
+                SELECT h.id FROM holds h
+                  LEFT JOIN reservations res ON res.id = h.reservation_id
+                  LEFT JOIN rooms r ON r.id = coalesce(h.room_id, res.room_id)
+                  LEFT JOIN buildings b ON b.id = r.building_id
+                 WHERE b.property_id IN (${sql.join(propertyIds)})
+              )`
+            );
+      }
+      const released = await q.returning('id').execute();
+      if (released.length > 0) {
+        await trx.insertInto('audit_logs').values(
+          released.map((h) => ({
+            request_id: meta.requestId ?? null,
+            user_id: meta.userId,
+            action: 'UPDATE' as const,
+            entity: 'holds',
+            entity_id: h.id,
+            diff: { status: 'EXPIRED', release_reason: 'auto-expired', via: 'manual sweep' },
+            ip_address: meta.ip ?? null,
+          }))
+        ).execute();
+      }
+      return released.length;
+    });
   }
 }
