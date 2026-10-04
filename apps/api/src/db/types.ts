@@ -105,6 +105,9 @@ export interface LeadsTable {
   phone: string | null;
   // The booking this enquiry became (migration 060), set on convert-to-booking.
   converted_reservation_id: string | null;
+  // (Round 4, migration 082) The property the enquiry is about. NULL = not assigned (website
+  // enquiries): visible to its creator and to people who can see every property.
+  property_id: string | null;
   created_by: string;
   updated_by: string;
   deleted_at: Date | null;

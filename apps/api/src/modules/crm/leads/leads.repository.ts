@@ -1,32 +1,44 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, LeadRow, NewLead, UpdateLead } from '../../../db/types.js';
-import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta } from './leads.types.js';
+import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta, LeadScope } from './leads.types.js';
+
+/** SQL for "may this caller see this lead" — one rule for the list, by-id, edit and delete. */
+export function leadVisibleSql(scope: LeadScope | undefined) {
+  if (!scope || scope.allProperties) return sql<boolean>`true`;
+  const ids = scope.ids ?? [];
+  const mine = ids.length === 0 ? sql<boolean>`false` : sql<boolean>`leads.property_id IN (${sql.join(ids)})`;
+  return sql<boolean>`(${mine} OR (leads.property_id IS NULL AND leads.created_by = ${scope.userId}))`;
+}
 
 export class LeadsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async findById(id: string): Promise<LeadRow | undefined> {
+  async findById(id: string, scope?: LeadScope): Promise<LeadRow | undefined> {
     return this.db
       .selectFrom('leads')
       .selectAll()
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
+      .where(leadVisibleSql(scope))
       .executeTakeFirst();
   }
 
   async findPaginated(
     filters: LeadFilters,
-    pagination: LeadPaginationOptions
+    pagination: LeadPaginationOptions,
+    scope?: LeadScope
   ): Promise<PaginatedLeadResult<LeadRow>> {
     let query = this.db
       .selectFrom('leads')
       .selectAll()
-      .where('deleted_at', 'is', null);
+      .where('deleted_at', 'is', null)
+      .where(leadVisibleSql(scope));
 
     let countQuery = this.db
       .selectFrom('leads')
       .select(this.db.fn.count<number>('id').as('total'))
-      .where('deleted_at', 'is', null);
+      .where('deleted_at', 'is', null)
+      .where(leadVisibleSql(scope));
 
     if (filters.status) {
       query = query.where('status', '=', filters.status);

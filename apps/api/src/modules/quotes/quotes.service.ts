@@ -4,7 +4,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { nightsBetween, taxExclusive, depositFrom } from './quotes.util.js';
 import type { NewQuote, QuoteRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { CreateQuoteDTO, QuoteFilters, QuoteBreakdown, QuoteRequestMeta } from './quotes.types.js';
+import type { CreateQuoteDTO, QuoteFilters, QuoteBreakdown, QuoteRequestMeta, QuoteScope } from './quotes.types.js';
 
 const QUOTE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -14,14 +14,15 @@ export class QuotesService {
     private readonly pricing: PricingService
   ) {}
 
-  async getQuote(id: string): Promise<QuoteRow> {
-    const quote = await this.repository.findById(id);
+  // `scope` is passed by the HTTP routes only; internal callers (holds, reservations) read by id.
+  async getQuote(id: string, scope?: QuoteScope): Promise<QuoteRow> {
+    const quote = await this.repository.findById(id, scope);
     if (!quote) throw AppError.notFound(`Quote ${id} not found`);
     return quote;
   }
 
-  async listQuotes(filters: QuoteFilters, pagination: PaginationOptions): Promise<PaginatedResult<QuoteRow>> {
-    return this.repository.findPaginated(filters, pagination);
+  async listQuotes(filters: QuoteFilters, pagination: PaginationOptions, scope?: QuoteScope): Promise<PaginatedResult<QuoteRow>> {
+    return this.repository.findPaginated(filters, pagination, scope);
   }
 
   /** Throws unless the quote is ACTIVE and not past its expiry. */

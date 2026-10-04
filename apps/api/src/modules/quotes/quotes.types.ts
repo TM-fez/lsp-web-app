@@ -23,6 +23,17 @@ export const CreateQuoteSchema = z
 
 export type CreateQuoteDTO = z.infer<typeof CreateQuoteSchema>;
 
+/**
+ * (Round 4, N-9) Who is asking, for quote visibility. A quote has no property column — it is
+ * priced by unit type — so a limited user sees a quote they created, or one whose hold sits
+ * in one of their properties. `ids` null = admin; `allProperties` sees every quote.
+ */
+export interface QuoteScope {
+  userId: string;
+  ids: string[] | null;
+  allProperties: boolean;
+}
+
 export interface QuoteFilters {
   status?: QuoteStatus;
   unit_type?: UnitType;
