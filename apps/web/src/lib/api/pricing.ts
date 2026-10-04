@@ -21,7 +21,7 @@ function unwrap(data: unknown): RatePlan[] {
 }
 
 export async function listRatePlans(params?: { unit_type?: UnitType; active?: boolean }): Promise<RatePlan[]> {
-  const { data } = await api.get('/pricing', { params: { limit: 200, ...params } });
+  const { data } = await api.get('/pricing', { params: { limit: 100, ...params } });
   return unwrap(data);
 }
 

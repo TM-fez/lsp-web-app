@@ -9,6 +9,7 @@ import {
   SetCostSchema,
   MaintenanceStatusEnum
 } from './maintenance.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class MaintenanceController {
   constructor(private readonly service: MaintenanceService) {}
@@ -22,8 +23,8 @@ export class MaintenanceController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
       const room_id = req.query.room_id as string | undefined;
       const status = req.query.status as string | undefined;
       // A contractor only ever sees their own tickets — the filter is pinned
@@ -38,7 +39,7 @@ export class MaintenanceController {
 
       const result = await this.service.list({
         page,
-        limit: Math.min(limit, 100),
+        limit,
         room_id,
         status: parsedStatus,
         assigned_to

@@ -7,6 +7,7 @@ import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
+import { parseLimit } from '../../core/http/pagination.js';
 
 export function createActivityRouter(): Router {
   const router = Router();
@@ -25,7 +26,7 @@ export function createActivityRouter(): Router {
   // membership before attaching the id.
   router.get('/', authorize('activity.read'), requireActiveProperty, async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 30, 50);
+      const limit = parseLimit(req.query, 30, 50);
       // (Round 4) Rows that belong to no property are shown only to people who can see every
       // property, and to whoever did them — not to a user limited to one property.
       const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);

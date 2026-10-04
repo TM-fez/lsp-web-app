@@ -49,4 +49,19 @@ describe('GuestFormDrawer — add guest', () => {
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(3));
     expect(createMutate.mock.calls[2]![0].idempotencyKey).not.toBe(a);
   });
+
+  // (R5) Another guest uses this email: the form asks, and "Save anyway" resends with the flag.
+  it('asks before saving a duplicate email, and Save anyway resends with the flag', async () => {
+    createMutate.mockRejectedValueOnce({ response: { status: 409, data: { error: 'Duplicate Email', message: 'x' } } });
+    setup();
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Neo Kgosi' } });
+    fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'neo@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add guest/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Another guest already uses this email');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save anyway' }));
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(2));
+    expect(createMutate.mock.calls[0]![0].input.allow_duplicate_email).toBeUndefined();
+    expect(createMutate.mock.calls[1]![0].input.allow_duplicate_email).toBe(true);
+  });
 });

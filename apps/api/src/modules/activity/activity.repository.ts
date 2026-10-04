@@ -130,7 +130,15 @@ export class ActivityRepository {
     return out;
   }
 
-  /** One slice of the audit log, newest first, strictly older than `cursor`. */
+  /**
+   * One slice of the audit log, newest first, strictly older than `cursor`.
+   *
+   * (R5 retest, migration 088) Each row's property is stored when it is written
+   * (`property_id` / `scope_kind`), so a property feed reads exactly two index-ordered
+   * streams — that property's rows, and rows tied to no single property — instead of
+   * resolving every row of every property on the fly. Only guests ('C') are still worked
+   * out here: a guest belongs to every property they have booked at, which can change.
+   */
   private chunk(
     exec: Transaction<Database>,
     size: number,
@@ -142,94 +150,33 @@ export class ActivityRepository {
     const before = cursor
       ? sql`AND (a.created_at, a.id) < (${cursor.ts}::timestamptz, ${cursor.id}::uuid)`
       : sql``;
-    // The resolved property of a row; NULL = belongs to no property ("global").
-    const resolved = sql`
-              CASE s.entity
-                WHEN 'reservations' THEN
-                  (SELECT b.property_id FROM reservations r
-                     JOIN rooms rm ON rm.id = r.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE r.id = s.eid)
-                WHEN 'rooms' THEN
-                  (SELECT b.property_id FROM rooms rm
-                     JOIN buildings b ON b.id = rm.building_id WHERE rm.id = s.eid)
-                -- entity_id on a collision is the ROOM it happened in, not a reservation.
-                WHEN 'channel_collision' THEN
-                  (SELECT b.property_id FROM rooms rm
-                     JOIN buildings b ON b.id = rm.building_id WHERE rm.id = s.eid)
-                WHEN 'housekeeping_tasks' THEN
-                  (SELECT b.property_id FROM housekeeping_tasks t
-                     JOIN rooms rm ON rm.id = t.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE t.id = s.eid)
-                WHEN 'maintenance_work_orders' THEN
-                  (SELECT b.property_id FROM maintenance_work_orders w
-                     JOIN rooms rm ON rm.id = w.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE w.id = s.eid)
-                -- A repair cost is audited against the work order it sits on.
-                WHEN 'maintenance_expense' THEN
-                  (SELECT b.property_id FROM maintenance_work_orders w
-                     JOIN rooms rm ON rm.id = w.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE w.id = s.eid)
-                WHEN 'occupancy' THEN
-                  (SELECT b.property_id FROM occupancy o
-                     JOIN rooms rm ON rm.id = o.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE o.id = s.eid)
-                WHEN 'holds' THEN
-                  (SELECT b.property_id FROM holds h
-                     JOIN rooms rm ON rm.id = h.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE h.id = s.eid)
-                WHEN 'invoices' THEN
-                  (SELECT b.property_id FROM invoices i
-                     JOIN reservations r ON r.id = i.reservation_id
-                     JOIN rooms rm ON rm.id = r.room_id
-                     JOIN buildings b ON b.id = rm.building_id WHERE i.id = s.eid)
-                -- An intent hangs off a hold, which knows the room directly or through
-                -- its reservation — or (migration 071) off an invoice settled with no hold,
-                -- which knows its booking. The invoice half used to resolve to nothing, so
-                -- every Invoices-page settlement showed in every property's feed.
-                WHEN 'payment_intents' THEN
-                  (SELECT b.property_id FROM payment_intents pi
-                     LEFT JOIN holds h ON h.id = pi.hold_id
-                     LEFT JOIN invoices pinv ON pinv.id = pi.invoice_id
-                     JOIN rooms rm ON rm.id = coalesce(
-                       h.room_id,
-                       (SELECT res.room_id FROM reservations res WHERE res.id = coalesce(h.reservation_id, pinv.reservation_id)))
-                     JOIN buildings b ON b.id = rm.building_id WHERE pi.id = s.eid)
-                -- (Owner decision 2026-10-04) A guest belongs to the properties they have
-                -- booked at. Booked here → this property; booked only elsewhere → a value
-                -- that never matches (so another property's guest stays out); never booked
-                -- → global, like the guest list (core/scope/contactScope.ts).
-                WHEN 'contacts' THEN
-                  (SELECT CASE
-                            WHEN bool_or(b.property_id = ${pid}::uuid) THEN ${pid}::uuid
-                            ELSE '00000000-0000-0000-0000-000000000000'::uuid
-                          END
-                     FROM reservations r
-                     JOIN rooms rm ON rm.id = r.room_id
-                     JOIN buildings b ON b.id = rm.building_id
-                    WHERE (r.contact_id = s.eid OR r.billing_contact_id = s.eid) AND r.deleted_at IS NULL
-                   HAVING count(*) > 0)
-                -- (Round 4, migration 082) An enquiry belongs to its property, if it has one.
-                WHEN 'leads' THEN
-                  (SELECT l.property_id FROM leads l WHERE l.id = s.eid)
-                WHEN 'buildings' THEN
-                  (SELECT bl.property_id FROM buildings bl WHERE bl.id = s.eid)
-                WHEN 'properties' THEN s.eid
-                -- Nullable by design: a payroll posting carries no property.
-                WHEN 'operating_expense' THEN
-                  (SELECT oe.property_id FROM operating_expenses oe WHERE oe.id = s.eid)
-                ELSE NULL
-              END
-    `;
+    const cols = sql`a.id, a.action, a.entity, a.entity_id, a.diff, a.created_at, a.user_id,
+               a.property_id, a.scope_kind, a.created_at::text AS cursor_ts,
+               CASE WHEN a.entity_id ~ ${UUID_RE} THEN a.entity_id::uuid END AS eid`;
+    const hide = sql`a.entity <> ALL(${sql.val(HIDE)}::text[])`;
+    const order = sql`ORDER BY a.created_at DESC, a.id DESC LIMIT ${size}`;
+    // No property in play (an all-property view): one stream, everything.
+    const src = pid === null
+      ? sql`SELECT ${cols} FROM audit_logs a WHERE ${hide} ${before} ${order}`
+      : sql`SELECT * FROM (
+              (SELECT ${cols} FROM audit_logs a
+                WHERE a.scope_kind = 'P' AND a.property_id = ${pid}::uuid AND ${hide} ${before} ${order})
+              UNION ALL
+              (SELECT ${cols} FROM audit_logs a
+                WHERE a.scope_kind <> 'P' AND ${hide} ${before} ${order})
+            ) both_streams
+            ORDER BY created_at DESC, id DESC LIMIT ${size}`;
+    // (Owner decision 2026-10-04) A guest belongs to the properties they have booked at.
+    // Booked here → visible; booked only elsewhere → never; never booked → global.
+    const guestHere = sql`(SELECT CASE WHEN bool_or(b.property_id = ${pid}::uuid) THEN 'here' ELSE 'elsewhere' END
+                             FROM reservations r
+                             JOIN rooms rm ON rm.id = r.room_id
+                             JOIN buildings b ON b.id = rm.building_id
+                            WHERE (r.contact_id = s.eid OR r.billing_contact_id = s.eid) AND r.deleted_at IS NULL
+                           HAVING count(*) > 0)`;
+    const global = sql`(${viewer.allProperties} OR s.user_id = ${viewer.userId}::uuid)`;
     return sql<ChunkRow>`
-      WITH src AS (
-        SELECT a.id, a.action, a.entity, a.entity_id, a.diff, a.created_at, a.user_id,
-               a.created_at::text AS cursor_ts,
-               CASE WHEN a.entity_id ~ ${UUID_RE} THEN a.entity_id::uuid END AS eid
-        FROM audit_logs a
-        WHERE a.entity <> ALL(${sql.val(HIDE)}::text[]) ${before}
-        ORDER BY a.created_at DESC, a.id DESC
-        LIMIT ${size}
-      ),
+      WITH src AS (${src}),
       scored AS (
         SELECT s.*,
                u.name AS actor_name,
@@ -237,13 +184,10 @@ export class ActivityRepository {
                count(*) OVER () AS chunk_size,
                CASE
                  WHEN ${pid}::uuid IS NULL THEN true
-                 ELSE (
-                   SELECT CASE
-                            WHEN r.pid IS NOT NULL THEN r.pid = ${pid}::uuid
-                            ELSE ${viewer.allProperties} OR s.user_id = ${viewer.userId}::uuid
-                          END
-                   FROM (SELECT ${resolved} AS pid) r
-                 )
+                 WHEN s.scope_kind = 'P' THEN s.property_id = ${pid}::uuid
+                 WHEN s.scope_kind = 'C' THEN
+                   CASE ${guestHere} WHEN 'here' THEN true WHEN 'elsewhere' THEN false ELSE ${global} END
+                 ELSE ${global}
                END AS visible
         FROM src s
         LEFT JOIN users u ON u.id = s.user_id

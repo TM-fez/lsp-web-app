@@ -277,19 +277,34 @@ describe('§3 refunds', () => {
     expect(await creditNotes(b.invoiceId)).toBe(2);
   });
 
-  it('4 parallel identical refunds without a key: exactly one goes through (duplicate guard), the rest get a clear 409', async () => {
+  // (R5 retest) Without a key the request's own fingerprint is the key for 10 s, so a double
+  // click no longer gets an error — it gets the first refund back. Money moves once either way.
+  it('4 parallel identical refunds without a key: one refund, the others replay it', async () => {
     const b = await paidBooking(2);
     const out = await Promise.all(Array.from({ length: 4 }, () => refund(b.invoiceId, { amount: 10_000, reason: 'double click' })));
-    expect(out.map((r) => r.status).sort()).toEqual([201, 409, 409, 409]);
-    for (const r of out.filter((x) => x.status === 409)) expect(r.body.message).toMatch(/looks like a duplicate refund — wait or use a different amount/);
+    expect(out.map((r) => r.status)).toEqual([201, 201, 201, 201]);
+    expect(out.filter((r) => r.headers['idempotent-replayed'] === 'true')).toHaveLength(3);
+    expect(new Set(out.map((r) => r.body.id)).size).toBe(1);
     expect(await creditNotes(b.invoiceId)).toBe(1);
     expect((await folio(b.id)).paid_amount).toBe(b.total - 10_000);
+  });
+
+  it('the same amount reworded within 10 s, without a key, is still caught by the duplicate guard', async () => {
+    const b = await paidBooking(2);
+    const out = await Promise.all([
+      refund(b.invoiceId, { amount: 10_000, reason: 'guest left early' }),
+      refund(b.invoiceId, { amount: 10_000, reason: 'guest left early.' }),
+    ]);
+    expect(out.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(out.find((r) => r.status === 409)!.body.message).toMatch(/looks like a duplicate refund — wait or use a different amount/);
+    expect(await creditNotes(b.invoiceId)).toBe(1);
   });
 
   it('parallel identical refunds that would together exceed what is left never over-refund', async () => {
     const b = await paidBooking(2); // P2,000.00; 4 × P600.00 would be P2,400.00
     const out = await Promise.all(Array.from({ length: 4 }, () => refund(b.invoiceId, { amount: 60_000, reason: 'race' }, undefined)));
-    expect(out.filter((r) => r.status === 201)).toHaveLength(1); // duplicate guard; and even without it the cap holds
+    expect(out.every((r) => r.status === 201)).toBe(true); // one ran; the rest replayed it
+    expect(await creditNotes(b.invoiceId)).toBe(1);
     const refunded = Number((await pool.query(`SELECT COALESCE(sum(total_amount),0) s FROM invoices WHERE refund_of_invoice_id = $1 AND kind='REFUND'`, [b.invoiceId])).rows[0].s);
     expect(refunded).toBeLessThanOrEqual(b.total);
   });

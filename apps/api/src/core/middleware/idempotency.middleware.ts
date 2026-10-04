@@ -16,8 +16,11 @@ import { logger } from '../logger.js';
  * gets that response back without running the handler again.
  *
  * Rules (kept deliberately small — the whole contract fits here):
- *  - No header → the middleware does nothing. The key is optional (API clients that don't
- *    send one behave exactly as before); the refund endpoint adds its own duplicate guard.
+ *  - No header → (R5 retest) an IMPLICIT key: the request's own fingerprint (user, route,
+ *    params, property, body) with a short life (IMPLICIT_TTL_SECONDS). The same request
+ *    sent twice within that window — a double click from a client that sends no key — gets
+ *    the first answer replayed instead of moving money twice. After the window an identical
+ *    request is new work again (two genuine P100 cash payments a minute apart both count).
  *  - Scope: (user, route pattern, key). The same key from another user or on another
  *    endpoint is a different request.
  *  - Same key, different body / params / property → 422. That is a client bug (a key was
@@ -38,6 +41,8 @@ import { logger } from '../logger.js';
  */
 
 export const IDEMPOTENCY_TTL_HOURS = 24;
+/** How long a request with NO Idempotency-Key is remembered (see the rules above). */
+export const IMPLICIT_TTL_SECONDS = 10;
 /** How long a parallel duplicate waits for the first request before giving up with 409. */
 const WAIT_MS = 15_000;
 const POLL_MS = 100;
@@ -98,12 +103,12 @@ async function pruneExpired(dbi: Kysely<Database>): Promise<void> {
 
 export function idempotent(dbInstance: Kysely<Database> = defaultDb): RequestHandler {
   /** Try to become the request that does the work. True = we own the key now. */
-  async function claim(userId: string, endpoint: string, key: string, hash: string): Promise<boolean> {
+  async function claim(userId: string, endpoint: string, key: string, hash: string, ttlSeconds: number): Promise<boolean> {
     // A live row blocks the insert (no row returned). An EXPIRED row is overwritten, i.e.
     // the key is re-claimed from scratch.
     const res = await sql<{ id: string }>`
-      INSERT INTO idempotency_keys (user_id, endpoint, key, request_hash)
-      VALUES (${userId}, ${endpoint}, ${key}, ${hash})
+      INSERT INTO idempotency_keys (user_id, endpoint, key, request_hash, expires_at)
+      VALUES (${userId}, ${endpoint}, ${key}, ${hash}, now() + make_interval(secs => ${ttlSeconds}))
       ON CONFLICT (user_id, endpoint, key) DO UPDATE
         SET request_hash = EXCLUDED.request_hash,
             state = 'IN_PROGRESS',
@@ -111,7 +116,7 @@ export function idempotent(dbInstance: Kysely<Database> = defaultDb): RequestHan
             response_body = NULL,
             created_at = now(),
             completed_at = NULL,
-            expires_at = now() + make_interval(hours => ${IDEMPOTENCY_TTL_HOURS})
+            expires_at = now() + make_interval(secs => ${ttlSeconds})
         WHERE idempotency_keys.expires_at <= now()
       RETURNING id
     `.execute(dbInstance);
@@ -132,10 +137,8 @@ export function idempotent(dbInstance: Kysely<Database> = defaultDb): RequestHan
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const raw = req.get('Idempotency-Key');
-      if (raw === undefined) return next();
-
-      const key = raw.trim();
-      if (!isValidIdempotencyKey(key)) {
+      const explicit = raw !== undefined;
+      if (explicit && !isValidIdempotencyKey(raw.trim())) {
         throw AppError.badRequest(
           'The Idempotency-Key must be 8 to 128 characters: letters, digits and - _ . :'
         );
@@ -152,11 +155,14 @@ export function idempotent(dbInstance: Kysely<Database> = defaultDb): RequestHan
         propertyId: req.activePropertyId ?? null,
         body: req.body,
       });
+      // No header: the fingerprint IS the key, remembered only briefly (see the rules above).
+      const key = explicit ? raw.trim() : `implicit:${hash}`;
+      const ttlSeconds = explicit ? IDEMPOTENCY_TTL_HOURS * 3600 : IMPLICIT_TTL_SECONDS;
       void pruneExpired(dbInstance);
 
       const deadline = Date.now() + WAIT_MS;
       for (;;) {
-        if (await claim(userId, endpoint, key, hash)) {
+        if (await claim(userId, endpoint, key, hash, ttlSeconds)) {
           armCapture(req, res, dbInstance, userId, endpoint, key);
           return next();
         }

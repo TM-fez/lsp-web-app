@@ -33,6 +33,14 @@ export function parsePageQuery(query: Query): { page: number; limit: number } {
 }
 
 /**
+ * (R5 retest) A feed that takes only `?limit=` (activity, notifications): the same refusal
+ * as the paged lists — a whole number in range or a 400 — rather than a silent clamp.
+ */
+export function parseLimit(query: Query, fallback: number, max: number): number {
+  return whole(query.limit, 'limit', 1, max) ?? fallback;
+}
+
+/**
  * Opt-in paging for the small "everything" lists (users, payroll staff, costs, expenses).
  * No `limit` → every row, exactly as before, so existing callers are unaffected. With
  * `limit` (and optionally `page`) → that slice. `total` is always the full count.

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { CheckinsService } from './checkins.service.js';
 import { OccupancyStatusEnum } from './checkins.types.js';
 import type { CreateCheckInDTO, CheckOutDTO } from './checkins.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class CheckinsController {
   constructor(private readonly service: CheckinsService) {}
@@ -17,9 +18,8 @@ export class CheckinsController {
 
   listOccupancy = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      let limit = parseInt(req.query.limit as string) || 20;
-      if (limit > 100) limit = 100;
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
 
       const statusRaw = req.query.status;
       const status = statusRaw ? OccupancyStatusEnum.parse(statusRaw) : undefined;

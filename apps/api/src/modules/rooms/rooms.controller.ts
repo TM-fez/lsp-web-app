@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { RoomsService } from './rooms.service.js';
 import { RoomStatusEnum, RoomTypeEnum } from './rooms.types.js';
 import type { CreateRoomDTO, UpdateRoomDTO, UpdateChannelConfigDTO } from './rooms.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class RoomsController {
   constructor(private readonly service: RoomsService) {}
@@ -17,9 +18,8 @@ export class RoomsController {
 
   getRooms = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      let limit = parseInt(req.query.limit as string) || 20;
-      if (limit > 100) limit = 100;
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
 
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;

@@ -5,6 +5,7 @@ import type { CreateLeadDTO, UpdateLeadDTO, ConvertLeadDTO, LeadScope } from './
 import { propertyScopeForUser } from '../../../core/scope/propertyScope.js';
 import { ACTIVE_PROPERTY_HEADER, userCanAccessProperty } from '../../../core/scope/activeProperty.js';
 import { AppError } from '../../../core/errors/AppError.js';
+import { parsePageQuery } from '../../../core/http/pagination.js';
 
 export class LeadsController {
   constructor(private readonly service: LeadsService) {}
@@ -32,9 +33,8 @@ export class LeadsController {
 
   getLeads = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      let limit = parseInt(req.query.limit as string) || 20;
-      if (limit > 100) limit = 100;
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
       const search = req.query.search as string | undefined;
       const statusRaw = req.query.status;
       const status = statusRaw ? LeadStatusEnum.parse(statusRaw) : undefined;

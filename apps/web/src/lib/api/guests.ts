@@ -10,6 +10,8 @@ export interface CreateGuestInput {
   company?: string | null;
   address?: string | null;
   notes?: string | null;
+  /** "Save anyway" after the server said another guest uses this email (R5). */
+  allow_duplicate_email?: boolean;
 }
 
 export type UpdateGuestInput = Partial<CreateGuestInput>;

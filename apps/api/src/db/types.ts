@@ -364,6 +364,9 @@ export interface AuditLogsTable {
   diff: unknown | null;
   ip_address: string | null;
   created_at: Generated<Date>;
+  // (088) Set by trigger on insert — never written by the app.
+  property_id: Generated<string | null>;
+  scope_kind: Generated<'P' | 'G' | 'C'>;
 }
 
 // Phase 2 — Notifications. One row per recipient (fan-out at emit time), so
