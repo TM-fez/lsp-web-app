@@ -123,6 +123,8 @@ beforeAll(async () => {
 afterAll(async () => {
   const allReservations = [reservationId, pendingReservationId];
   await db.deleteFrom('audit_logs').where('user_id', '=', userId).execute();
+  await db.deleteFrom('housekeeping_tasks')
+    .where('room_id', 'in', [fromRoomId, toRoomId, pendingFromRoomId, pendingToRoomId]).execute();
   await db.deleteFrom('occupancy').where('reservation_id', 'in', allReservations).execute();
   await db.deleteFrom('reservations').where('id', 'in', allReservations).execute();
   await db.deleteFrom('contacts').where('id', '=', guestId).execute();
@@ -155,15 +157,25 @@ describe('moving an in-house guest between units', () => {
     // next guest uncleaned.
     expect(vacated.housekeeping_status).toBe('DIRTY');
 
+    // (R5, issue #110) …and the clean is put on the board as a task, the same way a
+    // check-out does, so housekeeping is actually asked to do it.
+    const tasks = await db.selectFrom('housekeeping_tasks').select(['status', 'occupancy_id'])
+      .where('room_id', '=', fromRoomId).execute();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.status).toBe('OPEN');
+    expect(tasks[0]!.occupancy_id).toBe(occupancyId);
+
     const entered = await db.selectFrom('rooms').select('status')
       .where('id', '=', toRoomId).executeTakeFirstOrThrow();
     expect(entered.status).toBe('OCCUPIED');
 
-    // Invariant 6: every mutation audits, and a move is four of them.
+    // Invariant 6: every mutation audits. A move is the occupancy, both rooms, the booking,
+    // plus the vacated room's DIRTY flag and its new cleaning task (openTaskOnCheckout).
     const audits = await db.selectFrom('audit_logs').select(['entity', 'entity_id'])
       .where('user_id', '=', userId).execute();
     expect(audits.filter((a) => a.entity === 'occupancy' && a.entity_id === occupancyId)).toHaveLength(1);
-    expect(audits.filter((a) => a.entity === 'rooms' && a.entity_id === fromRoomId)).toHaveLength(1);
+    expect(audits.filter((a) => a.entity === 'rooms' && a.entity_id === fromRoomId)).toHaveLength(2);
+    expect(audits.filter((a) => a.entity === 'housekeeping_tasks')).toHaveLength(1);
     expect(audits.filter((a) => a.entity === 'rooms' && a.entity_id === toRoomId)).toHaveLength(1);
     expect(audits.filter((a) => a.entity === 'reservations' && a.entity_id === reservationId)).toHaveLength(1);
   });
