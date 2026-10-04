@@ -69,7 +69,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: 'Finance',
     icon: Wallet,
     items: [
-      { to: '/finance', label: 'Cockpit', icon: Gauge, perm: 'reports.read', built: true },
+      { to: '/finance', label: 'Cockpit', icon: Gauge, perm: 'invoices.read', built: true },
       { to: '/invoices', label: 'Invoices', icon: FileText, perm: 'invoices.read', built: true },
       { to: '/payments', label: 'Payments', icon: CreditCard, perm: 'payments.read', built: true },
       { to: '/expenses', label: 'Expenses', icon: Receipt, perm: 'expenses.read', built: true },

@@ -51,9 +51,10 @@ describe('landingRoute', () => {
 
   it('lands on Finance’s first built screen (Cockpit)', () => {
     expect(landingRoute('FINANCE', all)).toBe('/finance');
-    // A user without reports.read skips the Cockpit and lands on Invoices instead.
-    const noReports = (p: string) => p !== 'reports.read';
-    expect(landingRoute('FINANCE', noReports)).toBe('/invoices');
+    // (R4 3a) The Cockpit follows invoices.read: without it, Cockpit and Invoices are both
+    // skipped and the user lands on Payments.
+    const noInvoices = (p: string) => p !== 'invoices.read';
+    expect(landingRoute('FINANCE', noInvoices)).toBe('/payments');
   });
 
   it('skips screens the user lacks permission for', () => {
@@ -75,7 +76,8 @@ describe('homePathFor', () => {
 
   it('sends accounts (no cockpit.read) to Finance, where most of their screens are', () => {
     expect(homePathFor(perms('reports.read', 'invoices.read', 'payments.read', 'expenses.read'))).toBe('/finance');
-    expect(homePathFor(perms('invoices.read', 'payments.read'))).toBe('/invoices');
+    expect(homePathFor(perms('invoices.read', 'payments.read'))).toBe('/finance');
+    expect(homePathFor(perms('payments.read'))).toBe('/payments');
   });
 
   it('sends housekeeping to their own screen, not an admin list', () => {

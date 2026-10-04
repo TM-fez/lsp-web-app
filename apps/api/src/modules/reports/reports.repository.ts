@@ -58,6 +58,20 @@ const CASH_AT = sql`COALESCE(
   i.created_at
 )`;
 
+/**
+ * (R4 owner decision 1a, 2026-10-04) Reports show revenue BEFORE VAT.
+ *
+ * VAT collected is BURS's money, not the business's, so counting it as revenue overstated
+ * every P&L, ADR and RevPAR figure by the VAT rate. Revenue is now `total − tax` per
+ * invoice (refunds negative, same as before); the VAT itself is still reported on its
+ * own line (`vatOutput`). The earned (accrual) basis does the same with the ledger's
+ * `amount − tax_amount`, so cash and earned stay comparable in the reconciliation.
+ *
+ * Deliberately NOT applied to `revenueByOwnedRoom` (landlord statements): what a landlord
+ * is shown is a contract question, not a reporting one — left gross until the owner says.
+ */
+const NET_CASH = sql`CASE WHEN i.kind = 'REFUND' THEN -(i.total_amount - i.tax_amount) ELSE i.total_amount - i.tax_amount END`;
+
 export class ReportsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -70,7 +84,7 @@ export class ReportsRepository {
   async revenueByMonth(w: RepoWindow): Promise<MonthAmount[]> {
     const r = await sql<MonthAmount>`
       SELECT to_char(${CASH_AT} AT TIME ZONE 'Africa/Gaborone', 'YYYY-MM') AS month,
-             SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
+             SUM(${NET_CASH}) AS amount
       FROM invoices i
       LEFT JOIN reservations rsv ON rsv.id = i.reservation_id
       LEFT JOIN rooms rm ON rm.id = rsv.room_id
@@ -88,7 +102,7 @@ export class ReportsRepository {
   async revenueByProperty(w: RepoWindow): Promise<PropAmount[]> {
     const r = await sql<PropAmount>`
       SELECT p.id AS property_id, p.name AS property_name,
-             SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
+             SUM(${NET_CASH}) AS amount
       FROM invoices i
       LEFT JOIN reservations rsv ON rsv.id = i.reservation_id
       LEFT JOIN rooms rm ON rm.id = rsv.room_id
@@ -138,9 +152,9 @@ export class ReportsRepository {
   async earnedByMonth(w: RepoWindow): Promise<EarnedRow[]> {
     const r = await sql<EarnedRow>`
       SELECT to_char(rr.stay_date, 'YYYY-MM') AS month,
-             SUM(rr.amount) AS amount,
+             SUM(rr.amount - rr.tax_amount) AS amount,
              SUM(rr.tax_amount) AS tax,
-             COALESCE(SUM(rr.amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
+             COALESCE(SUM(rr.amount - rr.tax_amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
       FROM revenue_recognition rr
       JOIN rooms rm ON rm.id = rr.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id
@@ -157,9 +171,9 @@ export class ReportsRepository {
   async earnedByProperty(w: RepoWindow): Promise<EarnedPropRow[]> {
     const r = await sql<EarnedPropRow>`
       SELECT p.id AS property_id, p.name AS property_name,
-             SUM(rr.amount) AS amount,
+             SUM(rr.amount - rr.tax_amount) AS amount,
              SUM(rr.tax_amount) AS tax,
-             COALESCE(SUM(rr.amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
+             COALESCE(SUM(rr.amount - rr.tax_amount) FILTER (WHERE rr.total_source = 'PRICED'), 0) AS reconstructed
       FROM revenue_recognition rr
       JOIN rooms rm ON rm.id = rr.room_id
       LEFT JOIN buildings b ON b.id = rm.building_id

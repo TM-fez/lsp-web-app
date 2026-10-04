@@ -1,5 +1,5 @@
 /**
- * Each built-in role's permission list, copied from the database after migrations 001-082
+ * Each built-in role's permission list, copied from the database after migrations 001-083
  * (role_permissions). It lets the web tests ask "can role X open page Y?" without a server.
  *
  * It is a SNAPSHOT: apps/api/tests/integration/modules/round4-role-permissions-fixture.test.ts
@@ -58,9 +58,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'crm.leads.update', 'dashboard:read', 'expenses.approve', 'expenses.read', 'files.create',
     'files.delete', 'files.library', 'files.read', 'files:upload', 'holds.create', 'holds.read',
     'holds.update', 'housekeeping.inspect', 'housekeeping.read', 'housekeeping.signoff',
-    'housekeeping.update', 'invoices.read', 'maintenance.approve', 'maintenance.complete',
+    'housekeeping.update', 'maintenance.approve', 'maintenance.complete',
     'maintenance.create', 'maintenance.read', 'maintenance.update', 'maintenance.work',
-    'opex.read', 'payments.read', 'pricing.read', 'properties.read', 'quotes.create',
+    'pricing.read', 'properties.read', 'quotes.create',
     'quotes.read', 'reports.read', 'reservations.create', 'reservations.delete',
     'reservations.discount.request', 'reservations.read', 'reservations.update', 'rooms.create',
     'rooms.delete', 'rooms.read', 'rooms.update',

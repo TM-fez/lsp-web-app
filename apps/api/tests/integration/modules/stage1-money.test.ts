@@ -646,8 +646,15 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     await expect(invoices.refundInvoice(receipt.id, left + 1, 'too much', meta())).rejects.toThrow(/left to refund/);
 
     // The rest takes it to REFUNDED, and then nothing more can go back.
+    const statusOf = async () =>
+      (await db.selectFrom('reservations').select('status').where('id', '=', b.id).executeTakeFirstOrThrow()).status;
+    const before = await statusOf();
     await invoices.refundInvoice(receipt.id, left, 'rest', meta());
     expect((await invoices.getInvoice(receipt.id)).status).toBe('REFUNDED');
+    // (R4 owner decision 4a) A full refund never touches the booking — staff cancel it
+    // separately if the stay is off.
+    expect(await statusOf()).toBe(before);
+    expect(before).toBe('CONFIRMED');
     await expect(invoices.refundInvoice(receipt.id, 1, 'again', meta())).rejects.toThrow(/refunded in full/);
 
     // Money: everything went back, and the guest owes nothing new (2026-10-02 rule).

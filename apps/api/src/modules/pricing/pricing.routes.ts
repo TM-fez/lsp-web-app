@@ -6,6 +6,7 @@ import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
+import { requireAllProperties } from '../../core/scope/propertyScope.js';
 import { CreateRatePlanSchema, UpdateRatePlanSchema } from './pricing.types.js';
 
 export function createPricingRouter(dbInstance = db): Router {
@@ -19,9 +20,16 @@ export function createPricingRouter(dbInstance = db): Router {
   router.get('/preview', authorize('pricing.read'), controller.preview);
   router.get('/', authorize('pricing.read'), controller.list);
   router.get('/:id', authorize('pricing.read'), controller.get);
-  router.post('/', authorize('pricing.create'), validateBody(CreateRatePlanSchema), controller.create);
-  router.patch('/:id', authorize('pricing.update'), validateBody(UpdateRatePlanSchema), controller.update);
-  router.delete('/:id', authorize('pricing.update'), controller.remove);
+  // (R4 2a) Rate plans are estate-wide, so changing one is for an admin or someone who
+  // works across every property — not a manager limited to some of them.
+  const estateWide = requireAllProperties(
+    'Room rates apply to every property, so only an admin or someone who works across all properties can change them.',
+    dbInstance
+  );
+
+  router.post('/', authorize('pricing.create'), estateWide, validateBody(CreateRatePlanSchema), controller.create);
+  router.patch('/:id', authorize('pricing.update'), estateWide, validateBody(UpdateRatePlanSchema), controller.update);
+  router.delete('/:id', authorize('pricing.update'), estateWide, controller.remove);
 
   return router;
 }

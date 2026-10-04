@@ -68,8 +68,8 @@ function BasisNote({ basis, disclosure }: BasisNoteProps) {
   if (basis === 'CASH') {
     return (
       <p className="text-xs text-muted">
-        Revenue is <strong className="font-medium text-char">money received</strong> — counted in the month
-        the payment landed. Switch to the earned basis to see revenue in the month the nights were sold.
+        Revenue is <strong className="font-medium text-char">money received</strong>, before VAT — counted in
+        the month the payment landed. Switch to the earned basis to see revenue in the month the nights were sold.
       </p>
     );
   }
@@ -80,8 +80,8 @@ function BasisNote({ basis, disclosure }: BasisNoteProps) {
   return (
     <div className="flex flex-col gap-2 text-xs text-muted">
       <p>
-        Revenue is <strong className="font-medium text-char">earned</strong> — counted in the month the
-        nights were slept in, whenever the guest pays. Costs are on the same basis.
+        Revenue is <strong className="font-medium text-char">earned</strong>, before VAT — counted in the
+        month the nights were slept in, whenever the guest pays. Costs are on the same basis.
       </p>
 
       {reconstructed > 0 && (
@@ -231,7 +231,7 @@ export function ReportsPage() {
             <Metric
               label={s.revenue_basis === 'CASH' ? 'Revenue received' : 'Revenue earned'}
               value={compactPula(s.revenue)}
-              sub={fullPula(s.revenue)}
+              sub={`${fullPula(s.revenue)} before VAT`}
             />
             <Metric label="Total cost" value={compactPula(s.total_cost)}
               sub={`maint ${compactPula(s.maintenance_cost)} · opex ${compactPula(s.operating_expenses)}`} />

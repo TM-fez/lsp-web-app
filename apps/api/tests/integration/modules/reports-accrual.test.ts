@@ -19,6 +19,9 @@ import { ReportsRepository } from '../../../src/modules/reports/reports.reposito
 
 const uniq = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const WINDOW = { from: '2034-01-01', toExcl: '2035-01-01', accessiblePropertyIds: null };
+/** VAT inside a 14%-inclusive gross, and what is left — reports count revenue before VAT (R4 1a). */
+const vatIn = (gross: number) => Math.round(gross * 0.1228);
+const net = (gross: number) => gross - vatIn(gross);
 
 let userId: string;
 let guestId: string;
@@ -94,7 +97,7 @@ async function recognise(
         stay_date: night.stay_date,
         currency: 'BWP',
         amount: night.amount,
-        tax_amount: Math.round(night.amount * 0.1228),
+        tax_amount: vatIn(night.amount),
         tax_rate_bps: 1400,
         total_source: opts.source ?? 'FOLIO',
         created_by: userId,
@@ -151,8 +154,8 @@ describe('earnedByMonth', () => {
     const rows = await repo().earnedByMonth({ ...WINDOW, propertyId: propertyA });
     const byMonth = new Map(rows.map((r) => [r.month, num(r.amount)]));
 
-    expect(byMonth.get('2034-03')).toBe(20_000);
-    expect(byMonth.get('2034-04')).toBe(10_000);
+    expect(byMonth.get('2034-03')).toBe(2 * net(10_000));
+    expect(byMonth.get('2034-04')).toBe(net(10_000));
   });
 
   // The live ledger is `superseded_at IS NULL`. A restated stay whose old version still
@@ -164,7 +167,7 @@ describe('earnedByMonth', () => {
     ]);
 
     const rows = await repo().earnedByMonth({ ...WINDOW, propertyId: propertyA });
-    expect(num(rows.find((r) => r.month === '2034-06')?.amount)).toBe(50_000);
+    expect(num(rows.find((r) => r.month === '2034-06')?.amount)).toBe(net(50_000));
   });
 
   it('reports the reconstructed share separately from the total', async () => {
@@ -175,8 +178,8 @@ describe('earnedByMonth', () => {
       (r) => r.month === '2034-08'
     )!;
 
-    expect(num(row.amount)).toBe(100_000);
-    expect(num(row.reconstructed)).toBe(40_000);
+    expect(num(row.amount)).toBe(net(40_000) + net(60_000));
+    expect(num(row.reconstructed)).toBe(net(40_000));
   });
 });
 
@@ -193,7 +196,7 @@ describe('earnedByProperty', () => {
     await db.updateTable('reservations').set({ room_id: roomB }).where('id', '=', reservationId).execute();
 
     const rows = await repo().earnedByProperty({ ...WINDOW, propertyId: propertyA });
-    expect(num(rows.find((r) => r.property_id === propertyA)?.amount)).toBeGreaterThanOrEqual(70_000);
+    expect(num(rows.find((r) => r.property_id === propertyA)?.amount)).toBeGreaterThanOrEqual(net(70_000));
 
     const other = await repo().earnedByProperty({ ...WINDOW, propertyId: propertyB });
     const novemberOnB = await repo().earnedByMonth({ from: '2034-11-01', toExcl: '2034-12-01', propertyId: propertyB, accessiblePropertyIds: null });
@@ -287,6 +290,41 @@ describe('D08 — cash revenue buckets on the property day', () => {
 
     expect(byMonth.get('2034-09')).toBe(70_000);
     expect(byMonth.get('2034-10')).toBe(30_000);
+  });
+});
+
+describe('R4 1a — cash revenue is reported before VAT', () => {
+  // VAT is BURS's money. A P1,140 receipt (P140 of it VAT) is P1,000 of revenue, and a
+  // P114 refund of it takes back P100 — the VAT stays on its own line (vatOutput).
+  it('counts total minus tax, refunds negative', async () => {
+    const insert = async (kind: 'BALANCE' | 'REFUND', total: number, tax: number) => {
+      const row = await db
+        .insertInto('invoices')
+        .values({
+          number: `INV-RV-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+          kind,
+          currency: 'BWP',
+          subtotal_amount: total - tax,
+          tax_rate_bps: 1400,
+          tax_amount: tax,
+          total_amount: total,
+          status: 'PAID',
+          issued_by: userId,
+          created_by: userId,
+          updated_by: userId,
+          created_at: new Date('2034-12-10T10:00:00Z'),
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      invoiceIds.push(row.id);
+    };
+    await insert('BALANCE', 114_000, 14_000);
+    await insert('REFUND', 11_400, 1_400);
+
+    const w = { from: '2034-12-01', toExcl: '2035-01-01', accessiblePropertyIds: null };
+    const rows = await repo().revenueByMonth(w);
+    expect(num(rows.find((r) => r.month === '2034-12')?.amount)).toBe(90_000);
+    expect(num(await repo().vatOutput(w))).toBe(12_600);
   });
 });
 

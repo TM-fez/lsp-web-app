@@ -1,6 +1,8 @@
 import type { Kysely } from 'kysely';
+import type { NextFunction, Request, Response } from 'express';
 import { db as defaultDb } from '../../config/db.js';
 import type { Database } from '../../db/types.js';
+import { AppError } from '../errors/AppError.js';
 
 /**
  * (Round 4) One definition of "how much of the estate can this person see".
@@ -49,4 +51,25 @@ export async function propertyScopeForUser(
     members.map((m) => m.property_id),
     active.map((p) => p.id)
   );
+}
+
+/**
+ * (R4 owner decision 2a, 2026-10-04) Gate for estate-wide settings.
+ *
+ * Some records belong to no property — rate plans are the first: one STANDARD rate is
+ * charged at every block. Holding the permission is not enough to change one, because a
+ * manager limited to one property would be setting prices for properties they are not
+ * allowed into. Only an admin, or someone who is a member of every active property,
+ * passes. Goes after `authorize(...)`, so the permission is checked first.
+ */
+export function requireAllProperties(message: string, dbInstance: Kysely<Database> = defaultDb) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const scope = await propertyScopeForUser(req.user!.sub, req.user!.role, dbInstance);
+      if (!scope.allProperties) throw AppError.forbidden(message);
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 }
