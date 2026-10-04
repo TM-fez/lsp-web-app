@@ -620,6 +620,10 @@ export interface EmployeePay {
   start_date: string | null;
   active: boolean;
   notes: string | null;
+  // (R5) The one property this person's pay is costed to, and the ones they work in.
+  home_property_id?: string | null;
+  home_property_name?: string | null;
+  member_properties?: Array<{ id: string; name: string }>;
 }
 export interface PayrollSummary {
   headcount: number;

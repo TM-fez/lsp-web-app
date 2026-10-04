@@ -587,6 +587,8 @@ export interface StaffCompensationTable {
   start_date: Date | null;
   active: Generated<boolean>;
   notes: string | null;
+  // (086) The one property this person's pay is costed to. Null = company-level.
+  home_property_id: string | null;
   created_by: string;
   updated_by: string;
   created_at: Generated<Date>;

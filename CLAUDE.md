@@ -124,6 +124,19 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    `invoices.read`, `payments.read`, `opex.read`; the Finance cockpit now follows `invoices.read`.
    (d) **A full refund leaves the booking as it is** — it stays CONFIRMED with the agreed total lowered;
    staff cancel it separately if the stay is off. Never auto-cancel from a refund.
+   ✅ **Decisions 2026-10-04 (R5, the open list):** (a) **Landlord statements are before VAT too**
+   (`revenueByOwnedRoom` uses `NET_CASH`). (b) **A booking-less hold blocks its own dates, not the whole
+   unit** — `holds_active_room_no_overlap` (migration 084, an exclusion constraint on dates copied from the
+   quote by trigger); 23P01 maps to a plain 409. (c) **A HIGH/CRITICAL repair may carry `blocks_from` /
+   `blocks_to`** (migration 085, half-open): with dates it blocks only those nights and leaves the unit's
+   status alone; without dates the unit is MAINTENANCE for every date as before. Every "is it free" reader
+   uses `core/availability/repairWindows.ts` — the three availability queries and `checkAvailability`.
+   (d) **Payroll is costed to ONE home property per person** (`staff_compensation.home_property_id`,
+   migration 086, defaulting to their first property by name); every posting splits by home, so two
+   accountants posting their own properties never charge the same person twice. Staff with no property are
+   the company-level cost. (e) **A website enquiry names its property** (`/enquire` asks when there's more
+   than one; "Not sure" stays unassigned). (f) **Moving an in-house guest opens a cleaning task** for the
+   vacated unit (`openTaskOnCheckout`, same transaction).
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's
@@ -201,7 +214,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 083). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 086). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so
@@ -273,8 +286,8 @@ write endpoint that touches property data.
   create data outside those properties — a request for someone else's row is a 404, not a 403 with details.
 - **Company-level (NULL-property) rows** (costs with no property, unfiled uploads, leads nobody assigned)
   are visible to all-property users only; a limited user sees such a row only if they created it. The P&L
-  says so in a `scope_note` field when it leaves them out. Payroll posted by a limited user is split into one
-  cost per *their* property and never creates a NULL-property cost.
+  says so in a `scope_note` field when it leaves them out. Payroll is costed per *home* property (R5):
+  a limited user posts only the homes in their properties and never creates a NULL-property cost.
 - Scope lives in the **repository query** (before `LIMIT`), not in the controller after the fact. The
   activity feed scans newest-first in chunks and runs with `SET LOCAL jit = off` — a big `CASE` over the
   audit table was spending ~1 s in JIT compilation; check `EXPLAIN` before assuming an index is the fix.
