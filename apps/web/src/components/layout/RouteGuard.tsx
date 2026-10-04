@@ -21,7 +21,12 @@ export function RouteGuard({ children }: Props) {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const perm = permForPath(pathname);
   if (!perm || hasPerm(perm)) return <>{children}</>;
+  return <NoAccess />;
+}
 
+/** The plain "this page isn't yours" screen — also what `/` shows to a role with no screens at all. */
+export function NoAccess() {
+  const hasPerm = useAuthStore((s) => s.hasPerm);
   const home = homePathFor(hasPerm);
   return (
     <div className="mx-auto max-w-xl py-10">

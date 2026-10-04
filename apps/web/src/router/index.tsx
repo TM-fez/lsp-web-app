@@ -3,7 +3,6 @@ import { useAuthStore } from '@/store/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { PropertyGate } from '@/features/auth/PropertyGate';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { CockpitPage } from '@/features/cockpit/CockpitPage';
 import { ReservationsPage } from '@/features/reservations/ReservationsPage';
 import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
@@ -35,23 +34,13 @@ import { GuestCheckinPage } from '@/features/stay/GuestCheckinPage';
 import { EnquirePage } from '@/features/stay/EnquirePage';
 import { FilesPage } from '@/features/files/FilesPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
-import { homePathFor } from '@/components/layout/nav';
+import { HomeRoute } from './HomeRoute';
 import { RouteGuard } from '@/components/layout/RouteGuard';
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.accessToken);
   if (!token) return <Navigate to="/login" replace />;
   return <Outlet />;
-}
-
-/**
- * `/` is the Operations cockpit, but not every role may open it. Send anyone without
- * cockpit.read to the first screen they can use instead of a forbidden page.
- */
-function HomeRoute() {
-  const hasPerm = useAuthStore((s) => s.hasPerm);
-  const home = homePathFor(hasPerm);
-  return home && home !== '/' ? <Navigate to={home} replace /> : <CockpitPage />;
 }
 
 export const router = createBrowserRouter([
