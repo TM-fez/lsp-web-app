@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import {
 import type { CockpitUnit, Contact, Quote, Hold, PaymentIntent, PaymentMethod } from '@/types';
 import { errMessage } from './hooks';
 import { formatMoney, todayISO } from './status';
+import { newIdempotencyKey } from '@/lib/api/idempotency';
 
 type Step = 'guest' | 'stay' | 'review' | 'payment' | 'done';
 
@@ -55,9 +56,14 @@ export function AssignBookingDrawer({ open, onOpenChange, rooms, preselectedRoom
   const [hold, setHold] = useState<Hold | null>(null);
   const [intent, setIntent] = useState<PaymentIntent | null>(null);
 
+  // One Idempotency-Key per drawer open for "Add guest & continue": a double click or a
+  // retry replays the first guest instead of creating a duplicate.
+  const guestKey = useRef('');
+
   // Reset whenever the drawer opens.
   useEffect(() => {
     if (!open) return;
+    guestKey.current = newIdempotencyKey();
     setStep('guest');
     setBusy(false);
     setQuery('');
@@ -96,7 +102,7 @@ export function AssignBookingDrawer({ open, onOpenChange, rooms, preselectedRoom
 
   async function quickCreateGuest() {
     if (!newName.trim()) return;
-    const c = await run(() => createContact({ name: newName.trim(), phone: newPhone.trim() || undefined }));
+    const c = await run(() => createContact({ name: newName.trim(), phone: newPhone.trim() || undefined }, guestKey.current));
     if (c) {
       setContact(c);
       setStep('stay');
@@ -124,7 +130,8 @@ export function AssignBookingDrawer({ open, onOpenChange, rooms, preselectedRoom
         check_out_date: checkOut,
       });
       const h = await createHold({ quote_id: quote.id, room_id: selectedRoom.room_id, reservation_id: reservation.id });
-      const pi = await createPaymentIntent({ hold_id: h.id, method });
+      // The key is tied to THIS hold: a retried request for the same hold replays the same intent.
+      const pi = await createPaymentIntent({ hold_id: h.id, method }, `pay-intent-${h.id}`);
       setHold(h);
       setIntent(pi);
       setStep('payment');

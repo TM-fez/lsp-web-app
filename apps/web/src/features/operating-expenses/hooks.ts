@@ -26,7 +26,8 @@ function useRefresh() {
 export function useCreateOperatingExpense() {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: (input: OpexInput) => createOperatingExpense(input),
+    mutationFn: ({ input, idempotencyKey }: { input: OpexInput; idempotencyKey?: string }) =>
+      createOperatingExpense(input, idempotencyKey),
     onSuccess: () => { toast.success('Cost added ✓'); refresh(); },
     onError: (e) => toast.error(errMessage(e)),
   });

@@ -1,4 +1,5 @@
 import { api } from './client';
+import { idempotencyConfig } from './idempotency';
 import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio } from '@/types';
 
 export interface ReservationListParams {
@@ -79,8 +80,8 @@ export interface MarkPaidInput {
 // CONFIRMED. This is the only route from "the guest paid" to a confirmed booking for
 // a reservation that already exists — the cockpit's booking flow always creates a new
 // one, so public-site bookings had no way to be settled before this.
-export async function markReservationPaid(id: string, input: MarkPaidInput): Promise<Reservation> {
-  const { data } = await api.post<Reservation>(`/reservations/${id}/mark-paid`, input);
+export async function markReservationPaid(id: string, input: MarkPaidInput, idempotencyKey?: string): Promise<Reservation> {
+  const { data } = await api.post<Reservation>(`/reservations/${id}/mark-paid`, input, idempotencyConfig(idempotencyKey));
   return data;
 }
 
