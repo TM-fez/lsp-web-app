@@ -321,7 +321,10 @@ describe('Operations Cockpit — end to end', () => {
     const queue = await request(app).get('/api/v1/housekeeping/queue').set('Authorization', bearer()).set('X-Property-Id', propertyId);
     expect(queue.body.data.some((t: { room_id: string }) => t.room_id === roomId)).toBe(false);
 
-    // Readiness gate now opens: the previously-blocked guest can check in.
+    // Readiness gate now opens: the previously-blocked guest can check in. Their stay was
+    // booked 3 days out; check-in now only opens from the day before arrival (re-test 3),
+    // so move it to today — the first stay has checked out, so the unit is free.
+    await pool.query(`UPDATE reservations SET check_in_date = $1, check_out_date = $2 WHERE id = $3`, [iso(0), iso(2), reservation2Id]);
     const checkin = await request(app)
       .post('/api/v1/checkins')
       .set('Authorization', bearer())

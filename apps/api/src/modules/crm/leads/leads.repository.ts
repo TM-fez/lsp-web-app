@@ -117,6 +117,29 @@ export class LeadsRepository {
     });
   }
 
+  /**
+   * (Re-test round 3) Claim an enquiry for conversion — one caller only. Five parallel
+   * "Convert to booking" clicks each read "not converted yet" and each made a booking
+   * (four landed). The claim is a single conditional UPDATE: only the first flips the
+   * status; everyone else gets undefined. Returns the status it had, so a conversion
+   * that then fails can put it back (`releaseConversion`).
+   */
+  async claimForConversion(id: string, contactId: string, meta: LeadRequestMeta): Promise<{ previousStatus: LeadRow['status'] } | undefined> {
+    return this.db.transaction().execute(async (trx) => {
+      const before = await trx.selectFrom('leads').select('status').where('id', '=', id)
+        .where('deleted_at', 'is', null).forUpdate().executeTakeFirst();
+      if (!before || before.status === 'CONVERTED' || before.status === 'LOST') return undefined;
+      await trx.updateTable('leads')
+        .set({ status: 'CONVERTED', contact_id: contactId, updated_by: meta.userId, updated_at: sql`now()` })
+        .where('id', '=', id).execute();
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'leads', entity_id: id,
+        diff: { status: { from: before.status, to: 'CONVERTED' }, contact_id: contactId }, ip_address: meta.ip ?? null,
+      }).execute();
+      return { previousStatus: before.status };
+    });
+  }
+
   async softDelete(id: string, meta: LeadRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
       const deleted = await trx

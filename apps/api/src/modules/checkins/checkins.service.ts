@@ -1,3 +1,4 @@
+import { todayInPropertyTZ } from '../../core/time.js';
 import { CheckinsRepository } from './checkins.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
@@ -98,16 +99,47 @@ export class CheckinsService {
       );
     }
 
-    const occupancy = await this.repository.checkIn(
-      {
-        reservationId: reservation.id,
-        roomId: reservation.room_id,
-        guestCount: dto.guest_count,
-        notes: dto.notes ?? null,
-        checkedInAt: dto.checked_in_at,
-      },
-      meta
-    );
+    // (Re-test round 3) Check-in accepted anything: a check-in 40 days before the stay, a
+    // time far in the past, 500 guests in a 2-person unit. Arrival may be a day early
+    // (late-night arrivals, early check-in), never after the stay has ended.
+    const today = todayInPropertyTZ();
+    if (today < addDays(reservation.check_in_day, -1)) {
+      throw AppError.conflict(`This stay starts on ${reservation.check_in_day} — check the guest in on arrival.`);
+    }
+    if (today >= reservation.check_out_day) {
+      throw AppError.conflict('This stay has already ended — it can no longer be checked in.');
+    }
+    if (dto.checked_in_at) {
+      const at = todayInPropertyTZ(dto.checked_in_at);
+      if (at > today) throw AppError.badRequest('The check-in time can’t be in the future.');
+      if (at < addDays(reservation.check_in_day, -1)) {
+        throw AppError.badRequest('The check-in time is before this stay begins.');
+      }
+    }
+    if (room.capacity != null && dto.guest_count > room.capacity) {
+      throw AppError.badRequest(`This unit sleeps ${room.capacity}. Check the number of guests.`);
+    }
+
+    let occupancy: OccupancyRow;
+    try {
+      occupancy = await this.repository.checkIn(
+        {
+          reservationId: reservation.id,
+          roomId: reservation.room_id,
+          guestCount: dto.guest_count,
+          notes: dto.notes ?? null,
+          checkedInAt: dto.checked_in_at,
+        },
+        meta
+      );
+    } catch (err) {
+      // Two check-ins at once: the occupancy unique indexes let one through (re-test 3:
+      // the loser used to get a 500).
+      if ((err as { code?: string })?.code === '23505') {
+        throw AppError.conflict('This guest has just been checked in, or the unit was just taken. Refresh to see the latest.');
+      }
+      throw err;
+    }
     await this.keepReceivable(reservation.id, meta);
     return occupancy;
   }
@@ -138,4 +170,11 @@ export class CheckinsService {
     await this.keepReceivable(occupancy.reservation_id, meta);
     return updated;
   }
+}
+
+/** YYYY-MM-DD shifted by whole days (calendar arithmetic, no timezone involved). */
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

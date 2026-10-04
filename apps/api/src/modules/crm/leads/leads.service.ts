@@ -42,23 +42,34 @@ export class LeadsService {
     const contactId = dto.contact_id ?? lead.contact_id;
     if (!contactId) throw AppError.badRequest('Choose a guest before converting this enquiry to a booking.');
 
-    const reservation = await this.reservations.createReservation(
-      {
-        contact_id: contactId,
-        room_id: dto.room_id,
-        check_in_date: dto.check_in_date,
-        check_out_date: dto.check_out_date,
-        notes: dto.notes ?? `Converted from enquiry: ${lead.title}`,
-        source: reservationSourceFor(lead.source),
-        status: 'PENDING', // forced to PENDING by the service regardless; explicit for the type
-      },
-      meta,
-      activePropertyId,
-    );
+    // Claim first, atomically — only one of several simultaneous clicks gets past here.
+    const claim = await this.repository.claimForConversion(id, contactId, meta);
+    if (!claim) throw AppError.conflict('This enquiry has just been converted to a booking by someone else.');
+
+    let reservation: ReservationRow;
+    try {
+      reservation = await this.reservations.createReservation(
+        {
+          contact_id: contactId,
+          room_id: dto.room_id,
+          check_in_date: dto.check_in_date,
+          check_out_date: dto.check_out_date,
+          notes: dto.notes ?? `Converted from enquiry: ${lead.title}`,
+          source: reservationSourceFor(lead.source),
+          status: 'PENDING', // forced to PENDING by the service regardless; explicit for the type
+        },
+        meta,
+        activePropertyId,
+      );
+    } catch (err) {
+      // No booking was made (unit taken, bad dates…): the enquiry goes back to how it was.
+      await this.repository.update(id, { status: claim.previousStatus, updated_by: meta.userId }, meta);
+      throw err;
+    }
 
     const updated = await this.repository.update(
       id,
-      { status: 'CONVERTED', contact_id: contactId, converted_reservation_id: reservation.id, updated_by: meta.userId },
+      { converted_reservation_id: reservation.id, updated_by: meta.userId },
       meta,
     );
 

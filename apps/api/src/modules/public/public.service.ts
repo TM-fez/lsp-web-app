@@ -251,13 +251,14 @@ export class PublicService {
     const actorId = await this.repository.systemActorId();
     const actorMeta = { userId: actorId, ip: meta.ip, requestId: meta.requestId };
 
-    // Fill in the guest's self-declared details (audit-logged by contacts.update).
-    await this.contacts.update(
+    // Fill in what is missing — never overwrite a guest's details from an unauthenticated
+    // page (see PublicRepository.recordSelfCheckin).
+    await this.repository.recordSelfCheckin(
+      stay.reservation_id,
       stay.contact_id,
-      { name: dto.name, email: dto.email, ...(dto.phone ? { phone: dto.phone } : {}), updated_by: actorId },
+      { name: dto.name, email: dto.email, phone: dto.phone ?? null },
       actorMeta,
     );
-    await this.repository.stampSelfCheckin(stay.reservation_id, actorId);
 
     return { property_name: room.property_name, unit_name: room.unit_name };
   }

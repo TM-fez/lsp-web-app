@@ -122,12 +122,88 @@ export class PublicRepository {
   }
 
   /** Stamp that the guest confirmed their details from the apartment. */
-  async stampSelfCheckin(reservationId: string, actorId: string): Promise<void> {
-    await this.db
-      .updateTable('reservations')
-      .set({ self_checkin_at: sql`now()`, updated_by: actorId, updated_at: sql`now()` })
-      .where('id', '=', reservationId)
-      .execute();
+  /**
+   * (Re-test round 3) Record a guest's in-room self check-in.
+   *
+   * The QR page used to OVERWRITE the booked guest's name, email and phone with whatever
+   * was typed — no login, just a QR code on the wall. A later guest, a visitor or a typo
+   * could replace a real guest's contact details. Now it only FILLS what is missing:
+   *   - email / phone are written only where the contact has none;
+   *   - the name is replaced only on an anonymous contact (no email AND no phone — the
+   *     "Booking.com Guest" placeholder this feature exists to enrich);
+   *   - anything that differs from details already on file is not applied but noted on
+   *     the booking, for staff to check.
+   * One transaction with its audit rows; the self check-in stamp is audited too.
+   */
+  async recordSelfCheckin(
+    reservationId: string,
+    contactId: string,
+    submitted: { name: string; email: string; phone?: string | null },
+    meta: { userId: string; ip?: string; requestId?: string }
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      const contact = await trx
+        .selectFrom('contacts')
+        .select(['name', 'email', 'phone'])
+        .where('id', '=', contactId)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+
+      const anonymous = !contact.email && !contact.phone;
+      const patch: { name?: string; email?: string; phone?: string } = {};
+      const differs: string[] = [];
+      if (anonymous) {
+        if (submitted.name && submitted.name !== contact.name) patch.name = submitted.name;
+      } else if (submitted.name && submitted.name.trim().toLowerCase() !== contact.name.trim().toLowerCase()) {
+        differs.push(`name “${submitted.name}”`);
+      }
+      if (!contact.email) patch.email = submitted.email;
+      else if (submitted.email.toLowerCase() !== contact.email.toLowerCase()) differs.push(`email ${submitted.email}`);
+      if (submitted.phone) {
+        if (!contact.phone) patch.phone = submitted.phone;
+        else if (submitted.phone.replace(/\s/g, '') !== contact.phone.replace(/\s/g, '')) differs.push(`phone ${submitted.phone}`);
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await trx
+          .updateTable('contacts')
+          .set({ ...patch, updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', '=', contactId)
+          .execute();
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'contacts',
+          entity_id: contactId,
+          diff: { ...patch, source: 'guest self check-in (filled blanks only)' },
+          ip_address: meta.ip ?? null,
+        }).execute();
+      }
+
+      const note = differs.length
+        ? `Guest self check-in gave different details — not applied, please check: ${differs.join(', ')}.`
+        : null;
+      await trx
+        .updateTable('reservations')
+        .set({
+          self_checkin_at: sql`now()`,
+          ...(note ? { notes: sql`concat_ws(E'\n', nullif(notes, ''), ${note}::text)` } : {}),
+          updated_by: meta.userId,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', reservationId)
+        .execute();
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: 'UPDATE',
+        entity: 'reservations',
+        entity_id: reservationId,
+        diff: { self_checkin: true, ...(note ? { note } : {}) },
+        ip_address: meta.ip ?? null,
+      }).execute();
+    });
   }
 
   /** Active units of a type that could take a booking (excludes maintenance / out-of-service). */
