@@ -433,6 +433,9 @@ export interface HoldsTable {
   quote_id: string;
   reservation_id: string | null;
   room_id: string | null;
+  // (084) Copied from the quote by trigger — the exclusion constraint needs them on the row.
+  check_in_date: Generated<Date | null>;
+  check_out_date: Generated<Date | null>;
   status: Generated<'HELD' | 'CONFIRMED' | 'EXPIRED' | 'RELEASED'>;
   held_until: Date;
   retry_count: Generated<number>;

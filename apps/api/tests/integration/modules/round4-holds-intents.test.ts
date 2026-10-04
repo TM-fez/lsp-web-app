@@ -98,13 +98,26 @@ afterAll(async () => {
 });
 
 describe('a hold on a unit with no booking behind it', () => {
-  it('says the UNIT is held when another quote holds it, not "this quote"', async () => {
+  // (R5, migration 084) A bare hold blocks its own nights only — not the whole unit.
+  it('lets two quotes hold the same unit on different dates', async () => {
     const first = await holds.createHold({ quote_id: await quote('2036-01-10', '2036-01-12'), room_id: roomId } as never, meta());
     holdIds.push(first.id);
+    const second = await holds.createHold({ quote_id: await quote('2036-02-10', '2036-02-12'), room_id: roomId } as never, meta());
+    holdIds.push(second.id);
+    // Half-open, like bookings: one quote's check-out day is the next one's check-in.
+    const turnover = await holds.createHold({ quote_id: await quote('2036-01-12', '2036-01-14'), room_id: roomId } as never, meta());
+    holdIds.push(turnover.id);
+    expect(second.check_in_date).not.toBeNull();
+    await closeHolds();
+  });
 
-    const second = holds.createHold({ quote_id: await quote('2036-02-10', '2036-02-12'), room_id: roomId } as never, meta());
+  it('says the UNIT is held on those dates when another quote overlaps, not "this quote"', async () => {
+    const first = await holds.createHold({ quote_id: await quote('2036-03-10', '2036-03-14'), room_id: roomId } as never, meta());
+    holdIds.push(first.id);
 
-    await expect(second).rejects.toThrow(/unit is already being held/i);
+    const second = holds.createHold({ quote_id: await quote('2036-03-12', '2036-03-16'), room_id: roomId } as never, meta());
+
+    await expect(second).rejects.toThrow(/already being held for another quote on some of those dates/i);
     await closeHolds();
   });
 

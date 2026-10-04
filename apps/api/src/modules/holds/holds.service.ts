@@ -1,17 +1,13 @@
 import { HoldsRepository } from './holds.repository.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import { AppError } from '../../core/errors/AppError.js';
-import { holdConflictMessage } from './holds.conflicts.js';
+import { holdConflictMessage, isHoldConflict } from './holds.conflicts.js';
 import type { HoldRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateHoldDTO, HoldFilters, HoldRequestMeta } from './holds.types.js';
 
 export const HOLD_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RETRY_EXTENSION_MS = 15 * 60 * 1000; // each retry buys 15 more minutes
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
-}
 
 export class HoldsService {
   constructor(
@@ -44,7 +40,7 @@ export class HoldsService {
         meta
       );
     } catch (err) {
-      if (isUniqueViolation(err)) throw AppError.conflict(holdConflictMessage(err));
+      if (isHoldConflict(err)) throw AppError.conflict(holdConflictMessage(err));
       throw err;
     }
   }
