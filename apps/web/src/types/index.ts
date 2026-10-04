@@ -661,6 +661,9 @@ export interface Invoice {
   due_date: string | null;
   // Open, past its due date. Computed server-side so the page and the cockpit agree.
   is_overdue: boolean;
+  // (075) Thebe given back so far by credit notes against this invoice. A part-refunded
+  // invoice stays PAID (owner decision 2026-10-04) and can be refunded again up to the rest.
+  refunded_amount: number;
   // Who the invoice is for and which stay it covers, resolved server-side from the
   // invoice's reservation (or the one behind its hold). All nullable: an invoice
   // raised straight off a quote has no guest to resolve — a quote prices a unit type
@@ -744,6 +747,7 @@ export interface InvoiceDocument {
   unit_name: string | null;
   nights: number | null;
   unit_type: string | null;
+  refunded_amount: number;
   /** (P7) The business's own details from Settings, with defaults filled in server-side. */
   company: InvoiceCompany;
 }

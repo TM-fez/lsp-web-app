@@ -558,20 +558,49 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     expect(open[0]!.total_amount).toBe(after.outstanding_amount);
   });
 
-  it('refunds once when the same receipt is refunded twice at the same moment', async () => {
+  it('refunds once when the same receipt is refunded IN FULL twice at the same moment', async () => {
     const b = await booking();
     await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
     const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
 
+    // Since partial refunds (2026-10-04) two smaller refunds are both legitimate, so the
+    // double click that must lose is the one asking for money that is no longer there.
     const results = await Promise.allSettled([
-      invoices.refundInvoice(receipt.id, 100_000, 'double click', meta()),
-      invoices.refundInvoice(receipt.id, 100_000, 'double click', meta()),
+      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta()),
+      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta()),
     ]);
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const refunds = (await invoicesOf(b.id)).filter((i) => i.kind === 'REFUND');
     expect(refunds).toHaveLength(1);
-    expect((await reservations.getFolio(b.id)).paid_amount).toBe(STAY - 100_000);
+    expect((await reservations.getFolio(b.id)).paid_amount).toBe(STAY - receipt.total_amount);
+  });
+
+  it('a partial refund leaves the receipt PAID; it can be refunded again up to what is left (owner decision 2026-10-04)', async () => {
+    const b = await booking();
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+    const receipt = (await invoicesOf(b.id)).find((i) => i.status === 'PAID')!;
+
+    const first = await invoices.refundInvoice(receipt.id, 10_000, 'goodwill', meta());
+    expect(first.refund_of_invoice_id).toBe(receipt.id);
+    expect((await invoices.getInvoice(receipt.id)).status).toBe('PAID');
+
+    // A credit note is not itself refundable.
+    await expect(invoices.refundInvoice(first.id, 1_000, 'x', meta())).rejects.toThrow(/can’t itself be refunded/);
+
+    // More than is left is refused, naming what is left.
+    const left = receipt.total_amount - 10_000;
+    await expect(invoices.refundInvoice(receipt.id, left + 1, 'too much', meta())).rejects.toThrow(/left to refund/);
+
+    // The rest takes it to REFUNDED, and then nothing more can go back.
+    await invoices.refundInvoice(receipt.id, left, 'rest', meta());
+    expect((await invoices.getInvoice(receipt.id)).status).toBe('REFUNDED');
+    await expect(invoices.refundInvoice(receipt.id, 1, 'again', meta())).rejects.toThrow(/refunded in full/);
+
+    // Money: everything went back, and the guest owes nothing new (2026-10-02 rule).
+    const folio = await reservations.getFolio(b.id);
+    expect(folio.paid_amount).toBe(STAY - receipt.total_amount);
+    expect(folio.outstanding_amount).toBe(0);
   });
 
   it('POST /invoices cannot invoice more than the booking owes, or a booking that is not in scope', async () => {

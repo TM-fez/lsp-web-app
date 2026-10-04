@@ -103,6 +103,10 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    lowers the agreed total by the same amount, so outstanding is unchanged (`InvoicesRepository.refund`);
    (b) **no-shows are not charged** — NO_SHOW, like CANCELLED, voids the open invoice;
    (c) **payment terms are 7 days** (`INVOICE_TERMS_DAYS` default). Do not change any of these without asking.
+   ✅ **Owner decision 2026-10-04 — partial refunds:** a part-refunded invoice **stays PAID** (shown with
+   "P100 refunded") and can be refunded again up to what is left; it becomes REFUNDED only when all of it
+   has gone back. Each credit note points at its original (`refund_of_invoice_id`, migration 075); "left"
+   is checked under the original's row lock in `InvoicesRepository.refund`. A credit note is never refundable.
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's
@@ -158,7 +162,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 074). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 075). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —

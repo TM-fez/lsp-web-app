@@ -46,7 +46,9 @@ export class PublicRepository {
     return this.db
       .selectFrom('contacts')
       .selectAll()
-      .where('email', 'ilike', email)
+      // Exact, case-insensitive — NOT `ilike`: in a LIKE pattern `_` and `%` are wildcards,
+      // and both are legal in an email address, so `__@x.com` matched any 2-letter mailbox.
+      .where(sql<boolean>`lower(email) = lower(${email})`)
       .where('deleted_at', 'is', null)
       .orderBy('created_at', 'asc')
       .limit(1)
@@ -76,7 +78,10 @@ export class PublicRepository {
       .where(sql<boolean>`replace(res.id::text, '-', '') ilike ${codeHex + '%'}`)
       .where('res.source', '=', 'WEBSITE')
       .where('res.deleted_at', 'is', null)
-      .where(sql<boolean>`c.email ilike ${email}`)
+      // Exact email match (see findContactByEmail): with `ilike`, `_`/`%` in the typed
+      // email were wildcards, so a pattern plus a guessed 6-hex code returned a stranger's
+      // booking — the code alone is only 16M guesses wide.
+      .where(sql<boolean>`lower(c.email) = lower(${email})`)
       .executeTakeFirst();
   }
 
