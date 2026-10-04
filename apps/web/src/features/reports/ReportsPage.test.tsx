@@ -1,11 +1,14 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+
+const scope = vi.hoisted(() => ({ note: null as string | null }));
 
 // Mock the data hook so the page renders a deterministic P&L (data inlined in the
 // factory to avoid vi.mock hoisting issues).
 vi.mock('./hooks', () => ({
   usePnl: () => ({
     data: {
+      scope_note: scope.note,
       summary: {
         from: '2025-07-01', to: '2026-06-30',
         revenue: 345_941_550, maintenance_cost: 12_810_000, operating_expenses: 106_488_000,
@@ -60,5 +63,22 @@ describe('ReportsPage', () => {
     render(<ReportsPage />);
     expect(screen.queryByText(/reconstruction/)).not.toBeInTheDocument();
     expect(screen.queryByText(/understated/)).not.toBeInTheDocument();
+  });
+
+  // Round 4 / H10: a person who can see only some properties is told the company-level
+  // costs are left out, so their profit is not mistaken for the whole company's.
+  describe('scope note', () => {
+    afterEach(() => { scope.note = null; });
+
+    it('shows why company-level costs are missing when the server says so', () => {
+      scope.note = 'Company-level costs (not tied to a property) are not included.';
+      render(<ReportsPage />);
+      expect(screen.getByRole('note')).toHaveTextContent('Company-level costs (not tied to a property) are not included.');
+    });
+
+    it('shows nothing extra to someone who can see every property', () => {
+      render(<ReportsPage />);
+      expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    });
   });
 });

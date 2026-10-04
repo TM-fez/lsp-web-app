@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { FilesService } from './files.service.js';
 import { FileQuerySchema, LibraryQuerySchema, MAX_FILE_SIZE_BYTES, type ClassifyFileDTO } from './files.types.js';
-import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { LibraryViewer } from './files.library.js';
 
 export class FilesController {
@@ -63,12 +63,14 @@ export class FilesController {
   /** Who is looking, in the terms the library's visibility rules need. */
   private async viewer(req: Request): Promise<LibraryViewer> {
     const user = req.user!;
+    const scope = await propertyScopeForUser(user.sub, user.role);
     return {
       userId: user.sub,
       canSeeGuestDocuments: user.permissions.includes('files.guest_documents.read'),
       isContractor: user.role === 'contractor',
       canManageFiles: user.permissions.includes('files.delete'),
-      accessiblePropertyIds: await accessiblePropertyIdsForUser(user.sub, user.role),
+      accessiblePropertyIds: scope.ids,
+      allProperties: scope.allProperties,
     };
   }
 
@@ -142,7 +144,7 @@ export class FilesController {
   deleteFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      await this.service.delete(req.params.id as string, meta);
+      await this.service.delete(req.params.id as string, await this.viewer(req), meta);
       res.status(204).send();
     } catch (err) {
       next(err);

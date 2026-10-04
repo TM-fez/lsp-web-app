@@ -34,6 +34,9 @@ export const CreateLeadSchema = z.object({
   contact_id: z.string().uuid().nullable().optional(), // CRM contacts link optional
   source: LeadSourceEnum.nullable().optional(),
   phone: z.string().max(50).nullable().optional(), // enquirer's number (WhatsApp follow-up)
+  // (Round 4, migration 082) The property the enquiry is about. Optional: left out, it
+  // defaults to the property the user is working in; null = not assigned to a property.
+  property_id: z.string().uuid().nullable().optional(),
 });
 
 export const UpdateLeadSchema = CreateLeadSchema.partial();
@@ -53,6 +56,20 @@ export const ConvertLeadSchema = z
     message: 'check_out_date must be after check_in_date',
     path: ['check_out_date'],
   });
+
+/**
+ * (Round 4, N-9) Who is asking, in the terms the lead visibility rules need.
+ * `ids` null = admin; `allProperties` = can see every property.
+ * A lead is visible when it belongs to one of the caller's properties, or belongs to NO
+ * property and the caller created it or can see every property.
+ */
+export interface LeadScope {
+  userId: string;
+  ids: string[] | null;
+  allProperties: boolean;
+  /** The property the user is working in (X-Property-Id), already validated; default for new leads. */
+  activePropertyId?: string;
+}
 
 export type CreateLeadDTO = z.infer<typeof CreateLeadSchema>;
 export type UpdateLeadDTO = z.infer<typeof UpdateLeadSchema>;

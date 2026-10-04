@@ -166,7 +166,11 @@ describe('P6 Files library', () => {
     asReception(); // standalone was uploaded by accounts and is not filed yet
     expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).not.toContain(f.standalone);
     expect((await get(`/files/${f.standalone}`)).status).toBe(404);
+    // (Round 4) A file manager limited to one property no longer sees another person's
+    // unfiled upload; only someone who can see every property (here, admin) does.
     as(reception, 'operations', [...READ, 'files.delete']);
+    expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).not.toContain(f.standalone);
+    as(reception, 'admin', [...READ, 'files.delete']);
     expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).toContain(f.standalone);
   });
 

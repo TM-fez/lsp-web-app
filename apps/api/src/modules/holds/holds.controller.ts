@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { HoldsService } from './holds.service.js';
 import { HoldStatusEnum } from './holds.types.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { CreateHoldDTO, ReleaseHoldDTO } from './holds.types.js';
 
 export class HoldsController {
@@ -64,9 +65,15 @@ export class HoldsController {
     }
   };
 
-  sweepExpired = async (_req: Request, res: Response, next: NextFunction) => {
+  // (Round 4, NEW-13) A person's sweep releases only holds in their own properties and is
+  // audited per hold; the scheduler calls the service directly and still sweeps everything.
+  sweepExpired = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const released = await this.service.releaseExpired();
+      const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      const released = await this.service.releaseExpired({
+        propertyIds: scope.allProperties ? null : scope.ids,
+        meta: this.getRequestMeta(req),
+      });
       res.json({ released });
     } catch (err) {
       next(err);

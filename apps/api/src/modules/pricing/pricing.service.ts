@@ -11,6 +11,7 @@ import type {
   PriceSegment,
   UnitType,
 } from './pricing.types.js';
+import { ratesOutOfOrder } from './pricing.types.js';
 
 const NIGHTS_PER_WEEK = 7;
 const NIGHTS_PER_MONTH = 30;
@@ -42,7 +43,17 @@ export class PricingService {
   }
 
   async updateRatePlan(id: string, dto: UpdateRatePlanDTO, meta: PricingRequestMeta): Promise<RatePlanRow> {
-    await this.getRatePlan(id);
+    const existing = await this.getRatePlan(id);
+    // A single-rate edit is judged against the stored rates, so it cannot create an
+    // illogical ladder; an edit that touches no rate is never blocked by old data.
+    if (dto.nightly_rate !== undefined || dto.weekly_rate !== undefined || dto.monthly_rate !== undefined) {
+      const bad = ratesOutOfOrder({
+        nightly_rate: dto.nightly_rate ?? existing.nightly_rate,
+        weekly_rate: dto.weekly_rate ?? existing.weekly_rate,
+        monthly_rate: dto.monthly_rate ?? existing.monthly_rate,
+      });
+      if (bad) throw AppError.badRequest(bad);
+    }
     const updated = await this.repository.update(id, { ...dto, updated_by: meta.userId }, meta);
     if (!updated) throw AppError.notFound(`Failed to update rate plan ${id}`);
     return updated;

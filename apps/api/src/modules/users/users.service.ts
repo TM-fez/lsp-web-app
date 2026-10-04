@@ -22,8 +22,8 @@ export class UsersService {
     return this.repository.listRoles();
   }
 
-  async listDirectory() {
-    return this.repository.listDirectory();
+  async listDirectory(scope?: { userId: string; ids: string[] | null; allProperties: boolean }) {
+    return this.repository.listDirectory(scope);
   }
 
   async getUserById(id: string): Promise<StaffUser> {

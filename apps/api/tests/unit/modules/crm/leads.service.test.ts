@@ -28,7 +28,7 @@ describe('LeadsService', () => {
 
       const result = await service.getLeadById('1');
       expect(result).toEqual(mockLead);
-      expect(repository.findById).toHaveBeenCalledWith('1');
+      expect(repository.findById).toHaveBeenCalledWith('1', undefined);
     });
 
     it('should throw error if lead not found', async () => {
