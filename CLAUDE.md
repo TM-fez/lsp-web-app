@@ -173,6 +173,13 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
 - **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 080). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
+- **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so
+  `DATE` columns, `Date` parameters and JSON output are identical on a laptop, in CI and on Render.
+  Business days still come from the Africa/Gaborone helpers in `core/time.ts` — never from the process zone.
+- **Lists:** `parsePageQuery` (`core/http/pagination.ts`) is the one `?page=&limit=` rule — `limit` 1–100,
+  anything else is a 400. Small "everything" lists use `pageOf` (opt-in paging, default unchanged).
+- **Revenue ledger:** `recogniseRevenueAfterWrite` (revenue module) books a stay's revenue right after any
+  successful booking/payment/invoice/hold write; the hourly sweep is only the safety net.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —
   not colocated.
 
