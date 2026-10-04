@@ -1,5 +1,6 @@
 import { PayrollRepository } from './payroll.repository.js';
 import { AppError } from '../../core/errors/AppError.js';
+import type { PropertyScope } from '../../core/scope/propertyScope.js';
 import type {
   EmployeePay, PayFrequency, UpsertCompensationDTO, PayrollRequestMeta,
 } from './payroll.types.js';
@@ -14,8 +15,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 export class PayrollService {
   constructor(private readonly repo: PayrollRepository) {}
 
-  async listEmployees(): Promise<EmployeePay[]> {
-    const rows = await this.repo.listEmployees();
+  async listEmployees(scope: PropertyScope): Promise<EmployeePay[]> {
+    const rows = await this.repo.listEmployees(scope);
     return rows.map((r) => {
       const gross = r.gross_amount ?? null;
       const freq = (r.frequency as PayFrequency | null) ?? null;
@@ -38,8 +39,8 @@ export class PayrollService {
     });
   }
 
-  async summary() {
-    const [s, byRole] = await Promise.all([this.repo.summary(), this.repo.byRole()]);
+  async summary(scope: PropertyScope) {
+    const [s, byRole] = await Promise.all([this.repo.summary(scope), this.repo.byRole(scope)]);
     return {
       headcount: Number(s.headcount),
       monthly_total: Number(s.monthly_total ?? 0),
@@ -51,7 +52,9 @@ export class PayrollService {
     };
   }
 
-  async upsertCompensation(userId: string, dto: UpsertCompensationDTO, meta: PayrollRequestMeta) {
+  async upsertCompensation(userId: string, dto: UpsertCompensationDTO, scope: PropertyScope, meta: PayrollRequestMeta) {
+    // Someone outside the caller's properties is "not found" — same as every other scoped by-id route.
+    if (!(await this.repo.employeeVisible(userId, scope))) throw AppError.notFound('Staff member not found');
     const fields = {
       job_title: dto.job_title ?? null,
       gross_amount: dto.gross_amount,
@@ -68,20 +71,49 @@ export class PayrollService {
     return row;
   }
 
-  /** Post the month's payroll total as a single PAYROLL operating cost. */
-  async postToOperatingCosts(month: string | undefined, meta: PayrollRequestMeta) {
+  /**
+   * Post the month's payroll as operating costs.
+   * - all-property caller (admin, or member of every property): ONE company-level cost
+   *   (no property) for everyone — unchanged behaviour.
+   * - property-limited caller: one cost PER caller property, covering only staff who work in
+   *   those properties, never a company-level cost (they cannot even see those).
+   */
+  async postToOperatingCosts(month: string | undefined, scope: PropertyScope, meta: PayrollRequestMeta) {
     const m = month ?? new Date().toISOString().slice(0, 7);
-    if (await this.repo.payrollPostedFor(m)) {
+    if (await this.repo.payrollPostedFor(m, scope)) {
       throw AppError.conflict(`Payroll for ${m} has already been posted to operating costs`);
     }
-    const { monthly_total } = await this.repo.summary();
-    const amount = Number(monthly_total ?? 0);
-    if (amount <= 0) throw AppError.badRequest('No active salaries to post');
 
     const [y, mo] = m.split('-').map(Number);
     const incurredOn = new Date(Date.UTC(y!, mo!, 0)); // last day of the month
-    const description = `Payroll — ${MONTHS[mo! - 1]} ${y}`;
-    const id = await this.repo.postPayrollOpex(m, incurredOn, amount, description, meta);
-    return { operating_expense_id: id, month: m, amount };
+    const label = `Payroll — ${MONTHS[mo! - 1]} ${y}`;
+
+    if (scope.allProperties) {
+      const { monthly_total } = await this.repo.summary(scope);
+      const amount = Number(monthly_total ?? 0);
+      if (amount <= 0) throw AppError.badRequest('No active salaries to post');
+      const [id] = await this.repo.postPayrollOpex(m, incurredOn, [{ propertyId: null, amount, description: label }], meta);
+      return { operating_expense_id: id!, operating_expense_ids: [id!], month: m, amount };
+    }
+
+    const shares = (await this.repo.monthlyByCallerProperty(scope)).filter((s) => s.monthly > 0);
+    if (shares.length === 0) throw AppError.badRequest('No active salaries to post');
+    const names = await this.repo.propertyNames(shares.map((s) => s.property_id));
+    const ids = await this.repo.postPayrollOpex(
+      m,
+      incurredOn,
+      shares.map((s) => ({
+        propertyId: s.property_id,
+        amount: s.monthly,
+        description: `${label} — ${names.get(s.property_id) ?? 'property'}`,
+      })),
+      meta
+    );
+    return {
+      operating_expense_id: ids[0]!,
+      operating_expense_ids: ids,
+      month: m,
+      amount: shares.reduce((t, s) => t + s.monthly, 0),
+    };
   }
 }
