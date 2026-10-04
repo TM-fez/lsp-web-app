@@ -15,7 +15,18 @@ import { useAuthStore } from '@/store/auth';
 import { useMyProperties } from '@/features/auth/useMyProperties';
 import { openFile, downloadFile, type LibraryCategory, type LibraryFile, type FilingCategory } from '@/lib/api/files';
 import { cn } from '@/lib/utils/cn';
+import { toast } from '@/store/toast';
+import { errMessage } from '@/lib/api/errors';
 import { useFilesLibrary, useUploadDocument, useDeleteFile } from './hooks';
+
+/** Open/Download fetch the file with the sign-in token; if that fails say so rather than do nothing. */
+async function tryFile(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (e) {
+    toast.error(errMessage(e));
+  }
+}
 
 /**
  * (P6) Files — one place for every document the business holds.
@@ -274,10 +285,10 @@ function FileRow({ file, canDelete }: FileRowProps) {
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={() => openFile(file.id)} title="Open">
+          <Button variant="ghost" size="sm" onClick={() => void tryFile(() => openFile(file.id))} title="Open">
             <ExternalLink className="h-4 w-4" /> Open
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => downloadFile(file.id, file.original_name)} title="Download">
+          <Button variant="ghost" size="sm" onClick={() => void tryFile(() => downloadFile(file.id, file.original_name))} title="Download">
             <Download className="h-4 w-4" /> Download
           </Button>
           {canDelete &&
