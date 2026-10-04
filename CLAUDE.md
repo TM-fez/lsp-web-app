@@ -224,6 +224,29 @@ export function useCreateRoom() {
 - `components/ui/` is hand-written shadcn-*style*, not CLI-generated. `Dialog` is styled as a
   right-side drawer — hence `*FormDrawer.tsx`.
 
+## Access and property scope (Round 4)
+
+Who may see what, beyond "do they hold the permission". Read this before adding a list, a report or a
+write endpoint that touches property data.
+
+- **"All-property" access** = an admin, or a user who is a member of *every active property*
+  (`propertyScopeForUser` in `core/scope/propertyScope.ts` → `{ ids, allProperties }`). Everyone else is
+  *limited* to the properties they belong to (`user_properties`). A limited user must never see, change or
+  create data outside those properties — a request for someone else's row is a 404, not a 403 with details.
+- **Company-level (NULL-property) rows** (costs with no property, unfiled uploads, leads nobody assigned)
+  are visible to all-property users only; a limited user sees such a row only if they created it. The P&L
+  says so in a `scope_note` field when it leaves them out. Payroll posted by a limited user is split into one
+  cost per *their* property and never creates a NULL-property cost.
+- Scope lives in the **repository query** (before `LIMIT`), not in the controller after the fact. The
+  activity feed scans newest-first in chunks and runs with `SET LOCAL jit = off` — a big `CASE` over the
+  audit table was spending ~1 s in JIT compilation; check `EXPLAIN` before assuming an index is the fix.
+- Every money field has a ceiling: `MAX_MONEY_THEBE` (P1,000,000) in `core/money/limits.ts`. A rate ladder
+  must not go down (weekly ≥ nightly, monthly ≥ weekly) — the price engine would sell a night as a week.
+- Web: every signed-in route is guarded by `RouteGuard` (the AppShell wraps its `<Outlet/>`), keyed by
+  `permForPath` in `components/layout/nav.ts`. `router/routeGuards.test.tsx` fails if a route is added
+  without being listed there, so add the page's API permission when you add a route. Role permissions in
+  `test/rolePermissions.ts` are a snapshot checked against the DB by an API test.
+
 ## Style
 
 Prettier: `singleQuote`, `semi: true`, `trailingComma: "es5"`, `printWidth: 100`, 2 spaces.
