@@ -101,6 +101,7 @@ export class RevenueRepository {
       FROM revenue_recognition rr
       JOIN reservations r ON r.id = rr.reservation_id
       WHERE rr.superseded_at IS NULL
+        ${only}
         AND (r.deleted_at IS NOT NULL
              OR r.status NOT IN (${sql.join(EARNING_STATUSES.map((s) => sql`${s}`))}))
     `.execute(this.db);

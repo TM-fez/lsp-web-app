@@ -13,10 +13,7 @@ import { createReservationsRouter } from '../../../src/modules/reservations/rese
 import { createPaymentsRouter } from '../../../src/modules/payments/payments.routes.js';
 import { createContactsRouter } from '../../../src/modules/crm/contacts/contacts.routes.js';
 import { createQuotesRouter } from '../../../src/modules/quotes/quotes.routes.js';
-import { createUsersRouter } from '../../../src/modules/users/users.routes.js';
-import { createPayrollRouter } from '../../../src/modules/payroll/payroll.routes.js';
-import { createExpensesRouter } from '../../../src/modules/expenses/expenses.routes.js';
-import { createOperatingExpensesRouter } from '../../../src/modules/operating-expenses/operating-expenses.routes.js';
+import { router as apiRouter } from '../../../src/router.js';
 import { createInvoicesRouter } from '../../../src/modules/invoices/invoices.routes.js';
 import { errorHandler } from '../../../src/core/errors/errorHandler.middleware.js';
 import { db } from '../../../src/config/db.js';
@@ -31,10 +28,8 @@ app.use('/reservations', createReservationsRouter());
 app.use('/payments', createPaymentsRouter());
 app.use('/contacts', createContactsRouter());
 app.use('/quotes', createQuotesRouter());
-app.use('/users', createUsersRouter());
-app.use('/payroll', createPayrollRouter());
-app.use('/expenses', createExpensesRouter());
-app.use('/operating-expenses', createOperatingExpensesRouter());
+// The four small lists are wired in router.ts, so mount the real thing for them.
+app.use('/api', apiRouter);
 app.use('/invoices', createInvoicesRouter());
 app.use(errorHandler);
 
@@ -76,21 +71,20 @@ describe('one paging rule on the big lists', () => {
 });
 
 describe('opt-in paging on the small lists', () => {
-  const lists = ['/users', '/payroll/employees', '/expenses', '/operating-expenses'];
+  const lists = ['/api/users', '/api/payroll/employees', '/api/expenses', '/api/operating-expenses'];
   for (const path of lists) {
-    it(`${path} without limit/page returns the whole list as before`, async () => {
+    it(`${path} without limit/page returns the whole list, shaped exactly as before`, async () => {
       const res = await get(path);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body.total ?? res.body.data.length).toBeGreaterThanOrEqual(res.body.data.length);
-      expect(res.body.data.length).toBe(res.body.total);
+      expect(res.body.limit).toBeUndefined(); // no paging fields appear unless paging was asked for
     });
     it(`${path}?limit=1 returns one row but reports the true total; limit>100 is refused`, async () => {
       const all = await get(path);
       const one = await get(`${path}?limit=1&page=1`);
       expect(one.status).toBe(200);
-      expect(one.body.data.length).toBe(Math.min(1, all.body.total));
-      expect(one.body.total).toBe(all.body.total);
+      expect(one.body.data.length).toBe(Math.min(1, all.body.data.length));
+      expect(one.body.total).toBe(all.body.data.length);
       expect(one.body.limit).toBe(1);
       expect((await get(`${path}?limit=101`)).status).toBe(400);
     });

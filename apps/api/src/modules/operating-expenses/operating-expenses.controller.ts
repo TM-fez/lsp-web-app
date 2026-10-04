@@ -8,7 +8,6 @@ import type {
   CreateRecurringDTO,
   UpdateRecurringDTO,
 } from './operating-expenses.types.js';
-import { pageOf } from '../../core/http/pagination.js';
 
 export class OperatingExpensesController {
   constructor(private readonly service: OperatingExpensesService) {}
@@ -23,14 +22,15 @@ export class OperatingExpensesController {
         ? OperatingExpenseCategoryEnum.parse(req.query.category)
         : undefined;
       const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
-      const rows = await this.service.list({
-        property_id: (req.query.property_id as string) || undefined,
-        category,
-        from: (req.query.from as string) || undefined,
-        to: (req.query.to as string) || undefined,
-        accessiblePropertyIds,
+      res.json({
+        data: await this.service.list({
+          property_id: (req.query.property_id as string) || undefined,
+          category,
+          from: (req.query.from as string) || undefined,
+          to: (req.query.to as string) || undefined,
+          accessiblePropertyIds,
+        }),
       });
-      res.json(pageOf(rows, req.query)); // everything, unless ?limit= / ?page= is sent
     } catch (err) {
       next(err);
     }

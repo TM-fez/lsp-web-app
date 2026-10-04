@@ -3,7 +3,6 @@ import { ExpensesService } from './expenses.service.js';
 import type { ExpenseStatus } from './expenses.types.js';
 import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import { AppError } from '../../core/errors/AppError.js';
-import { pageOf } from '../../core/http/pagination.js';
 
 const STATUSES = ['PENDING', 'APPROVED', 'RECONCILED'] as const;
 
@@ -30,7 +29,7 @@ export class ExpensesController {
       // reports and operating costs — not just the active one. It used to read every
       // property's repair costs, so a CBD-only user saw Village spend.
       const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
-      res.json(pageOf(await this.service.list(status, accessiblePropertyIds), req.query));
+      res.json({ data: await this.service.list(status, accessiblePropertyIds) });
     } catch (err) {
       next(err);
     }

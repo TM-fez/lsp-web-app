@@ -1,3 +1,4 @@
+import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError.js';
 
 export const MAX_PAGE_SIZE = 100;
@@ -43,4 +44,28 @@ export function pageOf<T>(rows: T[], query: Query): { data: T[]; total: number; 
   const { page, limit } = parsePageQuery(query);
   const start = (page - 1) * limit;
   return { data: rows.slice(start, start + limit), total: rows.length, page, limit };
+}
+
+/**
+ * Mounted in front of a small "everything" list (`GET /users`, `/expenses`, …) to give it
+ * opt-in paging without touching the module: with no ?limit / ?page nothing changes;
+ * with them, the `data` array in the answer is sliced (`pageOf`) and `total` stays the full
+ * count. A bad value is refused up front with the same 400 as every other list.
+ */
+export function optInPaging(req: Request, res: Response, next: NextFunction): void {
+  if (req.query['limit'] === undefined && req.query['page'] === undefined) return next();
+  try {
+    parsePageQuery(req.query);
+  } catch (err) {
+    return next(err);
+  }
+  const send = res.json.bind(res);
+  res.json = ((body: unknown) => {
+    const rows = (body as { data?: unknown } | null)?.data;
+    if (res.statusCode < 300 && Array.isArray(rows)) {
+      return send({ ...(body as object), ...pageOf(rows, req.query) });
+    }
+    return send(body);
+  }) as Response['json'];
+  next();
 }

@@ -116,3 +116,17 @@ describe('revenue ledger after a booking write', () => {
     expect(await live(res.body.id)).toEqual([]); // the sweep will pick it up
   });
 });
+
+describe('a write only touches the bookings it names', () => {
+  it('does not retire the ledger rows of another booking that was cancelled behind the scenes', async () => {
+    const mk = (day: string) => request(app).post('/reservations').send({ in: `2035-06-${day}`, out: `2035-06-0${Number(day) + 1}`, status: 'CONFIRMED', folio: 100_000 });
+    const [a, b] = [(await mk('01')).body.id as string, (await mk('03')).body.id as string];
+    // B is cancelled by something that did not go through the middleware (a script, a manual fix).
+    await db.updateTable('reservations').set({ status: 'CANCELLED' }).where('id', '=', b).execute();
+
+    await request(app).post(`/reservations/${a}/cancel`).send({});
+
+    expect(await live(a)).toEqual([]);          // the one this request named is settled…
+    expect((await live(b)).length).toBe(1);     // …the other is left for the sweep, not this request
+  });
+});

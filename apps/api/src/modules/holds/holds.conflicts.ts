@@ -3,9 +3,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { AppError } from '../../core/errors/AppError.js';
 import type { Database } from '../../db/types.js';
 
-/** The same states `reservations_no_overlap` treats as occupying a unit. */
-const OCCUPYING = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'BLOCKED'];
-
 /**
  * (Round 4) A hold with a unit but no booking behind it is the one kind of hold that
  * reserves a unit on its own (`holds_active_room_unique`). Two things were missing:
