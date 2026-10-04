@@ -16,6 +16,15 @@ export function pulaToThebe(pula: string | number): number {
   return Math.round(n * 100);
 }
 
+/**
+ * (Re-test 3) Is this a Pula amount money can actually be — digits with at most two
+ * decimal places? "10.005" isn't: there is no half-thebe, and silently rounding it
+ * records an amount the operator never typed.
+ */
+export function isPulaAmount(pula: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(pula.replace(/,/g, '').trim());
+}
+
 /** thebe -> "500.00" string for prefilling a Pula input. */
 export function thebeToPula(minor: number): string {
   return (minor / 100).toFixed(2);

@@ -23,6 +23,19 @@ export function errorHandler(
 
   // body-parser's own refusals carry the right status (413 too large, 415 bad charset…).
   // They used to fall through to the 500 branch below.
+  // A unique-constraint race that no module caught (23505): a conflict, not a crash, and
+  // never the raw "duplicate key … holds_active_room_unique" text (re-test 3).
+  if (typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505') {
+    logger.warn({ requestId, err, method: req.method, url: req.originalUrl }, 'unique violation');
+    res.status(409).json({
+      statusCode: 409,
+      error: 'Conflict',
+      message: 'That clashes with something that was just saved — refresh and try again.',
+      requestId,
+    });
+    return;
+  }
+
   const parserStatus = bodyParserStatus(err);
   if (parserStatus) {
     const tooLarge = parserStatus === 413;

@@ -11,7 +11,7 @@ function setup(holdStatus = 'HELD') {
     listAttempts: vi.fn(),
     findPaginated: vi.fn(),
   } as any;
-  const holds = { findById: vi.fn().mockResolvedValue({ id: 'h1', quote_id: 'q1', status: holdStatus }) } as any;
+  const holds = { findById: vi.fn().mockResolvedValue({ id: 'h1', quote_id: 'q1', reservation_id: 'r1', status: holdStatus }) } as any;
   const quotes = {
     getQuote: vi.fn().mockResolvedValue({ id: 'q1', deposit_amount: 57000, total_amount: 114000, currency: 'BWP' }),
     prepareQuote: vi.fn().mockResolvedValue({ unit_type: 'STANDARD', total_amount: 114000, currency: 'BWP' }),

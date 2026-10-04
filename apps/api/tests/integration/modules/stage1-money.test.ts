@@ -394,6 +394,59 @@ describe('1. Parallel payments cannot overpay (real concurrency)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────
+// Re-test round 3: the cockpit wizard leaves a live hold; "confirm, money still owed" and
+// paying later at the desk then failed with a raw duplicate-key error (issue #110).
+describe('1b. Pay later after the cockpit wizard (#110)', () => {
+  async function wizardBooking(start: number) {
+    const b = await booking({ startOffset: start });
+    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(start), check_out: dateOnly(start + 2), guests: 1 }, meta());
+    const hold = await holds.createHold({ quote_id: quote.id, room_id: b.roomId, reservation_id: b.id } as never, meta());
+    const intent = await payments.createIntent({ hold_id: hold.id, method: 'CASH', purpose: 'DEPOSIT' } as never, meta());
+    return { b, hold, intent };
+  }
+
+  it('confirm without payment, then pay at the desk: the money lands, the wizard hold is let go', async () => {
+    const { b, hold, intent } = await wizardBooking(400);
+    await reservations.confirmWithoutPayment(b.id, {} as never, meta());
+
+    await reservations.markPaid(b.id, { method: 'CASH' } as never, meta());
+
+    const folio = await reservations.getFolio(b.id);
+    expect(folio).toMatchObject({ paid_amount: STAY, outstanding_amount: 0 });
+    const oldHold = await db.selectFrom('holds').select(['status', 'release_reason']).where('id', '=', hold.id).executeTakeFirstOrThrow();
+    expect(oldHold).toEqual({ status: 'RELEASED', release_reason: 'superseded_by_desk_payment' });
+    // The wizard's unpaid attempt no longer reads "Awaiting" on the Payments page.
+    expect((await payments.getIntent(intent.id)).status).toBe('EXPIRED');
+  });
+
+  it('a live hold on one booking no longer stops another booking of the same unit, other dates, from being paid', async () => {
+    const { b } = await wizardBooking(410);
+    const other = await booking({ startOffset: 420 });
+    // Same unit as `b`: move `other` onto b's room for this check.
+    await db.updateTable('reservations').set({ room_id: b.roomId }).where('id', '=', other.id).execute();
+    await reservations.markPaid(other.id, { method: 'CASH' } as never, meta());
+    expect((await reservations.getFolio(other.id)).outstanding_amount).toBe(0);
+  });
+
+  it('cancelling a booking releases its live hold', async () => {
+    const { b, hold } = await wizardBooking(430);
+    await reservations.cancelReservation(b.id, meta());
+    const h = await db.selectFrom('holds').select(['status', 'release_reason']).where('id', '=', hold.id).executeTakeFirstOrThrow();
+    expect(h).toEqual({ status: 'RELEASED', release_reason: 'booking_cancelled' });
+  });
+
+  it('refuses money on a hold with no booking behind it', async () => {
+    const b = await booking({ startOffset: 440 });
+    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(440), check_out: dateOnly(442), guests: 1 }, meta());
+    const hold = await holds.createHold({ quote_id: quote.id, room_id: b.roomId } as never, meta());
+    await expect(payments.createIntent({ hold_id: hold.id, method: 'CASH', purpose: 'DEPOSIT' } as never, meta()))
+      .rejects.toThrow(/isn’t attached to a booking/);
+    // A bare hold is invisible to afterAll's by-booking cleanup; remove it here.
+    await db.deleteFrom('holds').where('id', '=', hold.id).execute();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────
 describe('2. Part payments, the open balance invoice, and settling', () => {
   it('keeps ONE open invoice across part payments, equal to the folio outstanding, PARTIALLY_PAID', async () => {
     const b = await booking();

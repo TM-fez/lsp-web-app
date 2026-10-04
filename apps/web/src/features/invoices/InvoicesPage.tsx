@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
-import { formatMoney, thebeToPula, pulaToThebe } from '@/lib/utils/money';
+import { formatMoney, thebeToPula, pulaToThebe, isPulaAmount } from '@/lib/utils/money';
 import { cn } from '@/lib/utils/cn';
 import { useInvoices, useSettleInvoice, useRefundInvoice, useActiveQuotes, useIssueInvoice } from './hooks';
 import type { Invoice, InvoiceStatus } from '@/types';
@@ -107,7 +107,7 @@ export function InvoicesPage() {
   const submitRefund = () => {
     if (!refunding) return;
     const thebe = pulaToThebe(amount);
-    if (Number.isNaN(thebe) || thebe <= 0 || thebe > refundable(refunding) || !reason.trim()) return;
+    if (!isPulaAmount(amount) || Number.isNaN(thebe) || thebe <= 0 || thebe > refundable(refunding) || !reason.trim()) return;
     refund.mutate(
       { id: refunding.id, amount: thebe, reason: reason.trim() },
       { onSuccess: () => setRefunding(null) },
