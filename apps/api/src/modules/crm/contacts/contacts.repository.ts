@@ -1,17 +1,20 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
-import type { ContactFilters, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types.js';
+import type { ContactFilters, ContactViewer, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types.js';
+import { contactVisibleSql } from '../../../core/scope/contactScope.js';
 
 export class ContactsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async findById(id: string): Promise<ContactRow | undefined> {
-    return this.db
+  /** `viewer` limits to the guests that person may see; internal callers omit it. */
+  async findById(id: string, viewer?: ContactViewer): Promise<ContactRow | undefined> {
+    let q = this.db
       .selectFrom('contacts')
       .selectAll()
       .where('id', '=', id)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst();
+      .where('deleted_at', 'is', null);
+    if (viewer) q = q.where(contactVisibleSql('contacts', viewer.propertyIds, viewer.userId));
+    return q.executeTakeFirst();
   }
 
   async findPaginated(
@@ -27,6 +30,12 @@ export class ContactsRepository {
       .selectFrom('contacts')
       .select(this.db.fn.count<number>('id').as('total'))
       .where('deleted_at', 'is', null);
+
+    if (filters.visibleTo) {
+      const visible = contactVisibleSql('contacts', filters.visibleTo.propertyIds, filters.visibleTo.userId);
+      query = query.where(visible);
+      countQuery = countQuery.where(visible);
+    }
 
     if (filters.type) {
       query = query.where('type', '=', filters.type);

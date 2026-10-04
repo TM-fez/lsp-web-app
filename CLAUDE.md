@@ -107,6 +107,14 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    "P100 refunded") and can be refunded again up to what is left; it becomes REFUNDED only when all of it
    has gone back. Each credit note points at its original (`refund_of_invoice_id`, migration 075); "left"
    is checked under the original's row lock in `InvoicesRepository.refund`. A credit note is never refundable.
+   ✅ **Owner decisions 2026-10-04 (re-test round 2):** (a) **guests are per property** for staff limited
+   to some properties — guest list, guest by id, marketing segments and the activity feed all apply
+   `core/scope/contactScope.ts` (booked at one of their properties, never booked anywhere, or created by
+   them); admins see everyone. (b) **Payroll is admin + accounts only** (migration 077 removed it from
+   operations). (c) **A FIXED discount comes off the VAT-inclusive total** — "P200 off" means the guest
+   pays exactly P200 less (`buildReservationPricing`); a PERCENT discount still applies to the subtotal.
+   (d) **A complimentary (P0) stay gets no invoice** — the folio reads PAID with "Complimentary — no
+   charge"; no zero-value document is issued.
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's
@@ -162,7 +170,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 076). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 078). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Tests:** in a top-level `tests/` tree (`unit/`, `integration/`, `e2e/`) mirroring `src/modules/` —

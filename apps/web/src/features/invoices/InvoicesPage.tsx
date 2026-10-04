@@ -18,10 +18,12 @@ import type { Invoice, InvoiceStatus } from '@/types';
 
 // "Unpaid" is a server-side filter on OPEN receivables (ISSUED + PARTIALLY_PAID), not a
 // single status: a part-paid booking's balance must show up under it too.
-type Tab = 'ALL' | 'OUTSTANDING' | 'OVERDUE' | 'PAID' | 'REFUNDED' | 'VOID';
+type Tab = 'ALL' | 'OUTSTANDING' | 'INCOMING' | 'OVERDUE' | 'PAID' | 'REFUNDED' | 'VOID';
 const FILTERS: { key: Tab; label: string }[] = [
   { key: 'ALL', label: 'All' },
   { key: 'OUTSTANDING', label: 'Unpaid' },
+  // Unpaid splits into the two questions Accounts asks: what's coming in, what's late.
+  { key: 'INCOMING', label: 'Incoming' },
   { key: 'OVERDUE', label: 'Overdue' },
   { key: 'PAID', label: 'Paid' },
   { key: 'REFUNDED', label: 'Refunded' },
@@ -66,6 +68,7 @@ export function InvoicesPage() {
     status: STATUS_TABS[filter],
     outstanding: filter === 'OUTSTANDING' ? true : undefined,
     overdue: filter === 'OVERDUE' ? true : undefined,
+    incoming: filter === 'INCOMING' ? true : undefined,
     search: search || undefined,
     from: from && !rangeInvalid ? from : undefined,
     to: to && !rangeInvalid ? to : undefined,

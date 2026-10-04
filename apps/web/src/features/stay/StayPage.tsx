@@ -92,6 +92,20 @@ export function StayPage() {
     [checkIn, checkOut, unitType, name, email, phone, guests],
   );
 
+  // (Re-test 2026-10-04) The button used to just stay grey — a guest with a typo in their
+  // email, zero guests or dates the wrong way round had no idea why. Say what is missing.
+  const blockers = useMemo(() => {
+    const out: string[] = [];
+    if (!checkIn || !checkOut) out.push('choose your dates');
+    else if (checkOut <= checkIn) out.push('pick a check-out date after check-in');
+    if (!(guests >= 1)) out.push('enter at least 1 guest');
+    if (!name.trim()) out.push('add your name');
+    if (!email.trim()) out.push('add your email');
+    else if (!isValidEmail(email)) out.push('check your email address');
+    if (!phone.trim()) out.push('add your phone number');
+    return out;
+  }, [checkIn, checkOut, guests, name, email, phone]);
+
   async function submit() {
     if (!valid || guests < 1) return;
     setSubmitting(true);
@@ -278,6 +292,9 @@ export function StayPage() {
             </div>
             {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
             <Button variant="primary" className="mt-1 h-11" disabled={!valid || submitting} onClick={submit}>{submitting && <Spinner className="text-cream" />} Request to book</Button>
+            {!valid && blockers.length > 0 && (
+              <p className="text-center text-xs text-terra">To continue, {blockers.join(', ')}.</p>
+            )}
             <p className="text-center text-xs text-muted">No payment now — your booking is held and confirmed by our team.</p>
           </div>
         </div>

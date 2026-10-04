@@ -1,3 +1,4 @@
+import { todayInPropertyTZ } from '../../core/time.js';
 import { buildNudges, type Nudge } from './reports.nudges.js';
 import { ReportsRepository, type RepoWindow } from './reports.repository.js';
 import type {
@@ -20,7 +21,9 @@ function parseISO(s: string): Date {
 
 /** Resolve the request window: explicit from/to, else the trailing 12 months. */
 function normalize(req: ReportWindow): RepoWindow & { from: string; to: string; basis: RevenueBasis } {
-  const now = new Date();
+  // The property's calendar day (Africa/Gaborone), not the server's UTC "now": between
+  // 00:00 and 02:00 local on the 1st the UTC date is still last month (re-test 2026-10-04).
+  const now = parseISO(todayInPropertyTZ());
   const defFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
   const defToExcl = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
@@ -70,7 +73,7 @@ const daysBetween = (from: string, toExcl: string) =>
 /** Trailing N *completed* months: [first-of-(N-months-ago), first-of-this-month). */
 function operationsWindow(monthsRaw: number): { from: string; toExcl: string; months: number } {
   const months = Math.min(24, Math.max(1, Math.round(monthsRaw || 12)));
-  const now = new Date();
+  const now = parseISO(todayInPropertyTZ()); // the Gaborone day — see normalize()
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1));
   const toExcl = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   return { from: iso(from), toExcl: iso(toExcl), months };

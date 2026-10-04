@@ -11,10 +11,15 @@ export class MarketingController {
     private readonly reports: ReportsService,
   ) {}
 
+  /** (2026-10-04) Property-limited staff segment only the guests they may see. */
+  private async viewer(req: Request) {
+    return { propertyIds: await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role), userId: req.user!.sub };
+  }
+
   // GET /marketing/segments — deterministic guest segmentation (+ LLM-configured flag).
-  segments = async (_req: Request, res: Response, next: NextFunction) => {
+  segments = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.getSegments());
+      res.json(await this.service.getSegments(await this.viewer(req)));
     } catch (err) {
       next(err);
     }
@@ -33,7 +38,7 @@ export class MarketingController {
       }
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
       const limit = parseInt(req.query.limit as string, 10) || undefined;
-      res.json(await this.service.getSegmentMembers(key, { search, limit }));
+      res.json(await this.service.getSegmentMembers(key, { search, limit }, await this.viewer(req)));
     } catch (err) {
       next(err);
     }
@@ -42,7 +47,7 @@ export class MarketingController {
   // POST /marketing/campaign — draft campaign copy for a segment (LLM-gated).
   campaign = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.json(await this.service.generateCampaign(req.body as GenerateCampaignDTO));
+      res.json(await this.service.generateCampaign(req.body as GenerateCampaignDTO, await this.viewer(req)));
     } catch (err) {
       next(err);
     }

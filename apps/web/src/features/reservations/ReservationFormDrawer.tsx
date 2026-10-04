@@ -478,6 +478,12 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       </Badge>
                     </div>
 
+                    {/* (2026-10-04) A stay agreed at P0 has no invoice by design — nothing is
+                        owed — so say so rather than leave it looking like a missing one. */}
+                    {folio.data.total_amount === 0 && folio.data.total_source === 'FOLIO' && (
+                      <p className="mt-1 text-sm text-muted">Complimentary — no charge, so there is no invoice.</p>
+                    )}
+
                     {folio.data.outstanding_amount > 0 && (
                       <p className="mt-1 text-sm text-terra">
                         {formatMoney(folio.data.outstanding_amount)} still outstanding
@@ -708,7 +714,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                     <div className="flex items-center justify-between text-terra">
                       <span>
                         Discount
-                        {pricing.data.discount.type === 'PERCENT' ? ` (${pricing.data.discount.value}%)` : ''}
+                        {pricing.data.discount.type === 'PERCENT'
+                          ? ` (${pricing.data.discount.value}%)`
+                          : ` (${formatMoney(pricing.data.discount.off_total)} off the total, before VAT)`}
                       </span>
                       <span>−{formatMoney(pricing.data.discount.amount)}</span>
                     </div>

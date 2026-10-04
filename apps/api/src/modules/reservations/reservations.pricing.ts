@@ -4,7 +4,7 @@
 // the room's active rate plan. This applies the discount EXACTLY like a quote's
 // pre-tax adjustment (discount the room subtotal, then tax, then deposit), so a
 // discounted booking is priced identically to the commercial quote path.
-import { taxExclusive, depositFrom } from '../quotes/quotes.util.js';
+import { taxExclusive, depositFrom, splitInclusive } from '../quotes/quotes.util.js';
 
 export type DiscountType = 'PERCENT' | 'FIXED';
 
@@ -29,8 +29,10 @@ export interface ReservationPricing {
     value: number;
     reason: string | null;
     approved: boolean;
-    /** Thebe actually applied — 0 until a manager approves it. */
+    /** Thebe actually taken off the pre-VAT subtotal — 0 until a manager approves it. */
     amount: number;
+    /** What the guest saves on the VAT-inclusive total. For FIXED it equals `value`. */
+    off_total: number;
   } | null;
   /** Subtotal after an approved discount. */
   subtotal: number;
@@ -60,12 +62,28 @@ export function buildReservationPricing(args: {
   depositPct: number;
   discount: { type: DiscountType; value: number; reason: string | null; approved: boolean } | null;
 }): ReservationPricing {
-  const applied = args.discount?.approved
-    ? discountAmount(args.baseAmount, args.discount.type, args.discount.value)
-    : 0;
-  const subtotal = args.baseAmount - applied;
-  const taxAmount = taxExclusive(subtotal, args.taxRateBps);
-  const totalAmount = subtotal + taxAmount;
+  const fullTotal = args.baseAmount + taxExclusive(args.baseAmount, args.taxRateBps);
+  let applied: number;
+  let subtotal: number;
+  let taxAmount: number;
+  let totalAmount: number;
+  if (args.discount?.approved && args.discount.type === 'FIXED') {
+    // (Owner decision 2026-10-04) "P200 off" means the guest pays exactly P200 less.
+    // Rates are VAT-exclusive, so taking P200 off the pre-VAT subtotal saved the guest
+    // P228 at 14%. Take it off the VAT-inclusive total instead and split what is left back
+    // into subtotal + VAT (subtotal + tax === total, to the thebe).
+    totalAmount = Math.max(0, fullTotal - Math.max(0, args.discount.value));
+    ({ subtotal, tax: taxAmount } = splitInclusive(totalAmount, args.taxRateBps));
+    applied = args.baseAmount - subtotal;
+  } else {
+    // A percentage is the same share before or after VAT, so it stays on the subtotal.
+    applied = args.discount?.approved
+      ? discountAmount(args.baseAmount, args.discount.type, args.discount.value)
+      : 0;
+    subtotal = args.baseAmount - applied;
+    taxAmount = taxExclusive(subtotal, args.taxRateBps);
+    totalAmount = subtotal + taxAmount;
+  }
   const depositAmount = depositFrom(totalAmount, args.depositPct);
 
   return {
@@ -80,6 +98,7 @@ export function buildReservationPricing(args: {
           reason: args.discount.reason,
           approved: args.discount.approved,
           amount: applied,
+          off_total: fullTotal - totalAmount,
         }
       : null,
     subtotal,

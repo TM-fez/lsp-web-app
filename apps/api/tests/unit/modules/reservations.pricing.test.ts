@@ -62,4 +62,25 @@ describe('buildReservationPricing', () => {
     expect(p.total_amount).toBe(102_600);
     expect(p.deposit_amount).toBe(51_300);
   });
+
+  // Owner decision 2026-10-04: "P200 off" means the guest pays exactly P200 less — not
+  // P200 off the pre-VAT price (which saved P228 at 14%).
+  it('takes a FIXED discount off the VAT-inclusive total, exactly', () => {
+    const p = buildReservationPricing({
+      ...base,
+      discount: { type: 'FIXED', value: 20_000, reason: null, approved: true },
+    });
+    expect(p.total_amount).toBe(114_000 - 20_000);
+    expect(p.subtotal + p.tax_amount).toBe(p.total_amount);
+    expect(p.discount?.off_total).toBe(20_000);
+    expect(p.subtotal).toBe(82_456); // 94,000 / 1.14, rounded
+  });
+
+  it('a FIXED discount larger than the stay makes it free, never negative', () => {
+    const p = buildReservationPricing({
+      ...base,
+      discount: { type: 'FIXED', value: 999_999, reason: null, approved: true },
+    });
+    expect(p).toMatchObject({ subtotal: 0, tax_amount: 0, total_amount: 0 });
+  });
 });

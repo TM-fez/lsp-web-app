@@ -136,7 +136,8 @@ export interface ReservationPricing {
     value: number;
     reason: string | null;
     approved: boolean;
-    amount: number; // thebe actually applied (0 until approved)
+    amount: number; // thebe off the pre-VAT subtotal (0 until approved)
+    off_total: number; // what the guest saves on the VAT-inclusive total
   } | null;
   subtotal: number;
   tax_rate_bps: number;

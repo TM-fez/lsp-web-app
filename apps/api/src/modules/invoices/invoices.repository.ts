@@ -189,6 +189,13 @@ export class InvoicesRepository {
         .where('invoices.kind', '<>', 'REFUND')
         .where(sql<boolean>`invoices.due_date < ${propertyToday()}`);
     }
+    if (filters.incoming) {
+      // Owed, but not late: due today or later (or a legacy row with no due date yet).
+      listed = listed
+        .where('invoices.status', 'in', [...OPEN_INVOICE_STATUSES])
+        .where('invoices.kind', '<>', 'REFUND')
+        .where(sql<boolean>`(invoices.due_date IS NULL OR invoices.due_date >= ${propertyToday()})`);
+    }
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }], [totals]] = await Promise.all([
