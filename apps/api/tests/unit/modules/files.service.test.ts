@@ -16,6 +16,7 @@ describe('FilesService', () => {
       findPaginated: vi.fn(),
       listByOwner: vi.fn(),
       softDelete: vi.fn(),
+      canOpen: vi.fn().mockResolvedValue(true),
     } as unknown as vi.Mocked<FilesRepository>;
 
     adapter = {
@@ -132,9 +133,18 @@ describe('FilesService', () => {
   describe('delete', () => {
     it('should soft delete only', async () => {
       repository.findById.mockResolvedValue({ id: 'f1', path: 'some/path' } as any);
-      await service.delete('f1', { userId: 'u1' });
+      const viewer = { userId: 'u1', accessiblePropertyIds: null, allProperties: true } as any;
+      await service.delete('f1', viewer, { userId: 'u1' });
       expect(repository.softDelete).toHaveBeenCalledWith('f1', { userId: 'u1' });
       expect(adapter.delete).not.toHaveBeenCalled(); // Preserving binary
+    });
+
+    it('refuses (as not found) a file the caller cannot open, and deletes nothing', async () => {
+      repository.findById.mockResolvedValue({ id: 'f1', path: 'some/path' } as any);
+      repository.canOpen.mockResolvedValue(false);
+      const viewer = { userId: 'u1', accessiblePropertyIds: ['p1'], allProperties: false } as any;
+      await expect(service.delete('f1', viewer, { userId: 'u1' })).rejects.toMatchObject({ statusCode: 404 });
+      expect(repository.softDelete).not.toHaveBeenCalled();
     });
   });
 });
