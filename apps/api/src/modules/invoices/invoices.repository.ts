@@ -64,6 +64,8 @@ export class InvoicesRepository {
         sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
         sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
         'rm.code as unit_code', 'rm.name as unit_name', 'q.nights', 'q.unit_type',
+        sql<number>`(SELECT COALESCE(SUM(cn.total_amount), 0)::int FROM invoices cn
+                     WHERE cn.refund_of_invoice_id = i.id AND cn.deleted_at IS NULL)`.as('refunded_amount'),
       ])
       .where('i.id', '=', id)
       .where('i.deleted_at', 'is', null)
@@ -199,6 +201,9 @@ export class InvoicesRepository {
           sql<string | null>`coalesce(bc.name, c.name)`.as('bill_to_name'),
           sql<string | null>`c.name`.as('guest_name'),
           sql<string | null>`rm.code`.as('unit_code'),
+          // (075) Given back so far on this invoice — "Paid · P100 refunded".
+          sql<number>`(SELECT COALESCE(SUM(cn.total_amount), 0)::int FROM invoices cn
+                       WHERE cn.refund_of_invoice_id = invoices.id AND cn.deleted_at IS NULL)`.as('refunded_amount'),
           sql<string | null>`to_char(rsv.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'),
           sql<string | null>`to_char(rsv.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'),
         ])
@@ -441,13 +446,21 @@ export class InvoicesRepository {
     });
   }
 
-  // Refund: issue a REFUND invoice and flip the original to REFUNDED atomically.
+  // Refund: issue a REFUND credit note against a PAID invoice, atomically.
   //
   // Owner decision 2026-10-02: a refund does NOT put the guest back in debt. Money handed
   // back is money the house has chosen to give up (goodwill, a discount, a shortened
   // stay), so the agreed total comes down by the same amount as what was received:
   // outstanding is unchanged by a refund. An earlier draft left the total alone, which
   // re-raised the refunded sum as a new open invoice for Accounts to chase.
+  //
+  // Owner decision 2026-10-04 (partial refunds): the original stays PAID until EVERY
+  // thebe of it has gone back, and may be refunded again up to what is left. Each credit
+  // note points at its original (refund_of_invoice_id, migration 075), so "what is left"
+  // is total − Σ linked credit notes, read under the original's row lock. Before this, any
+  // refund flipped the whole invoice to REFUNDED, and a P100 refund on P1,666 read as
+  // "refunded in full".
+  //
   // The receivable is then reconciled in the same transaction so folio and invoices agree.
   async refund(
     originalId: string,
@@ -459,34 +472,64 @@ export class InvoicesRepository {
       if (refundInvoice.reservation_id) await lockReservation(trx, refundInvoice.reservation_id);
 
       // The service checks "is it PAID?" before this transaction opens, so two parallel
-      // refund clicks both passed it and each wrote a credit note. Re-check under the
-      // invoice's own row lock (taken after the booking's — the same order settle uses);
-      // the loser waits here and then sees REFUNDED. Invoices with no booking are covered
-      // too: they never took the reservation lock above.
+      // refund clicks both passed it. Re-check under the invoice's own row lock (taken
+      // after the booking's — the same order settle uses); the loser waits here and then
+      // sees what the winner already gave back. Invoices with no booking are covered too:
+      // they never took the reservation lock above.
       const original = await trx
         .selectFrom('invoices')
-        .select(['status'])
+        .select(['status', 'kind', 'total_amount', 'currency'])
         .where('id', '=', originalId)
         .where('deleted_at', 'is', null)
         .forUpdate()
         .executeTakeFirst();
       if (!original) throw AppError.notFound(`Invoice ${originalId} not found`);
+      if (original.kind === 'REFUND') {
+        throw AppError.conflict('A refund can’t itself be refunded.');
+      }
       if (original.status !== 'PAID') {
-        throw AppError.conflict(`Only a PAID invoice can be refunded (current: ${original.status})`);
+        throw AppError.conflict(
+          original.status === 'REFUNDED'
+            ? 'This invoice has already been refunded in full.'
+            : `Only a paid invoice can be refunded (this one is ${original.status}).`
+        );
+      }
+      const already = await refundedSoFar(trx, originalId);
+      const left = original.total_amount - already;
+      if (refundInvoice.total_amount > left) {
+        throw AppError.badRequest(
+          `Only ${formatThebe(left, original.currency)} of this invoice is left to refund.`
+        );
       }
 
       // A credit note takes the next number in the same series as the invoice it
       // reverses — a hole where a refund sits reads exactly like a removed document.
-      const refund = await insertInvoice(trx, refundInvoice, meta);
+      const refund = await insertInvoice(trx, { ...refundInvoice, refund_of_invoice_id: originalId }, meta);
 
-      await trx
-        .updateTable('invoices')
-        .set({ status: 'REFUNDED', updated_by: meta.userId, updated_at: sql`now()` })
-        .where('id', '=', originalId)
-        .execute();
+      const full = already + refundInvoice.total_amount >= original.total_amount;
+      if (full) {
+        await trx
+          .updateTable('invoices')
+          .set({ status: 'REFUNDED', updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', '=', originalId)
+          .execute();
+      }
 
       await trx.insertInto('audit_logs').values([
-        { request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'invoices', entity_id: originalId, diff: { status: 'REFUNDED', reason }, ip_address: meta.ip ?? null },
+        {
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'invoices',
+          entity_id: originalId,
+          diff: {
+            ...(full ? { status: 'REFUNDED' } : {}),
+            refunded_amount: { from: already, to: already + refundInvoice.total_amount },
+            credit_note_id: refund.id,
+            reason,
+          },
+          ip_address: meta.ip ?? null,
+        },
       ]).execute();
 
       if (refundInvoice.reservation_id) {
@@ -517,6 +560,23 @@ export class InvoicesRepository {
       return refund;
     });
   }
+}
+
+/** Thebe already handed back on an invoice: the sum of the credit notes that point at it. */
+export async function refundedSoFar(trx: Kysely<Database>, invoiceId: string): Promise<number> {
+  const row = await trx
+    .selectFrom('invoices')
+    .select(sql<string>`COALESCE(SUM(total_amount), 0)`.as('total'))
+    .where('refund_of_invoice_id', '=', invoiceId)
+    .where('kind', '=', 'REFUND')
+    .where('deleted_at', 'is', null)
+    .executeTakeFirstOrThrow();
+  return Number(row.total);
+}
+
+/** "BWP 1,566.00" — the user-facing amount in an error message. */
+function formatThebe(thebe: number, currency: string): string {
+  return `${currency} ${(thebe / 100).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 type PaymentMethodValue = 'CARD' | 'MOBILE_MONEY' | 'EFT' | 'CASH' | 'CORPORATE_CREDIT' | 'OTHER';

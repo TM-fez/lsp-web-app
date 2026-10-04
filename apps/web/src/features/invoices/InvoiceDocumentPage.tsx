@@ -132,6 +132,9 @@ export function InvoiceDocumentPage() {
             </>
           )}
           <div className="mt-1 flex justify-between border-t border-slate-300 py-2 text-base font-medium text-slate-900"><span>Total</span><span className="tabnum">{formatMoney(d.total_amount, d.currency)}</span></div>
+          {d.refunded_amount > 0 && (
+            <div className="flex justify-between py-1 text-slate-500"><span>Refunded</span><span className="tabnum">−{formatMoney(d.refunded_amount, d.currency)}</span></div>
+          )}
         </div>
 
         {/* Status */}

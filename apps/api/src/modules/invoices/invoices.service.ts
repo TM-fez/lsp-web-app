@@ -205,12 +205,20 @@ export class InvoicesService {
   }
 
   async refundInvoice(id: string, amount: number, reason: string, meta: InvoiceRequestMeta): Promise<InvoiceRow> {
+    // Fast, friendly refusals. The authoritative checks — including "how much is left"
+    // after earlier partial refunds — run again in the repository under the invoice's row
+    // lock, because a check here alone would race a second click.
     const original = await this.getInvoice(id);
+    if (original.kind === 'REFUND') throw AppError.conflict('A refund can’t itself be refunded.');
     if (original.status !== 'PAID') {
-      throw AppError.conflict(`Only a PAID invoice can be refunded (current: ${original.status})`);
+      throw AppError.conflict(
+        original.status === 'REFUNDED'
+          ? 'This invoice has already been refunded in full.'
+          : `Only a paid invoice can be refunded (this one is ${original.status}).`
+      );
     }
     if (amount > original.total_amount) {
-      throw AppError.badRequest('Refund amount exceeds the invoice total');
+      throw AppError.badRequest('A refund can’t be more than the invoice total.');
     }
 
     const { subtotal, tax } = splitInclusive(amount, original.tax_rate_bps);

@@ -214,12 +214,12 @@ describe('InvoicesService.refundInvoice', () => {
   it('rejects a refund larger than the invoice total', async () => {
     const { svc, repo } = setup();
     repo.findById.mockResolvedValue({ id: 'inv1', status: 'PAID', total_amount: 57000, tax_rate_bps: 1400 });
-    await expect(svc.refundInvoice('inv1', 99999, 'x', { userId: 'u1' })).rejects.toThrow('exceeds');
+    await expect(svc.refundInvoice('inv1', 99999, 'x', { userId: 'u1' })).rejects.toThrow('more than the invoice total');
   });
 
   it('rejects refunding an unpaid invoice', async () => {
     const { svc, repo } = setup();
     repo.findById.mockResolvedValue({ id: 'inv1', status: 'ISSUED', total_amount: 57000 });
-    await expect(svc.refundInvoice('inv1', 1000, 'x', { userId: 'u1' })).rejects.toThrow('PAID');
+    await expect(svc.refundInvoice('inv1', 1000, 'x', { userId: 'u1' })).rejects.toThrow('Only a paid invoice');
   });
 });

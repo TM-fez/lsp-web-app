@@ -475,6 +475,8 @@ export interface InvoicesTable {
   receipt_file_id: string | null;
   // Payment due day, Africa/Gaborone (migration 071). Null for refund credit notes.
   due_date: Date | string | null;
+  // (075) On a REFUND credit note: the invoice it gives money back on. Null on history.
+  refund_of_invoice_id: string | null;
   issued_by: string;
   created_by: string;
   updated_by: string;

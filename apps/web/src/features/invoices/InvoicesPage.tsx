@@ -93,16 +93,18 @@ export function InvoicesPage() {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
 
+  // A part-refunded invoice can be refunded again — but only up to what is left.
+  const refundable = (inv: Invoice) => inv.total_amount - (inv.refunded_amount ?? 0);
   const openRefund = (inv: Invoice) => {
     setRefunding(inv);
-    setAmount(thebeToPula(inv.total_amount));
+    setAmount(thebeToPula(refundable(inv)));
     setReason('');
   };
 
   const submitRefund = () => {
     if (!refunding) return;
     const thebe = pulaToThebe(amount);
-    if (Number.isNaN(thebe) || thebe <= 0 || thebe > refunding.total_amount || !reason.trim()) return;
+    if (Number.isNaN(thebe) || thebe <= 0 || thebe > refundable(refunding) || !reason.trim()) return;
     refund.mutate(
       { id: refunding.id, amount: thebe, reason: reason.trim() },
       { onSuccess: () => setRefunding(null) },
@@ -269,6 +271,9 @@ export function InvoicesPage() {
                       <Badge tone={statusTone[inv.status]}>{statusLabel[inv.status]}</Badge>
                       {inv.is_overdue && <Badge tone="rose">OVERDUE</Badge>}
                     </div>
+                    {inv.status === 'PAID' && inv.refunded_amount > 0 && (
+                      <div className="mt-0.5 text-xs text-muted">{formatMoney(inv.refunded_amount, inv.currency)} refunded</div>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-muted">{fmtDate(inv.created_at)}</td>
                   <td className={cn('px-4 py-3.5', inv.is_overdue ? 'text-terra' : 'text-muted')}>
@@ -303,7 +308,8 @@ export function InvoicesPage() {
           <DialogHeader>
             <DialogTitle>Refund {refunding?.number}</DialogTitle>
             <DialogDescription>
-              Records a refund invoice against this payment. Max {refunding ? formatMoney(refunding.total_amount, refunding.currency) : ''}.
+              Records a refund against this payment. Up to {refunding ? formatMoney(refundable(refunding), refunding.currency) : ''} can still be refunded
+              {refunding && refunding.refunded_amount > 0 ? ` (${formatMoney(refunding.refunded_amount, refunding.currency)} already refunded)` : ''}.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
