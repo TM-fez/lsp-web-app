@@ -23,6 +23,7 @@ import {
 } from '../modules/revenue/revenue.sweeper.js';
 import { createRetentionSweeper, type RetentionResult } from './retention.js';
 import { logger } from './logger.js';
+import { expireIntentsOfDeadHolds } from '../modules/payments/payments.expiry.js';
 
 /**
  * Background auto-expiry sweep.
@@ -146,7 +147,16 @@ export async function runSweep(
 export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<SweepResult> {
   const pricing = new PricingService(new PricingRepository(dbInstance));
   const quotes = new QuotesService(new QuotesRepository(dbInstance), pricing);
-  const holds = new HoldsService(new HoldsRepository(dbInstance), quotes);
+  const holdsService = new HoldsService(new HoldsRepository(dbInstance), quotes);
+  // The hold sweep also closes the payment attempts that were waiting on a hold that has
+  // expired (R3-L4) — a SUCCESS against such a hold is refused, so "awaiting" would be a lie.
+  const holds: HoldsSweeper = {
+    releaseExpired: async () => {
+      const released = await holdsService.releaseExpired();
+      await expireIntentsOfDeadHolds(dbInstance);
+      return released;
+    },
+  };
   const websiteBookings = createWebsiteBookingExpiry(dbInstance);
   const retention = createRetentionSweeper(dbInstance); // self-gates to once per day
   const reminders = createRemindersSweeper(dbInstance); // self-gates to once per day

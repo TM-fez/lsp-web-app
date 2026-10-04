@@ -1,6 +1,7 @@
 import { HoldsRepository } from './holds.repository.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { holdConflictMessage } from './holds.conflicts.js';
 import type { HoldRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateHoldDTO, HoldFilters, HoldRequestMeta } from './holds.types.js';
@@ -43,7 +44,7 @@ export class HoldsService {
         meta
       );
     } catch (err) {
-      if (isUniqueViolation(err)) throw AppError.conflict('A live hold already exists for this quote');
+      if (isUniqueViolation(err)) throw AppError.conflict(holdConflictMessage(err));
       throw err;
     }
   }
