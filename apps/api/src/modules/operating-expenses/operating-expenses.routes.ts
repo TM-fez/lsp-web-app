@@ -6,8 +6,8 @@ import { db } from '../../config/db.js';
 import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
-import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { Request, Response, NextFunction } from 'express';
 import {
   CreateOperatingExpenseSchema,
@@ -30,8 +30,11 @@ export function createOperatingExpensesRouter(dbInstance = db): Router {
   const rowInScope = (table: 'operating_expenses' | 'recurring_operating_costs') =>
     async (req: Request, _res: Response, next: NextFunction) => {
       try {
-        const ids = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
-        if (ids === null) return next();
+        // (Round 4) Everyone who can see every property — not only admin — reaches
+        // company-level rows too; a limited user reaches only their own properties' rows.
+        const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+        if (scope.allProperties) return next();
+        const ids = scope.ids ?? [];
         const row = await dbInstance
           .selectFrom(table)
           .select('property_id')
@@ -48,8 +51,9 @@ export function createOperatingExpensesRouter(dbInstance = db): Router {
   // A create, or an edit that moves the row, must name one of the user's properties.
   const bodyPropertyInScope = async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      const ids = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
-      if (ids === null) return next();
+      const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      if (scope.allProperties) return next();
+      const ids = scope.ids ?? [];
       const body = req.body as { property_id?: string | null };
       const isCreate = req.method === 'POST';
       if (!isCreate && !('property_id' in body)) return next();

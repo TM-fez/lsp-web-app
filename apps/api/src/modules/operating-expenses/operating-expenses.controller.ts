@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { OperatingExpensesService } from './operating-expenses.service.js';
-import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import { OperatingExpenseCategoryEnum } from './operating-expenses.types.js';
 import type {
   CreateOperatingExpenseDTO,
@@ -8,6 +8,17 @@ import type {
   CreateRecurringDTO,
   UpdateRecurringDTO,
 } from './operating-expenses.types.js';
+
+/**
+ * (Round 4) What the operating-cost list filters on: `null` = no filter. Admin AND anyone
+ * who can see every property get no filter, which is what lets them see company-level
+ * (no-property) costs; a user limited to some properties gets exactly those properties and
+ * never the company-level rows.
+ */
+async function visibleIds(req: Request): Promise<string[] | null> {
+  const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+  return scope.allProperties ? null : scope.ids;
+}
 
 export class OperatingExpensesController {
   constructor(private readonly service: OperatingExpensesService) {}
@@ -21,7 +32,7 @@ export class OperatingExpensesController {
       const category = req.query.category
         ? OperatingExpenseCategoryEnum.parse(req.query.category)
         : undefined;
-      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      const accessiblePropertyIds = await visibleIds(req);
       res.json({
         data: await this.service.list({
           property_id: (req.query.property_id as string) || undefined,
@@ -74,7 +85,7 @@ export class OperatingExpensesController {
   // ── Recurring templates ───────────────────────────────────────────────────────
   listRecurring = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
+      const accessiblePropertyIds = await visibleIds(req);
       res.json({ data: await this.service.listRecurring(accessiblePropertyIds) });
     } catch (err) {
       next(err);
@@ -108,7 +119,7 @@ export class OperatingExpensesController {
 
   generate = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.status(201).json(await this.service.generate((req.body as { month?: string }).month, this.meta(req)));
+      res.status(201).json(await this.service.generate((req.body as { month?: string }).month, await visibleIds(req), this.meta(req)));
     } catch (err) {
       next(err);
     }
