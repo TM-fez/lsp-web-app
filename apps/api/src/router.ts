@@ -30,6 +30,7 @@ import { createFinanceRouter } from './modules/finance/finance.routes.js';
 import { createMarketingRouter } from './modules/marketing/marketing.routes.js';
 import { createActivityRouter } from './modules/activity/activity.routes.js';
 import { createNotificationsRouter } from './modules/notifications/notifications.routes.js';
+import { recogniseRevenueAfterWrite } from './modules/revenue/revenue.middleware.js';
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use('/contacts',  createContactsRouter());
 router.use('/leads',     createLeadsRouter());
 
 // ── Sprint 2 — Reservations ───────────────────────────────────────────────────
+router.use(['/reservations', '/payments', '/invoices', '/holds', '/checkins', '/public'], recogniseRevenueAfterWrite());
 router.use('/reservations', createReservationsRouter());
 
 // ── Sprint 3 — Rooms ──────────────────────────────────────────────────────────

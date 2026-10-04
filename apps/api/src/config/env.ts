@@ -64,7 +64,9 @@ const schema = z.object({
   // Accrual revenue recognition (G30, modules/revenue). A night is earned on a
   // calendar boundary, so this has nothing urgent about it and self-gates to a day
   // rather than riding the 60s tick.
-  REVENUE_RECOGNITION_INTERVAL_MS: z.coerce.number().int().positive().default(24 * 60 * 60_000),
+  // Hourly safety net (was daily): every booking write also recognises its own nights
+  // straight away (revenue.middleware), and a free-tier host that sleeps would skip whole days.
+  REVENUE_RECOGNITION_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 60_000),
   // The rolling window the sweep reconciles, in days either side of the property day.
   // Settled months do not change, so rescanning years of them nightly would cost real
   // time for a guaranteed no-op; the lookahead is generous because a booking taken a

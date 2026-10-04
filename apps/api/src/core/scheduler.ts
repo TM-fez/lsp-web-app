@@ -157,7 +157,7 @@ export function createSweeper(dbInstance: Kysely<Database> = db): () => Promise<
     new ChannelRepository(dbInstance),
     env.CHANNEL_SYNC_INTERVAL_MS,
   );
-  // Self-gates to REVENUE_RECOGNITION_INTERVAL_MS (a day), not the 60s tick. Safe from
+  // Self-gates to REVENUE_RECOGNITION_INTERVAL_MS (an hour), not the 60s tick. Safe from
   // the day it deploys: reconcile() leaves an agreeing booking untouched, and with no
   // pricer wired it only ever recognises totals that were actually agreed.
   const revenue = createRevenueSweeper(dbInstance);
