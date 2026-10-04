@@ -1,3 +1,4 @@
+import { assertCanDelete } from '../../core/integrity/liveBookings.js';
 import { Kysely, sql } from 'kysely';
 import type { Database, RoomRow, NewRoom, UpdateRoom } from '../../db/types.js';
 import type { RoomFilters, RoomPaginationOptions, PaginatedRoomResult, RoomRequestMeta, RoomListRow } from './rooms.types.js';
@@ -256,6 +257,10 @@ export class RoomsRepository {
 
   async softDelete(id: string, meta: RoomRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
+      // (Round 4) Refuse — 409, in plain English — while live bookings or unpaid invoices
+      // still point at the unit; decided under a lock on the unit so a booking made at the
+      // same moment is either counted or waits. false = already gone.
+      if (!(await assertCanDelete(trx, { kind: 'room', id }))) return false;
       const deleted = await trx
         .updateTable('rooms')
         .set({

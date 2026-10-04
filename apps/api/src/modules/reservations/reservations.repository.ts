@@ -221,6 +221,36 @@ export class ReservationsRepository {
 
   async create(reservation: NewReservation, meta: ReservationRequestMeta): Promise<ReservationRow> {
     return this.db.transaction().execute(async (trx) => {
+      // (Round 4) The foreign keys cannot see a SOFT delete, so a booking could still be made
+      // on a unit or for a guest that is being removed at that very moment. Share-lock them and
+      // look at deleted_at: this conflicts with the delete's FOR UPDATE, so whichever of the
+      // two runs second sees the other — the delete counts this booking, or this refuses.
+      const room = await trx
+        .selectFrom('rooms')
+        .select('id')
+        .where('id', '=', reservation.room_id)
+        .where('deleted_at', 'is', null)
+        .forShare()
+        .executeTakeFirst();
+      if (!room) throw AppError.conflict('Room is not available for the selected dates');
+      const contactIds = [
+        ...new Set(
+          [reservation.contact_id, reservation.billing_contact_id, reservation.booking_coordinator_id].filter(
+            (id): id is string => typeof id === 'string'
+          )
+        ),
+      ];
+      const liveContacts = await trx
+        .selectFrom('contacts')
+        .select('id')
+        .where('id', 'in', contactIds)
+        .where('deleted_at', 'is', null)
+        .forShare()
+        .execute();
+      if (liveContacts.length !== contactIds.length) {
+        throw AppError.badRequest('That guest has just been removed — choose a different guest for this booking.');
+      }
+
       const inserted = await trx
         .insertInto('reservations')
         .values(reservation)
