@@ -89,7 +89,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       { to: '/pricing', label: 'Pricing', icon: Tags, perm: 'pricing.read', built: true },
       { to: '/users', label: 'Users & Roles', icon: ShieldCheck, perm: 'users.read', built: true },
       { to: '/files', label: 'Files', icon: FolderOpen, perm: 'files.read', built: true },
-      { to: '/settings', label: 'Settings', icon: Settings, built: false },
+      { to: '/settings', label: 'Settings', icon: Settings, built: true },
     ],
   },
 ];
@@ -144,12 +144,16 @@ export function landingRoute(id: WorkspaceId, hasPerm: (perm: string) => boolean
  * workspace where they can open the most screens (ties keep nav order), at its first
  * screen they can open — accounts lands in Finance, not on an Operations chart.
  * Null means the user can open no built screen at all.
+ *
+ * (P7) Only perm-gated screens count. Settings is open to everyone (your own password)
+ * but is nobody's work — it must not tip which workspace someone lands in, nor give a
+ * user with no real screens a "home".
  */
 export function homePathFor(hasPerm: (perm: string) => boolean): string | null {
   if (hasPerm('cockpit.read')) return '/';
   let best: { to: string; count: number } | null = null;
   for (const ws of WORKSPACES) {
-    const open = ws.items.filter((i) => i.built && (!i.perm || hasPerm(i.perm)));
+    const open = ws.items.filter((i) => i.built && !!i.perm && hasPerm(i.perm));
     if (open.length > 0 && (!best || open.length > best.count)) {
       best = { to: open[0]!.to, count: open.length };
     }

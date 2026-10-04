@@ -566,7 +566,28 @@ export interface StaffCompensationTable {
 
 // ── Database interface ────────────────────────────────────────────────────────
 
+// (P7, migration 074) One row (id = 1). NULL = not set → code falls back to built-in values.
+export interface AppSettingsTable {
+  id: Generated<number>;
+  company_name: string | null;
+  company_address: string | null;
+  company_phone: string | null;
+  company_email: string | null;
+  vat_number: string | null;
+  bank_name: string | null;
+  bank_account_name: string | null;
+  bank_account_number: string | null;
+  bank_branch_code: string | null;
+  invoice_footer: string | null;
+  invoice_terms_days: number | null;
+  website_hold_hours: number | null;
+  updated_by: string | null;
+  updated_at: Generated<Date>;
+}
+export type AppSettingsRow = Selectable<AppSettingsTable>;
+
 export interface Database {
+  app_settings: AppSettingsTable;
   roles: RolesTable;
   permissions: PermissionsTable;
   role_permissions: RolePermissionsTable;

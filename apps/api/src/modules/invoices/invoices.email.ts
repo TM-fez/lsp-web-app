@@ -1,6 +1,8 @@
 // Server-side HTML for the invoice/receipt email. Inline styles only (email clients
 // strip <style>). Mirrors the on-screen print document.
 
+import type { CompanyDetails } from '../../core/settings/appSettings.js';
+
 export interface InvoiceEmailData {
   number: string;
   kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
@@ -22,7 +24,9 @@ export interface InvoiceEmailData {
   unit_type: string | null;
 }
 
-const BRAND = 'Lifestyle Apartments';
+/** Settings text is typed by staff — escape it before it goes into HTML. */
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const money = (thebe: number, ccy: string) =>
   `${ccy} ${(thebe / 100).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -41,8 +45,21 @@ function lineDescription(d: InvoiceEmailData): string {
   return `${kind} — ${unit} stay${nights}`;
 }
 
-export function renderInvoiceEmail(d: InvoiceEmailData): { subject: string; html: string } {
+export function renderInvoiceEmail(d: InvoiceEmailData, company: CompanyDetails): { subject: string; html: string } {
+  const BRAND = esc(company.name);
   const title = docTitle(d);
+  // (P7) The business's own details from Settings — VAT number and contact under the name,
+  // and on an invoice still to pay, where to pay it.
+  const businessLine = [company.address, company.vat_number ? `VAT ${company.vat_number}` : null]
+    .filter((x): x is string => !!x)
+    .map(esc)
+    .join(' &nbsp;·&nbsp; ');
+  const bankRows = [
+    ['Bank', company.bank_name],
+    ['Account name', company.bank_account_name],
+    ['Account number', company.bank_account_number],
+    ['Branch code', company.bank_branch_code],
+  ].filter((r): r is [string, string] => !!r[1]);
   const taxPct = Number.isInteger(d.tax_rate_bps / 100) ? String(d.tax_rate_bps / 100) : (d.tax_rate_bps / 100).toFixed(1);
   const stayLine = d.unit_code
     ? `${d.unit_name ?? d.unit_code}${d.check_in_date ? ` &nbsp;·&nbsp; ${fmtDate(d.check_in_date)} → ${fmtDate(d.check_out_date)}` : ''}`
@@ -51,12 +68,14 @@ export function renderInvoiceEmail(d: InvoiceEmailData): { subject: string; html
   const recipientName = d.bill_to_name ?? d.guest_name;
   const greetName = recipientName ? recipientName.split(' ')[0] : 'there';
   const paid = d.status === 'PAID';
+  // Bank details only where money is still owed — never on a receipt, credit note or void.
+  const owing = d.kind !== 'REFUND' && (d.status === 'ISSUED' || d.status === 'PARTIALLY_PAID');
 
   const html = `<div style="background:#f2ede3;padding:24px 0;font-family:Arial,Helvetica,sans-serif;color:#1b1815;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">
     <div style="padding:24px 28px;border-bottom:1px solid #e4ddd0;">
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td style="font-size:18px;font-weight:bold;color:#22402f;">${BRAND}</td>
+        <td style="font-size:18px;font-weight:bold;color:#22402f;">${BRAND}${businessLine ? `<div style="margin-top:4px;font-size:11px;font-weight:normal;color:#8e8576;">${businessLine}</div>` : ''}</td>
         <td align="right" style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8e8576;">${title}<br>
           <span style="font-size:15px;color:#1b1815;letter-spacing:0;text-transform:none;">${d.number}</span></td>
       </tr></table>
@@ -78,10 +97,13 @@ export function renderInvoiceEmail(d: InvoiceEmailData): { subject: string; html
         <tr><td style="padding:10px 0 0;border-top:1px solid #d8d0c0;font-weight:bold;">Total</td>
             <td align="right" style="padding:10px 0 0;border-top:1px solid #d8d0c0;font-weight:bold;">${money(d.total_amount, d.currency)}</td></tr>
       </table>
+      ${owing && bankRows.length > 0 ? `<p style="margin:20px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8e8576;">How to pay</p>
+      <table cellpadding="0" cellspacing="0" style="font-size:13px;">${bankRows.map(([k, v]) => `<tr><td style="padding:2px 16px 2px 0;color:#8e8576;">${k}</td><td style="padding:2px 0;">${esc(v)}</td></tr>`).join('')}
+        <tr><td style="padding:2px 16px 2px 0;color:#8e8576;">Reference</td><td style="padding:2px 0;">${d.number}</td></tr></table>` : ''}
       ${paid ? `<p style="margin:20px 0 0;"><span style="display:inline-block;border:2px solid #1c3527;color:#1c3527;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">Paid</span></p>` : ''}
     </div>
     <div style="padding:16px 28px;border-top:1px solid #e4ddd0;font-size:12px;color:#8e8576;">
-      Thank you for staying with ${BRAND}, Gaborone. All amounts in ${d.currency}.
+      ${company.footer ? `${esc(company.footer)}<br>` : ''}Thank you for staying with ${BRAND}, Gaborone. All amounts in ${d.currency}.
     </div>
   </div>
 </div>`;

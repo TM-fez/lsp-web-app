@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, InvoiceRow, NewInvoice } from '../../db/types.js';
 import { AppError } from '../../core/errors/AppError.js';
+import { companyDetails, type CompanyDetails } from '../../core/settings/appSettings.js';
 import { inTransaction } from '../../core/db/transaction.js';
 import { propertyToday } from '../../core/time.js';
 import { invoiceVisibleInProperty } from '../../core/scope/invoiceProperty.js';
@@ -40,6 +41,11 @@ export class InvoicesRepository {
   // Everything a printable invoice/receipt needs: the invoice + the guest + the
   // stay + the bill-to (A4: the reservation's billing/accounts contact when one
   // is assigned, otherwise the guest themselves).
+  /** (P7) The business details from Settings, for the printed and emailed document. */
+  companyDetails(): Promise<CompanyDetails> {
+    return companyDetails(this.db);
+  }
+
   async findDocumentData(id: string) {
     return this.db
       .selectFrom('invoices as i')
