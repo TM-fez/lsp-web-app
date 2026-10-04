@@ -115,6 +115,15 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    pays exactly P200 less (`buildReservationPricing`); a PERCENT discount still applies to the subtotal.
    (d) **A complimentary (P0) stay gets no invoice** — the folio reads PAID with "Complimentary — no
    charge"; no zero-value document is issued.
+   ✅ **Owner decisions 2026-10-04 (round 4):** (a) **Reports count revenue before VAT** — cash
+   (`total − tax` per invoice, refunds negative) and earned (`amount − tax_amount`); VAT stays on its own
+   line. Owner (landlord) statements are deliberately left gross until the owner says otherwise.
+   (b) **Rate plans are estate-wide, so only an admin or a member of every active property may change
+   them** (`requireAllProperties` in `core/scope/propertyScope.ts`); limited users may still read them.
+   (c) **Operations keeps reports and trends but not the money ledgers** — migration 083 removed
+   `invoices.read`, `payments.read`, `opex.read`; the Finance cockpit now follows `invoices.read`.
+   (d) **A full refund leaves the booking as it is** — it stays CONFIRMED with the agreed total lowered;
+   staff cancel it separately if the stay is off. Never auto-cancel from a refund.
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's
@@ -192,7 +201,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 081). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 083). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so

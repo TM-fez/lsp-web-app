@@ -55,7 +55,7 @@ const PROTECTED: Record<string, { sample: string; api: string | null }> = {
   '/payments': { sample: '/payments', api: 'payments.read' },
   '/operating-expenses': { sample: '/operating-expenses', api: 'opex.read' },
   '/payroll': { sample: '/payroll', api: 'payroll.read' },
-  '/finance': { sample: '/finance', api: 'reports.read' },
+  '/finance': { sample: '/finance', api: 'invoices.read' },
   '/files': { sample: '/files', api: 'files.library' },
   '/settings': { sample: '/settings', api: null },
 };

@@ -56,7 +56,7 @@ beforeAll(async () => {
   guestId = (await db.insertInto('contacts').values({ name: `HC guest ${uniq}`, created_by: userId, updated_by: userId } as never).returning('id').executeTakeFirstOrThrow()).id;
   ({ property: propA, room: roomA } = await unit('A'));
   ({ property: propB, room: roomB } = await unit('B'));
-  mockState.user = { sub: userId, role: 'admin', permissions: ['reports.read'] };
+  mockState.user = { sub: userId, role: 'admin', permissions: ['invoices.read'] };
 });
 afterAll(async () => {
   await db.deleteFrom('invoices').where('id', 'in', created.invoices).execute();
@@ -114,6 +114,6 @@ describe('GET /finance/cancelled-with-money', () => {
 
     expect((await get(propA)).status).toBe(403);
 
-    mockState.user = { sub: userId, role: 'admin', permissions: ['reports.read'] };
+    mockState.user = { sub: userId, role: 'admin', permissions: ['invoices.read'] };
   });
 });
