@@ -188,10 +188,15 @@ export class OperatingExpensesRepository {
 
   // Generate one operating_expenses row per active template for `month` (YYYY-MM),
   // skipping any already generated (tagged 'recurring:<templateId>:<month>').
-  async generateForMonth(month: string, meta: OperatingExpensesRequestMeta) {
-    const templates = await this.db
+  // (Round 4, N-8) `accessibleIds` null = every template; otherwise only those properties'.
+  async generateForMonth(month: string, meta: OperatingExpensesRequestMeta, accessibleIds: string[] | null = null) {
+    let tq = this.db
       .selectFrom('recurring_operating_costs')
-      .selectAll().where('active', '=', true).where('deleted_at', 'is', null).execute();
+      .selectAll().where('active', '=', true).where('deleted_at', 'is', null);
+    if (accessibleIds !== null) {
+      tq = tq.where('property_id', 'in', accessibleIds.length > 0 ? accessibleIds : [NO_PROPERTY]);
+    }
+    const templates = await tq.execute();
     let created = 0, skipped = 0;
     for (const t of templates) {
       const dd = String(Math.min(28, t.day_of_month)).padStart(2, '0');

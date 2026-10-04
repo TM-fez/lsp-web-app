@@ -28,6 +28,11 @@ export class AppError extends Error {
     return new AppError(409, 'Conflict', message);
   }
 
+  /** 422 — the request is well-formed but contradicts an earlier one (e.g. a reused Idempotency-Key). */
+  static unprocessable(message: string) {
+    return new AppError(422, 'Unprocessable Entity', message);
+  }
+
   static payloadTooLarge(message: string) {
     return new AppError(413, 'Payload Too Large', message);
   }

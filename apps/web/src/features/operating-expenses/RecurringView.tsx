@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useAuthStore } from '@/store/auth';
 import { listProperties } from '@/lib/api/properties';
 import { formatMoney, pulaToThebe, thebeToPula } from '@/lib/utils/money';
+import { AmountError } from '@/components/ui/amount-error';
 import { useRecurring, useCreateRecurring, useUpdateRecurring, useDeleteRecurring, useGenerateRecurring } from './hooks';
 import type { RecurringCost, OperatingExpenseCategory } from '@/types';
 
@@ -146,6 +147,7 @@ export function RecurringView() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rc-amt">Amount (Pula)</Label>
               <Input id="rc-amt" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" />
+              <AmountError value={form.amount} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rc-prop">Property</Label>

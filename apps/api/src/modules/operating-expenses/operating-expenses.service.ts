@@ -109,8 +109,12 @@ export class OperatingExpensesService {
   }
 
   /** Generate this month's (or the given month's) operating costs from the templates. */
-  generate(month: string | undefined, meta: OperatingExpensesRequestMeta) {
+  /**
+   * `accessibleIds` limits which templates run: null = all (admin / every-property user),
+   * otherwise only templates of those properties — never company-level ones.
+   */
+  generate(month: string | undefined, accessibleIds: string[] | null, meta: OperatingExpensesRequestMeta) {
     const m = month ?? todayInPropertyTZ().slice(0, 7);
-    return this.repository.generateForMonth(m, meta).then((r) => ({ month: m, ...r }));
+    return this.repository.generateForMonth(m, meta, accessibleIds).then((r) => ({ month: m, ...r }));
   }
 }

@@ -121,7 +121,29 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    `paid_at`, else the invoice's `created_at` (`CASH_AT` in `reports.repository.ts`). This moves
    historic monthly cash figures for invoices settled after they were raised. A date/unit edit on a
    live booking that is confirmed or has money moves its agreed price by the **delta** (new stay −
-   old stay, both at today's rates) — never a full re-price (`repriceAfterEdit`).
+   old stay, both at today's rates) — never a full re-price. Since Round 4 that delta is applied **inside the
+   same transaction as the edit, under a row lock on the booking** (`ReservationsRepository.update` →
+   `repriceStayChange`), to the *locked* folio — so concurrent edits queue instead of each applying a delta
+   from a stale read, and a result that would go below zero (earlier refunds) refuses the edit (409) rather
+   than being clipped to P0.
+
+   **Round 4 — money integrity (2026-10-04).** (a) **Every writer of a booking's money takes the booking
+   row lock** (`FOR NO KEY UPDATE`: date edits, discounts, payments, refunds) — don't read a folio, then
+   write it, outside that lock. (b) **A unit or guest with live bookings or open invoices can't be
+   deleted** (409 in plain English, `core/integrity/liveBookings.ts`); a booking never disappears because
+   its unit/guest was soft-deleted. Review any already-stranded bookings with
+   `npm run db:repair-orphaned-bookings` (report only; `:apply` is owner-run, never automatic).
+   (c) **Refunds** are capped by what is left on the invoice *and* by the folio credit when a stay was
+   shortened after payment; the same amount on the same invoice by the same user within 10 s without an
+   `Idempotency-Key` is refused as a duplicate. The refund-lowers-the-total rule and what a full refund
+   does to the booking are unchanged. (d) **`Idempotency-Key`** (optional header, migration 081): mount
+   `idempotent()` after `validateBody` on any POST that moves money or creates a billable record
+   (refund, `/payments`, mark-paid, operating-expenses, contacts). Same key + same request → the stored
+   answer is replayed; same key + different body → 422; only 2xx answers are stored; keys last 24 h. The
+   web sends one key per dialog open (`newIdempotencyKey()`), and buttons disable while in flight.
+   (e) **Web Pula inputs go through `pulaToThebe` only, which is strict**: dot decimals, ≤ 2 places, no
+   commas or spaces (`"10,5"` is NaN, not P105). Show `<AmountError>` under the box. (f) A discount can
+   only be added to a PENDING booking; the drawer says so instead of offering a form that 409s.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
@@ -170,7 +192,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 080). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 081). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so
@@ -230,6 +252,29 @@ export function useCreateRoom() {
 - Icons: lucide-react only. Buttons take an icon child.
 - `components/ui/` is hand-written shadcn-*style*, not CLI-generated. `Dialog` is styled as a
   right-side drawer — hence `*FormDrawer.tsx`.
+
+## Access and property scope (Round 4)
+
+Who may see what, beyond "do they hold the permission". Read this before adding a list, a report or a
+write endpoint that touches property data.
+
+- **"All-property" access** = an admin, or a user who is a member of *every active property*
+  (`propertyScopeForUser` in `core/scope/propertyScope.ts` → `{ ids, allProperties }`). Everyone else is
+  *limited* to the properties they belong to (`user_properties`). A limited user must never see, change or
+  create data outside those properties — a request for someone else's row is a 404, not a 403 with details.
+- **Company-level (NULL-property) rows** (costs with no property, unfiled uploads, leads nobody assigned)
+  are visible to all-property users only; a limited user sees such a row only if they created it. The P&L
+  says so in a `scope_note` field when it leaves them out. Payroll posted by a limited user is split into one
+  cost per *their* property and never creates a NULL-property cost.
+- Scope lives in the **repository query** (before `LIMIT`), not in the controller after the fact. The
+  activity feed scans newest-first in chunks and runs with `SET LOCAL jit = off` — a big `CASE` over the
+  audit table was spending ~1 s in JIT compilation; check `EXPLAIN` before assuming an index is the fix.
+- Every money field has a ceiling: `MAX_MONEY_THEBE` (P1,000,000) in `core/money/limits.ts`. A rate ladder
+  must not go down (weekly ≥ nightly, monthly ≥ weekly) — the price engine would sell a night as a week.
+- Web: every signed-in route is guarded by `RouteGuard` (the AppShell wraps its `<Outlet/>`), keyed by
+  `permForPath` in `components/layout/nav.ts`. `router/routeGuards.test.tsx` fails if a route is added
+  without being listed there, so add the page's API permission when you add a route. Role permissions in
+  `test/rolePermissions.ts` are a snapshot checked against the DB by an API test.
 
 ## Style
 

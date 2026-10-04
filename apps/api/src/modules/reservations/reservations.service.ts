@@ -1,6 +1,8 @@
-import { ReservationsRepository } from './reservations.repository.js';
+import type { Transaction } from 'kysely';
+import { ReservationsRepository, type StayPricer } from './reservations.repository.js';
 import { RoomsRepository } from '../rooms/rooms.repository.js';
 import { PricingService } from '../pricing/pricing.service.js';
+import { PricingRepository } from '../pricing/pricing.repository.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
@@ -9,7 +11,7 @@ import { todayInPropertyTZ } from '../../core/time.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
 import type { UnitType } from '../pricing/pricing.types.js';
-import type { ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
+import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
 import type {
   ReservationFilters, 
   ReservationPaginationOptions, 
@@ -64,28 +66,35 @@ export class ReservationsService {
   /**
    * Price a stay shape (room + dates) at TODAY's rate card, carrying the booking's own
    * discount. Split out of priceReservation so an edit can price the stay as it WAS as
-   * well as how it IS — see repriceAfterEdit.
+   * well as how it IS — see ReservationsRepository.repriceStayChange.
+   *
+   * `deps` lets a caller that is inside a transaction price through that transaction (see
+   * pricerFor) instead of borrowing a second connection from the pool while it holds a lock.
    */
   private async priceStay(
     stay: Pick<ReservationRow, 'room_id' | 'check_in_date' | 'check_out_date'>,
-    reservation: ReservationRow
+    reservation: ReservationRow,
+    deps: { rooms?: RoomsRepository; pricing?: PricingService } = { rooms: this.rooms, pricing: this.pricing }
   ): Promise<ReservationPricing | NotPriceable> {
-    if (!this.rooms || !this.pricing) {
+    const { rooms, pricing } = deps;
+    if (!rooms || !pricing) {
       throw AppError.internal('Pricing is not configured for this service');
     }
     const nights = nightsBetween(stay.check_in_date, stay.check_out_date);
 
-    const room = await this.rooms.findById(stay.room_id);
+    // Including a soft-deleted unit: a booking is still priced as the unit type it was made
+    // for, even if the unit has since been taken off the board.
+    const room = await rooms.findByIdWithDeleted(stay.room_id);
     if (!room) return { priceable: false, reason: 'Unit not found', nights };
 
     let plan;
     try {
-      plan = await this.pricing.getActivePlan(room.type as UnitType);
+      plan = await pricing.getActivePlan(room.type as UnitType);
     } catch {
       return { priceable: false, reason: `No active rate plan for a ${room.type} unit`, nights };
     }
 
-    const price = this.pricing.priceStay(plan, nights);
+    const price = pricing.priceStay(plan, nights);
     return buildReservationPricing({
       currency: price.currency,
       nights,
@@ -102,6 +111,19 @@ export class ReservationsService {
             }
           : null,
     });
+  }
+
+  /**
+   * The stay pricer handed to the repository: every read goes through the transaction the
+   * repository is holding the booking's lock in.
+   */
+  private pricerFor(): StayPricer | undefined {
+    if (!this.pricing || !this.rooms) return undefined;
+    return (trx: Transaction<Database>, stay, reservation) =>
+      this.priceStay(stay, reservation, {
+        rooms: new RoomsRepository(trx),
+        pricing: new PricingService(new PricingRepository(trx)),
+      });
   }
 
   /**
@@ -224,7 +246,7 @@ export class ReservationsService {
       );
     }
 
-    const room = await this.rooms.findById(reservation.room_id);
+    const room = await this.rooms.findByIdWithDeleted(reservation.room_id);
     if (!room) throw AppError.badRequest('This booking has no unit, so it cannot be priced or paid for.');
 
     const priced = await this.priceReservation(id, activePropertyId);
@@ -399,85 +421,6 @@ export class ReservationsService {
     );
   }
 
-  /**
-   * After an edit that changes the price (dates, unit, discount) of a booking that was
-   * priced at creation and has had no money, move the frozen price and its invoice to the
-   * new figure. A no-op for anything else — see ReservationsRepository.agreePrice. Failure
-   * is logged, not thrown: the edit has committed and the receivable self-heals on the next
-   * touch (and the backfill reconciles any drift).
-   */
-  private async refreezeIfUnpaid(id: string, meta: ReservationRequestMeta): Promise<void> {
-    if (!this.pricing || !this.rooms) return;
-    try {
-      const current = await this.repository.findById(id);
-      if (!current || current.status !== 'PENDING' || current.folio_total_amount == null) return;
-      const priced = await this.priceReservation(id);
-      if (!priced.priceable) return;
-      await this.repository.agreePrice(
-        id,
-        { total: priced.total_amount, currency: priced.currency, taxRateBps: priced.tax_rate_bps },
-        meta,
-        'refreeze'
-      );
-    } catch (err) {
-      logger.error({ err, reservationId: id }, '[reservations] could not re-price the receivable after an edit');
-    }
-  }
-
-  /**
-   * (Stage 3) After a date or unit change, move what the booking owes.
-   *
-   * An unpaid PENDING booking is simply re-priced (refreezeIfUnpaid) — nothing about it
-   * has been agreed with money yet. Every other live booking — CONFIRMED (paid or
-   * confirmed without payment, invariant 3), part-paid, CHECKED_IN — used to keep its old
-   * price: extend a confirmed stay by three nights and the folio, the invoice and Finance
-   * still said the original amount.
-   *
-   * For those the agreed price moves by the DIFFERENCE between the stay as it was and as
-   * it is, both priced at today's rates. Re-pricing the whole stay would restate nights
-   * the guest already agreed (a negotiated rate, an older rate card — CLAUDE.md: never
-   * size money from a re-priced total); the delta keeps them and adds or removes only
-   * what changed. A shortened, already-paid stay can end up overpaid — the reconcile
-   * then owes nothing and the backfill lists it; a refund stays a human decision.
-   *
-   * Failure is logged, not thrown: the edit has committed, and the receivable self-heals
-   * on the next touch.
-   */
-  private async repriceAfterEdit(before: ReservationRow, after: ReservationRow, meta: ReservationRequestMeta): Promise<void> {
-    if (!this.pricing || !this.rooms) return;
-    try {
-      // `before` / `after` are this edit's own two sides (read under the row lock by
-      // repository.update) — not a fresh read, which a concurrent edit may have moved.
-      if (after.folio_total_amount == null) return;
-      if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(after.status)) return;
-
-      const paid = (await this.repository.paidToDate([after.id])).get(after.id) ?? 0;
-      if (after.status === 'PENDING' && paid === 0) {
-        await this.refreezeIfUnpaid(after.id, meta);
-        return;
-      }
-
-      const [was, now] = await Promise.all([this.priceStay(before, after), this.priceStay(after, after)]);
-      if (!was.priceable || !now.priceable) return;
-      const delta = now.total_amount - was.total_amount;
-      if (delta === 0) return;
-
-      await this.repository.agreePrice(
-        after.id,
-        {
-          total: Math.max(0, after.folio_total_amount + delta),
-          delta,
-          currency: now.currency,
-          taxRateBps: now.tax_rate_bps,
-        },
-        meta,
-        'adjust'
-      );
-    } catch (err) {
-      logger.error({ err, reservationId: before.id }, '[reservations] could not re-price the receivable after an edit');
-    }
-  }
-
   async markNoShow(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     const reservation = await this.getReservationById(id, activePropertyId);
 
@@ -508,7 +451,9 @@ export class ReservationsService {
     // treated as "not found" so its existence doesn't leak across properties.
     // This is the single chokepoint every by-id operation flows through.
     if (activePropertyId) {
-      const pid = await this.repository.roomPropertyId(reservation.room_id);
+      // includeDeleted: the booking's own unit may have been soft-deleted since — that must
+      // not make the booking itself disappear from every by-id read.
+      const pid = await this.repository.roomPropertyId(reservation.room_id, { includeDeleted: true });
       if (pid !== activePropertyId) {
         throw AppError.notFound(`Reservation with id ${id} not found`);
       }
@@ -646,15 +591,33 @@ export class ReservationsService {
     const movingInHouse =
       existing.status === 'CHECKED_IN' && !!dto.room_id && dto.room_id !== existing.room_id;
 
+    // A date / unit change moves what the booking owes. The edit and that price movement are
+    // ONE transaction under the booking's row lock (see ReservationsRepository.update), so
+    // any number of simultaneous edits queue up and each prices from the previous one's
+    // committed result — the folio and the open invoice always equal the price of the final
+    // dates. If the price cannot be moved the edit is refused, not half-applied.
+    const changesStay = Boolean(dto.check_in_date || dto.check_out_date || dto.room_id);
+
     let updated: ReservationRow | undefined;
-    const capture: { before?: ReservationRow } = {};
     try {
       updated = await this.repository.update(
         id,
         updatePayload,
         meta,
         movingInHouse ? { fromRoomId: existing.room_id, toRoomId: roomId } : undefined,
-        { capture }
+        {
+          // The dates checked above were merged with the row as it was before we queued for
+          // the lock; merge again with what is really there, or a parallel edit of the OTHER
+          // date could leave check-out on or before check-in.
+          validate: (current) => {
+            const inDate = dto.check_in_date ? new Date(dto.check_in_date) : current.check_in_date;
+            const outDate = dto.check_out_date ? new Date(dto.check_out_date) : current.check_out_date;
+            if (inDate >= outDate) {
+              throw AppError.badRequest('Check-out date must be after check-in date');
+            }
+          },
+          ...(changesStay ? { repriceStay: this.pricerFor() } : {}),
+        }
       );
     } catch (e) {
       if (isReservationOverlapError(e)) {
@@ -665,32 +628,44 @@ export class ReservationsService {
     if (!updated) {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
-    if (dto.check_in_date || dto.check_out_date || dto.room_id) {
-      await this.repriceAfterEdit(capture.before ?? existing, updated, meta);
-    }
     return updated;
   }
 
   /**
    * Apply (request) a discount on a PENDING booking. If the actor can approve
    * (Tameem/admin), it's signed off immediately; otherwise it waits for approval.
+   *
+   * (Round 4) The "is it still PENDING?" check, the discount, its audit row and the re-priced
+   * invoice are one transaction under the booking's row lock. Parallel requests used to read
+   * the same row, write over each other and re-price from whichever read came last; now they
+   * queue, each is applied and audited in turn, and the folio and open invoice always match
+   * the discount that ends up on the booking.
    */
   async setDiscount(id: string, dto: SetDiscountDTO, meta: ReservationRequestMeta, canApprove: boolean, activePropertyId?: string): Promise<ReservationRow> {
-    const existing = await this.getReservationById(id, activePropertyId);
-    if (existing.status !== 'PENDING') {
-      throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
-    }
-    const updated = await this.repository.update(id, {
-      discount_type: dto.discount_type,
-      discount_value: dto.discount_value,
-      discount_reason: dto.discount_reason ?? null,
-      discount_requested_by: meta.userId,
-      discount_approved_by: canApprove ? meta.userId : null,
-      discount_approved_at: canApprove ? new Date() : null,
-      updated_by: meta.userId,
-    }, meta);
+    await this.getReservationById(id, activePropertyId);
+    const updated = await this.repository.update(
+      id,
+      {
+        discount_type: dto.discount_type,
+        discount_value: dto.discount_value,
+        discount_reason: dto.discount_reason ?? null,
+        discount_requested_by: meta.userId,
+        discount_approved_by: canApprove ? meta.userId : null,
+        discount_approved_at: canApprove ? new Date() : null,
+        updated_by: meta.userId,
+      },
+      meta,
+      undefined,
+      {
+        validate: (current) => {
+          if (current.status !== 'PENDING') {
+            throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
+          }
+        },
+        refreeze: this.pricerFor(),
+      }
+    );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
-    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 
@@ -699,29 +674,46 @@ export class ReservationsService {
     const existing = await this.getReservationById(id, activePropertyId);
     if (existing.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
     if (existing.discount_approved_at) throw AppError.conflict('This discount has already been approved');
-    const updated = await this.repository.update(id, {
-      discount_approved_by: meta.userId,
-      discount_approved_at: new Date(),
-      updated_by: meta.userId,
-    }, meta);
+    const updated = await this.repository.update(
+      id,
+      {
+        discount_approved_by: meta.userId,
+        discount_approved_at: new Date(),
+        updated_by: meta.userId,
+      },
+      meta,
+      undefined,
+      {
+        // Re-checked under the lock: of two simultaneous approvals exactly one wins.
+        validate: (current) => {
+          if (current.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
+          if (current.discount_approved_at) throw AppError.conflict('This discount has already been approved');
+        },
+        refreeze: this.pricerFor(),
+      }
+    );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
-    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 
   async removeDiscount(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     await this.getReservationById(id, activePropertyId);
-    const updated = await this.repository.update(id, {
-      discount_type: null,
-      discount_value: null,
-      discount_reason: null,
-      discount_requested_by: null,
-      discount_approved_by: null,
-      discount_approved_at: null,
-      updated_by: meta.userId,
-    }, meta);
+    const updated = await this.repository.update(
+      id,
+      {
+        discount_type: null,
+        discount_value: null,
+        discount_reason: null,
+        discount_requested_by: null,
+        discount_approved_by: null,
+        discount_approved_at: null,
+        updated_by: meta.userId,
+      },
+      meta,
+      undefined,
+      { refreeze: this.pricerFor() }
+    );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
-    await this.refreezeIfUnpaid(id, meta);
     return updated;
   }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 import type { ReservationRow } from '../../db/types.js';
 import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 
@@ -81,7 +82,7 @@ export const DiscountTypeEnum = z.enum(['PERCENT', 'FIXED']);
 export const SetDiscountSchema = z
   .object({
     discount_type: DiscountTypeEnum,
-    discount_value: z.number().int().positive(), // percent points, or thebe for FIXED
+    discount_value: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'), // percent points, or thebe for FIXED
     discount_reason: z.string().max(500).optional().nullable(),
   })
   .refine((d) => d.discount_type !== 'PERCENT' || d.discount_value <= 100, {
@@ -98,7 +99,7 @@ export const SetDiscountSchema = z
 export const MarkPaidSchema = z.object({
   method: z.enum(['CARD', 'MOBILE_MONEY', 'EFT', 'CASH', 'CORPORATE_CREDIT']),
   /** Thebe. Omit to charge the booking's full priced total. */
-  amount: z.number().int().positive().optional(),
+  amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional(),
   /** Bank/receipt reference the guest gave, kept on the payment attempt. */
   reference: z.string().max(200).optional().nullable(),
   note: z.string().max(500).optional().nullable(),

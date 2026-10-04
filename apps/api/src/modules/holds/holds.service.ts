@@ -81,7 +81,7 @@ export class HoldsService {
   }
 
   /** Auto/smart release sweep — returns the number of holds expired. */
-  async releaseExpired(): Promise<number> {
-    return this.repository.releaseExpired();
+  async releaseExpired(scope?: { propertyIds: string[] | null; meta: HoldRequestMeta }): Promise<number> {
+    return this.repository.releaseExpired(scope);
   }
 }

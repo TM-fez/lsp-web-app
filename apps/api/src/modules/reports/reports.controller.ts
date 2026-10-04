@@ -1,7 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReportsService } from './reports.service.js';
 import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { RevenueBasis } from './reports.types.js';
+
+/** Shown to anyone who cannot see every property — see ReportsResponse.scope_note. */
+export const COMPANY_COSTS_EXCLUDED_NOTE =
+  'Company-level costs (operating costs that belong to no single property, such as the payroll total) are not included, because your access covers only some properties.';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,10 +38,16 @@ export class ReportsController {
       const from = typeof req.query.from === 'string' && DATE.test(req.query.from) ? req.query.from : undefined;
       const to = typeof req.query.to === 'string' && DATE.test(req.query.to) ? req.query.to : undefined;
       const propertyId = (req.query.property_id as string) || undefined;
-      // Access scope: admins see every property; others only their own. A picked
-      // property_id outside that set simply yields no rows.
-      const accessiblePropertyIds = await accessiblePropertyIdsForUser(req.user!.sub, req.user!.role);
-      res.json(await this.service.getReports({ from, to, propertyId, accessiblePropertyIds, basis: basisOf(req) }));
+      // Access scope: admins and anyone who can see EVERY property get no restriction
+      // (which is what includes company-level costs that belong to no property); everyone
+      // else sees only their own properties and the response says plainly that company-level
+      // costs are left out. A picked property_id outside that set simply yields no rows.
+      // (Round 4, H10: a both-property accountant used to differ from admin by exactly the
+      // company-level costs, with no explanation.)
+      const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      const accessiblePropertyIds = scope.allProperties ? null : scope.ids;
+      const report = await this.service.getReports({ from, to, propertyId, accessiblePropertyIds, basis: basisOf(req) });
+      res.json({ ...report, scope_note: scope.allProperties ? null : COMPANY_COSTS_EXCLUDED_NOTE });
     } catch (err) {
       next(err);
     }

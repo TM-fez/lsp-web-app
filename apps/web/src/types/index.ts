@@ -385,6 +385,11 @@ export interface ReportsResponse {
   summary: PnlSummary;
   monthly: MonthlyPoint[];
   by_property: PropertyPnl[];
+  /**
+   * Set when the figures leave out company-level (no-property) costs because the caller can
+   * only see some properties. Null for people who can see every property. Round 4 / H10.
+   */
+  scope_note?: string | null;
 }
 
 // ── Earned vs received (G30) — the reconciliation the accrual switch makes necessary.

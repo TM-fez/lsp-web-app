@@ -3,6 +3,16 @@ import type { DashboardStats, ActivityEntry, DashboardActivityResponse } from '@
 // ── Re-exports for module consumers ───────────────────────────────────────────
 export type { DashboardStats, ActivityEntry, DashboardActivityResponse };
 
+/**
+ * (Round 4) Whose numbers these are. `allProperties` (admin, or a member of every property)
+ * gets the house-wide counts; anyone else gets counts limited to their own properties.
+ */
+export interface StatsScope {
+  userId: string;
+  ids: string[] | null;
+  allProperties: boolean;
+}
+
 // ── Raw repository row types ──────────────────────────────────────────────────
 
 /** Raw count values returned directly from aggregate DB queries. */

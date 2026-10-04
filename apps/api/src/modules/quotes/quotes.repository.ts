@@ -2,21 +2,39 @@ import { Kysely, sql } from 'kysely';
 import type { Database, QuoteRow, NewQuote } from '../../db/types.js';
 import { inTransaction } from '../../core/db/transaction.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
-import type { QuoteFilters, QuoteStatus, QuoteRequestMeta } from './quotes.types.js';
+import type { QuoteFilters, QuoteStatus, QuoteRequestMeta, QuoteScope } from './quotes.types.js';
+
+/** SQL for "may this caller see this quote" — shared by the list and by-id reads. */
+export function quoteVisibleSql(scope: QuoteScope | undefined) {
+  if (!scope || scope.allProperties) return sql<boolean>`true`;
+  const ids = scope.ids ?? [];
+  const heldInMine =
+    ids.length === 0
+      ? sql<boolean>`false`
+      : sql<boolean>`EXISTS (
+          SELECT 1 FROM holds qh
+            LEFT JOIN reservations qres ON qres.id = qh.reservation_id
+            JOIN rooms qr ON qr.id = coalesce(qh.room_id, qres.room_id)
+            JOIN buildings qb ON qb.id = qr.building_id
+           WHERE qh.quote_id = quotes.id AND qb.property_id IN (${sql.join(ids)})
+        )`;
+  return sql<boolean>`(quotes.created_by = ${scope.userId} OR ${heldInMine})`;
+}
 
 export class QuotesRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async findById(id: string): Promise<QuoteRow | undefined> {
-    return this.db.selectFrom('quotes').selectAll().where('id', '=', id).executeTakeFirst();
+  async findById(id: string, scope?: QuoteScope): Promise<QuoteRow | undefined> {
+    return this.db.selectFrom('quotes').selectAll().where('id', '=', id).where(quoteVisibleSql(scope)).executeTakeFirst();
   }
 
   async findPaginated(
     filters: QuoteFilters,
-    pagination: PaginationOptions
+    pagination: PaginationOptions,
+    scope?: QuoteScope
   ): Promise<PaginatedResult<QuoteRow>> {
-    let query = this.db.selectFrom('quotes').selectAll();
-    let countQuery = this.db.selectFrom('quotes').select(this.db.fn.count<number>('id').as('total'));
+    let query = this.db.selectFrom('quotes').selectAll().where(quoteVisibleSql(scope));
+    let countQuery = this.db.selectFrom('quotes').select(this.db.fn.count<number>('id').as('total')).where(quoteVisibleSql(scope));
 
     if (filters.status) {
       query = query.where('status', '=', filters.status);

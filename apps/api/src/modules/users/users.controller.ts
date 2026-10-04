@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { UsersService } from './users.service.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { CreateUserDTO, ResetPasswordDTO, UpdateUserDTO, UsersRequestMeta } from './users.types.js';
 
 export class UsersController {
@@ -33,9 +34,11 @@ export class UsersController {
   };
 
   // Minimal staff directory for pickers — any authenticated staff member may read it.
-  listDirectory = async (_req: Request, res: Response, next: NextFunction) => {
+  // (Round 4) Scoped: a property-limited user sees staff sharing a property, plus themselves.
+  listDirectory = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const staff = await this.service.listDirectory();
+      const scope = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      const staff = await this.service.listDirectory({ userId: req.user!.sub, ids: scope.ids, allProperties: scope.allProperties });
       res.json({ data: staff });
     } catch (err) {
       next(err);

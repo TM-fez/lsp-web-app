@@ -310,6 +310,7 @@ export class ReportsService {
       },
       monthly,
       by_property,
+      scope_note: null, // the controller fills this in for callers who cannot see every property
     };
   }
 

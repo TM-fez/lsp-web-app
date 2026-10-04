@@ -175,6 +175,17 @@ export class FilesService {
     if (!canManage && file.created_by !== viewer.userId) {
       throw AppError.forbidden('Only the person who uploaded this file can file it.');
     }
+    // (Round 4) Filing is also bounded by the filer's own properties: you cannot put a
+    // document into a property you do not work in, and "no property" (house-wide) is for
+    // the uploader or someone who can see every property.
+    if (viewer.accessiblePropertyIds !== null) {
+      if (dto.property_id !== null && !viewer.accessiblePropertyIds.includes(dto.property_id)) {
+        throw AppError.forbidden('You can only file a document under a property you work in.');
+      }
+      if (dto.property_id === null && !viewer.allProperties && file.created_by !== viewer.userId) {
+        throw AppError.forbidden('Only the person who uploaded this file can leave it without a property.');
+      }
+    }
     if (await this.repository.isLinked(id)) {
       throw AppError.conflict('This file belongs to a booking, invoice, repair or unit, so it’s filed there already.');
     }
@@ -203,9 +214,14 @@ export class FilesService {
     return this.repository.findPaginated(query.page, query.limit, isAdmin ? undefined : meta.userId);
   }
 
-  async delete(id: string, meta: FileRequestMeta): Promise<void> {
-    const file = await this.repository.findById(id);
-    if (!file) throw AppError.notFound(`File ${id} not found`);
+  /**
+   * (Round 4, N-4) Deleting follows the library's visibility rules: a file the caller
+   * cannot open (another property's, an unfiled upload that is not theirs) is "not found".
+   * The route still requires files.delete; this only stops it reaching outside the
+   * caller's properties.
+   */
+  async delete(id: string, viewer: LibraryViewer, meta: FileRequestMeta): Promise<void> {
+    await this.getMetadata(id, viewer);
 
     // Soft delete only, preserving the binary just in case, but adapter can optionally delete.
     // The prompt says "soft delete only", meaning we do NOT call storageAdapter.delete.

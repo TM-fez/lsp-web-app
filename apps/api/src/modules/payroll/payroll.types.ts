@@ -1,11 +1,12 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 
 export const PayFrequencyEnum = z.enum(['MONTHLY', 'WEEKLY']);
 export type PayFrequency = z.infer<typeof PayFrequencyEnum>;
 
 export const UpsertCompensationSchema = z.object({
   job_title: z.string().max(120).nullable().optional(),
-  gross_amount: z.number().int().nonnegative(),       // thebe, per `frequency`
+  gross_amount: z.number().int().nonnegative().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'),       // thebe, per `frequency`
   frequency: PayFrequencyEnum.default('MONTHLY'),
   payment_method: z.string().max(40).nullable().optional(),
   bank_name: z.string().max(120).nullable().optional(),

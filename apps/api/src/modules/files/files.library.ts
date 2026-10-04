@@ -65,6 +65,11 @@ export interface LibraryViewer {
   canManageFiles: boolean;
   /** null = every property (admin); otherwise the properties this user belongs to. */
   accessiblePropertyIds: string[] | null;
+  /**
+   * (Round 4) Can see EVERY property (admin, or a member of all of them). Only these people
+   * read documents that belong to no property and were not uploaded by themselves.
+   */
+  allProperties: boolean;
 }
 
 /**
@@ -143,12 +148,24 @@ function viewerWhere(v: LibraryViewer): RawBuilder<unknown> {
     parts.push(sql`(lib.created_by = ${v.userId} OR (lib.category = 'REPAIR_PHOTOS' AND lib.assignee = ${v.userId}))`);
   }
   if (v.accessiblePropertyIds !== null) {
-    // A file about no property (a profile picture, an unfiled upload) is house-wide.
-    parts.push(
+    // (Round 4, N-4) Which file is "about no property" matters. A profile picture or a
+    // receipt whose record has no room is attached to a record and stays visible. A
+    // standalone document that was never given a property (an unfiled upload, or a contract
+    // filed under "no property") used to be house-wide too — so a CBD-only user could read
+    // and download the Village's unfiled uploads and contracts. Now it is visible only to
+    // whoever uploaded it and to people who can see every property.
+    const mine =
       v.accessiblePropertyIds.length === 0
-        ? sql`lib.property_id IS NULL`
-        : sql`(lib.property_id IS NULL OR lib.property_id IN (${sql.join(v.accessiblePropertyIds)}))`
-    );
+        ? sql`false`
+        : sql`lib.property_id IN (${sql.join(v.accessiblePropertyIds)})`;
+    const standaloneNoProperty = v.allProperties
+      ? sql`true`
+      : sql`lib.created_by = ${v.userId}`;
+    parts.push(sql`(
+      ${mine}
+      OR (lib.property_id IS NULL AND lib.link_kind IS NOT NULL)
+      OR (lib.property_id IS NULL AND lib.link_kind IS NULL AND ${standaloneNoProperty})
+    )`);
   }
   return sql.join(parts, sql` AND `);
 }

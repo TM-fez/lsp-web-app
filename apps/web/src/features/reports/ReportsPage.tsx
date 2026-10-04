@@ -243,6 +243,11 @@ export function ReportsPage() {
           </div>
 
           <BasisNote basis={s.revenue_basis} disclosure={s.disclosure} />
+          {data.scope_note && (
+            <p role="note" className="rounded-md border border-line bg-cream px-3 py-2 text-xs text-char">
+              {data.scope_note}
+            </p>
+          )}
 
           <section className="rounded-lg border border-line bg-paper p-5">
             <div className="mb-4 flex items-center justify-between">

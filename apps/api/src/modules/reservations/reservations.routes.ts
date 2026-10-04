@@ -15,6 +15,7 @@ import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { authorize } from '../../core/auth/authorize.middleware.js';
 import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
+import { idempotent } from '../../core/middleware/idempotency.middleware.js';
 import { CreateReservationSchema, UpdateReservationSchema, ClaimOtaBookingSchema, MarkPaidSchema, ConfirmReservationSchema } from './reservations.types.js';
 import { rejectOverlappingHold } from '../holds/holds.conflicts.js';
 
@@ -58,7 +59,7 @@ export function createReservationsRouter(dbInstance = db): Router {
   // permissions the equivalent cockpit flow needs end-to-end (payments.create to
   // raise the intent, payments.update to settle it), so this changes WHERE staff can
   // take a payment, never WHO may take one.
-  router.post('/:id/mark-paid', authorize('payments.create', 'payments.update'), validateBody(MarkPaidSchema), controller.markPaid);
+  router.post('/:id/mark-paid', authorize('payments.create', 'payments.update'), validateBody(MarkPaidSchema), idempotent(dbInstance), controller.markPaid);
 
   // Confirm a stay with NO money in hand (owner decision 2026-09-07, invariant 3).
   // Some clients settle after the stay, and a booking nobody has paid for is still a

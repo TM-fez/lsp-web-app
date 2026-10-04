@@ -1,3 +1,4 @@
+import { assertCanDelete } from '../../../core/integrity/liveBookings.js';
 import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
 import type { ContactFilters, ContactViewer, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types.js';
@@ -131,6 +132,9 @@ export class ContactsRepository {
 
   async softDelete(id: string, meta: CRMRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
+      // (Round 4) Refuse — 409, in plain English — while live bookings or unpaid invoices
+      // still name this guest; see core/integrity/liveBookings.ts. false = already gone.
+      if (!(await assertCanDelete(trx, { kind: 'contact', id }))) return false;
       const deleted = await trx
         .updateTable('contacts')
         .set({ 

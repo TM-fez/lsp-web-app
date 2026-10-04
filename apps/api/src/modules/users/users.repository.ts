@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { Database, UserRow } from '../../db/types.js';
 import type { RoleInfo, StaffUser, UsersRequestMeta } from './users.types.js';
 
@@ -89,12 +89,28 @@ export class UsersRepository {
   }
 
   /** Minimal active-staff directory for pickers (assign-to etc.) — names + roles only. */
-  async listDirectory(): Promise<{ id: string; name: string; role: string; is_lead: boolean }[]> {
+  async listDirectory(
+    scope?: { userId: string; ids: string[] | null; allProperties: boolean }
+  ): Promise<{ id: string; name: string; role: string; is_lead: boolean }[]> {
+    // (Round 4) Someone limited to some properties sees the staff who work in those
+    // properties, and themselves — not the whole company's names. Admin and anyone who can
+    // see every property still get everyone (a picker must be able to assign to anybody).
+    const limited = !!scope && !scope.allProperties;
+    const ids = scope?.ids ?? [];
     return this.db
       .selectFrom('users')
       .innerJoin('roles', 'roles.id', 'users.role_id')
       .select(['users.id', 'users.name', 'roles.name as role', 'users.is_lead'])
       .where('users.active', '=', true)
+      .$if(limited, (qb) =>
+        qb.where(
+          ids.length === 0
+            ? sql<boolean>`users.id = ${scope!.userId}`
+            : sql<boolean>`(users.id = ${scope!.userId} OR EXISTS (
+                SELECT 1 FROM user_properties dup WHERE dup.user_id = users.id AND dup.property_id IN (${sql.join(ids)})
+              ))`
+        )
+      )
       .orderBy('users.name', 'asc')
       .execute();
   }

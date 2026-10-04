@@ -91,6 +91,12 @@ export interface ReportsResponse {
   summary: PnlSummary;
   monthly: MonthlyPoint[];
   by_property: PropertyPnl[];
+  /**
+   * (Round 4, H10) null for admin and anyone who can see every property. Otherwise a plain-English
+   * note that company-level (no-property) costs are excluded from these figures, so a limited
+   * user's profit is not mistaken for the whole company's.
+   */
+  scope_note: string | null;
 }
 
 // ── Operational Cockpit (P4.3) — occupancy + comparative trends ────────────────

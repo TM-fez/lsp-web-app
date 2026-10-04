@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // what is still owed, that confirming without payment is offered on a pending booking,
 // and who may see any of it.
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 let perms: string[] = [];
 const markPaidMutate = vi.fn().mockResolvedValue({});
 
@@ -154,6 +155,7 @@ describe('ReservationFormDrawer — the money on a booking', () => {
       expect(markPaidMutate).toHaveBeenCalledWith({
         id: 'res-w',
         input: { method: 'CASH', amount: undefined, reference: null },
+        idempotencyKey: expect.stringMatching(UUID),
       }),
     );
   });
@@ -172,6 +174,7 @@ describe('ReservationFormDrawer — the money on a booking', () => {
         id: 'res-w',
         // P200.00 -> 20 000 thebe. Money never travels as a float (invariant 1).
         input: { method: 'EFT', amount: 20_000, reference: 'FNB-9931' },
+        idempotencyKey: expect.stringMatching(UUID),
       }),
     );
   });
@@ -181,6 +184,45 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     fireEvent.change(screen.getByLabelText('How much did they pay?'), { target: { value: '900' } });
     expect(screen.getByText('That is more than this booking still owes.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record payment' })).toBeDisabled();
+  });
+
+  // Round 4 N-2: "10,5" used to become P105.00 — ten times what was typed.
+  it('refuses a decimal comma — "10,5" is not P105 — and says how to write it', () => {
+    open();
+    fireEvent.change(screen.getByLabelText('How much did they pay?'), { target: { value: '10,5' } });
+    expect(screen.getByText('Use a dot for decimals, e.g. 10.50')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record payment' })).toBeDisabled();
+    expect(markPaidMutate).not.toHaveBeenCalled();
+  });
+
+  it('refuses thousands separators too', () => {
+    open();
+    fireEvent.change(screen.getByLabelText('How much did they pay?'), { target: { value: '1,250.50' } });
+    expect(screen.getByText('Leave out thousands separators, e.g. 1250.50')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record payment' })).toBeDisabled();
+  });
+
+  it('accepts a dot decimal again once the comma is fixed', () => {
+    open();
+    const box = screen.getByLabelText('How much did they pay?');
+    fireEvent.change(box, { target: { value: '10,5' } });
+    fireEvent.change(box, { target: { value: '10.50' } });
+    expect(screen.queryByText('Use a dot for decimals, e.g. 10.50')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record payment' })).toBeEnabled();
+  });
+
+  it('sends the SAME Idempotency-Key when the confirm button is pressed again after a failure', async () => {
+    markPaidMutate.mockRejectedValueOnce(new Error('boom'));
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Yes — record/ }));
+    await waitFor(() => expect(markPaidMutate).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Yes — record/ }));
+    await waitFor(() => expect(markPaidMutate).toHaveBeenCalledTimes(2));
+    const [first, second] = markPaidMutate.mock.calls.map((c) => c[0].idempotencyKey);
+    expect(first).toMatch(UUID);
+    expect(second).toBe(first);
   });
 
   it('hides the payment form once nothing is outstanding', () => {

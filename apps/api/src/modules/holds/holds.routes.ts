@@ -24,8 +24,9 @@ export function createHoldsRouter(dbInstance = db): Router {
   router.use(authenticate);
 
   // H5 property scoping: lists filter to the active property; by-id routes 404 for
-  // entities outside it; creates validate any room/reservation reference. The sweep
-  // stays global — it is operational housekeeping, not a data read.
+  // entities outside it; creates validate any room/reservation reference. The manual
+  // sweep releases only the caller's own properties' expired holds (and audits them);
+  // the scheduled sweep (core/scheduler.ts) still covers everything.
   const inProperty = requireInActiveProperty(dbInstance, propertyOfHold, 'Hold');
   const roomRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'room_id', propertyOfRoom, 'Room');
   const reservationRefInProperty = requireBodyRefInActiveProperty(dbInstance, 'reservation_id', propertyOfReservation, 'Reservation');

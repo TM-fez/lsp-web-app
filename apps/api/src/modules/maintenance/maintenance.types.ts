@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
 
 export const MaintenanceStatusEnum = z.enum([
   'OPEN',
@@ -18,26 +19,26 @@ export const MaintenancePriorityEnum = z.enum([
 export const CreateWorkOrderSchema = z.object({
   room_id: z.string().uuid(),
   title: z.string().min(1).max(255),
-  description: z.string().optional().nullable(),
+  description: z.string().max(5000).optional().nullable(),
   priority: MaintenancePriorityEnum.default('MEDIUM'),
   assigned_to: z.string().uuid().optional().nullable(),
   contractor_name: z.string().max(255).optional().nullable(),
   contractor_phone: z.string().max(50).optional().nullable(),
-  cost_amount: z.number().int().min(0).optional().nullable(), // thebe
+  cost_amount: z.number().int().min(0).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional().nullable(), // thebe
 });
 
 export const UpdateWorkOrderSchema = z.object({
   title: z.string().min(1).max(255).optional(),
-  description: z.string().optional().nullable(),
+  description: z.string().max(5000).optional().nullable(),
   priority: MaintenancePriorityEnum.optional(),
   contractor_name: z.string().max(255).optional().nullable(),
   contractor_phone: z.string().max(50).optional().nullable(),
-  cost_amount: z.number().int().min(0).optional().nullable(),
+  cost_amount: z.number().int().min(0).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional().nullable(),
 });
 
 export const CompleteWorkOrderSchema = z.object({
   after_file_id: z.string().uuid().optional().nullable(),
-  notes: z.string().optional().nullable(),
+  notes: z.string().max(5000).optional().nullable(),
 });
 
 export const StartWorkOrderSchema = z.object({
@@ -51,7 +52,7 @@ export const AssignWorkOrderSchema = z.object({
 export const SetCostSchema = z.object({
   contractor_name: z.string().max(255).optional().nullable(),
   contractor_phone: z.string().max(50).optional().nullable(),
-  cost_amount: z.number().int().min(0).optional().nullable(), // thebe
+  cost_amount: z.number().int().min(0).max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.').optional().nullable(), // thebe
 });
 
 export type MaintenanceStatus = z.infer<typeof MaintenanceStatusEnum>;
