@@ -61,6 +61,11 @@ export class PaymentsService {
     if (hold.status !== 'HELD') {
       throw AppError.conflict(`Cannot take payment on a ${hold.status} hold`);
     }
+    // (Re-test 3) Money taken on a hold with no booking behind it lands on no folio and no
+    // invoice — it is simply lost to the books. Every real flow attaches the booking.
+    if (!hold.reservation_id) {
+      throw AppError.badRequest('This hold isn’t attached to a booking yet. Create or pick the booking first, then take the payment.');
+    }
 
     const quote = await this.quotes.getQuote(hold.quote_id);
     const defaultAmount =

@@ -1,3 +1,4 @@
+import { releaseReservationHolds } from '../holds/holds.release.js';
 import { Kysely, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
 import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
@@ -271,6 +272,10 @@ export class ReservationsRepository {
         (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(update.status);
       if (updated && (ended || opts.reconcile)) {
         await reconcileReceivable(trx, id, meta, { taxRateBps: opts.taxRateBps });
+      }
+      // A booking that ends lets go of any hold still waiting on its payment (re-test 3).
+      if (updated && ended) {
+        await releaseReservationHolds(trx, id, update.status === 'NO_SHOW' ? 'booking_no_show' : 'booking_cancelled', meta);
       }
 
       if (updated && roomMove) {

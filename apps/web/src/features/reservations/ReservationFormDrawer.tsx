@@ -25,7 +25,7 @@ import {
 } from './hooks';
 import { nights, statusLabel, statusTone, paymentTone, paymentLabel, isOpen, fmtDate, sourceLabel, SOURCES } from './util';
 import { todayISO } from '@/lib/utils/date';
-import { formatMoney, pulaToThebe } from '@/lib/utils/money';
+import { formatMoney, isPulaAmount, pulaToThebe } from '@/lib/utils/money';
 import { useAuthStore } from '@/store/auth';
 import type { Reservation, ReservationSource, Room, PaymentMethod } from '@/types';
 
@@ -136,8 +136,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   // Pula in the box, thebe on the wire (invariant 1 — money never travels as a float).
   // An empty box means "all of it", which is the common case at the desk.
   const payAmountThebe = payAmount.trim() === '' ? null : pulaToThebe(payAmount);
+  const payAmountWellFormed = payAmount.trim() === '' || isPulaAmount(payAmount);
   const payAmountValid =
-    payAmountThebe === null || (payAmountThebe > 0 && payAmountThebe <= outstanding);
+    payAmountThebe === null || (payAmountWellFormed && payAmountThebe > 0 && payAmountThebe <= outstanding);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [discType, setDiscType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
@@ -617,7 +618,12 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 <p className="text-[11px] text-muted">
                   In pula. Outstanding: {formatMoney(outstanding)}.
                 </p>
-                {payAmountThebe !== null && payAmountThebe > outstanding && (
+                {!payAmountWellFormed && (
+                  <p className="text-[11px] text-terra">
+                    Enter an amount in pula with at most two decimal places, e.g. 1250.50.
+                  </p>
+                )}
+                {payAmountWellFormed && payAmountThebe !== null && payAmountThebe > outstanding && (
                   <p className="text-[11px] text-terra">
                     That is more than this booking still owes.
                   </p>

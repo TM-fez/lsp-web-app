@@ -1,3 +1,4 @@
+import { releaseReservationHolds } from '../holds/holds.release.js';
 import { Kysely, sql } from 'kysely';
 import type { Database, PaymentIntentRow, NewPaymentIntent, PaymentAttemptRow, NewAuditLog, NewQuote } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
@@ -399,6 +400,11 @@ export class PaymentsRepository {
           `That is more than this booking still owes. Outstanding: ${describeThebe(outstanding)}.`
         );
       }
+
+      // The wizard's hold for this booking (if it is still live) is superseded by this
+      // payment — see releaseReservationHolds. Done before the new hold is opened, so the
+      // unit never has two live holds.
+      await releaseReservationHolds(trx, p.reservationId, 'superseded_by_desk_payment', meta);
 
       const quote = await new QuotesRepository(trx).create(p.quote, meta);
       const hold = await new HoldsRepository(trx).create(
