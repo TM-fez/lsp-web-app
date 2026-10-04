@@ -328,6 +328,48 @@ describe('R4 1a — cash revenue is reported before VAT', () => {
   });
 });
 
+describe('R5 — landlord statements are before VAT too', () => {
+  it('counts a landlord unit’s receipt net of VAT', async () => {
+    const { propertyId, roomId } = await makeProperty('OWN');
+    await db.updateTable('rooms').set({ ownership: 'LANDLORD' }).where('id', '=', roomId).execute();
+    const reservationId = await recognise(roomId, [{ stay_date: '2034-12-20', amount: 11_400 }]);
+    const invoice = await db
+      .insertInto('invoices')
+      .values({
+        number: `INV-OW-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        kind: 'BALANCE',
+        currency: 'BWP',
+        reservation_id: reservationId,
+        subtotal_amount: 10_000,
+        tax_rate_bps: 1400,
+        tax_amount: 1_400,
+        total_amount: 11_400,
+        status: 'PAID',
+        issued_by: userId,
+        created_by: userId,
+        updated_by: userId,
+        created_at: new Date('2034-12-20T10:00:00Z'),
+      } as never)
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    try {
+      const rows = await repo().revenueByOwnedRoom({
+        from: '2034-12-01', toExcl: '2035-01-01', propertyId, accessiblePropertyIds: null,
+      });
+      expect(num(rows.find((r) => r.room_id === roomId)?.amount)).toBe(10_000);
+    } finally {
+      await db.deleteFrom('invoices').where('id', '=', invoice.id).execute();
+      await db.deleteFrom('revenue_recognition').where('reservation_id', '=', reservationId).execute();
+      await db.deleteFrom('reservations').where('id', '=', reservationId).execute();
+      reservationIds.splice(reservationIds.indexOf(reservationId), 1);
+      await db.deleteFrom('rooms').where('id', '=', roomId).execute();
+      await db.deleteFrom('buildings').where('property_id', '=', propertyId).execute();
+      await db.deleteFrom('properties').where('id', '=', propertyId).execute();
+    }
+  });
+});
+
 describe('the two bases are separate books', () => {
   // The invariant that keeps the money axis honest: recognition never consults an
   // invoice, and cash revenue never consults the ledger. If either query grew a join

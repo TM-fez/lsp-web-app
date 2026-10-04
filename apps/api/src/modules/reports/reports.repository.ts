@@ -67,8 +67,9 @@ const CASH_AT = sql`COALESCE(
  * own line (`vatOutput`). The earned (accrual) basis does the same with the ledger's
  * `amount − tax_amount`, so cash and earned stay comparable in the reconciliation.
  *
- * Deliberately NOT applied to `revenueByOwnedRoom` (landlord statements): what a landlord
- * is shown is a contract question, not a reporting one — left gross until the owner says.
+ * (R5, 2026-10-04) Landlord statements (`revenueByOwnedRoom`) follow too. They were left
+ * gross at first as a contract question; the decision is that a landlord's share is
+ * worked out on what the business keeps, and VAT is never the business's to share.
  */
 const NET_CASH = sql`CASE WHEN i.kind = 'REFUND' THEN -(i.total_amount - i.tax_amount) ELSE i.total_amount - i.tax_amount END`;
 
@@ -400,12 +401,12 @@ export class ReportsRepository {
     return r.rows;
   }
 
-  // Revenue per owned unit (cash received incl. later-refunded receipts, refunds negative;
-  // recognised when the money moved — see CASH_AT).
+  // Revenue per owned unit, before VAT (cash received incl. later-refunded receipts,
+  // refunds negative; recognised when the money moved — see CASH_AT).
   async revenueByOwnedRoom(w: RepoWindow): Promise<Array<{ room_id: string; amount: string | number | null }>> {
     const r = await sql<{ room_id: string; amount: string | number | null }>`
       SELECT rsv.room_id AS room_id,
-             SUM(CASE WHEN i.kind = 'REFUND' THEN -i.total_amount ELSE i.total_amount END) AS amount
+             SUM(${NET_CASH}) AS amount
       FROM invoices i
       JOIN reservations rsv ON rsv.id = i.reservation_id
       JOIN rooms rm ON rm.id = rsv.room_id
