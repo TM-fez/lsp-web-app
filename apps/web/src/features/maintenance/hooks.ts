@@ -14,7 +14,7 @@ import {
   type UpdateWorkOrderInput,
 } from '@/lib/api/maintenance';
 import { listStaffDirectory } from '@/lib/api/users';
-import { errMessage } from '@/lib/api/errors';
+import { errMessage, repairOverlapMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
 import type { WorkOrder, Paginated, StaffDirectoryEntry } from '@/types';
 
@@ -60,7 +60,8 @@ export function useCreateWorkOrder() {
       toast.success('Repair logged — unit set to maintenance');
       refresh();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    // A repair over booked nights is a question the drawer asks inline, not an error toast.
+    onError: (e) => { if (!repairOverlapMessage(e)) toast.error(errMessage(e)); },
   });
 }
 
@@ -72,7 +73,8 @@ export function useUpdateWorkOrder() {
       toast.success('Work order updated');
       refresh();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    // A repair over booked nights is a question the drawer asks inline, not an error toast.
+    onError: (e) => { if (!repairOverlapMessage(e)) toast.error(errMessage(e)); },
   });
 }
 

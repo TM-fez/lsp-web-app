@@ -53,9 +53,12 @@ export class ContactsService {
 
   async updateContact(id: string, dto: UpdateContactDTO, meta: CRMRequestMeta, viewer?: ContactViewer): Promise<ContactRow> {
     // Ensure contact exists (and is one this person may see)
-    await this.getContactById(id, viewer);
+    const current = await this.getContactById(id, viewer);
     const { allow_duplicate_email, ...fields } = dto;
-    await this.assertEmailFree(fields.email, allow_duplicate_email, id);
+    // (R6 NEW-3) Only a CHANGED email is a new question. A full-form edit resends the email
+    // as it was, and a guest who already shares one (saved with "Save anyway") must stay editable.
+    const emailChanged = fields.email !== undefined && (fields.email ?? '').toLowerCase() !== (current.email ?? '').toLowerCase();
+    if (emailChanged) await this.assertEmailFree(fields.email, allow_duplicate_email, id);
 
     const updatePayload: UpdateContact = {
       ...fields,

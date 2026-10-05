@@ -17,6 +17,7 @@ import {
   useSetWorkOrderCost,
   useStaffDirectory,
 } from './hooks';
+import { repairOverlapMessage } from '@/lib/api/errors';
 import { PRIORITIES, priorityLabel, statusLabel, statusTone, isClosed, fmtDate } from './util';
 import type { WorkOrder, Room, MaintenancePriority } from '@/types';
 
@@ -75,6 +76,8 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
   // until the job is done (the safe default when nobody knows how long it will take).
   const [blocksFrom, setBlocksFrom] = useState('');
   const [blocksTo, setBlocksTo] = useState('');
+  // (R6) The server warned the repair falls on booked / held nights — offer "Save anyway".
+  const [overlap, setOverlap] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -89,6 +92,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     setCost(order?.cost_amount != null ? String(order.cost_amount / 100) : '');
     setBlocksFrom(order?.blocks_from ? order.blocks_from.slice(0, 10) : '');
     setBlocksTo(order?.blocks_to ? order.blocks_to.slice(0, 10) : '');
+    setOverlap(null);
   }, [open, order]);
 
   const unitLabel = (id: string) => {
@@ -105,13 +109,15 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
     : { blocks_from: null, blocks_to: null };
   const valid = title.trim().length > 0 && (isEdit || roomId !== '') && (!serious || windowValid);
 
-  async function submit() {
+  async function submit(confirmOverlap = false) {
     if (!valid) return;
+    setOverlap(null);
+    const answer = confirmOverlap ? { confirm_overlap: true } : {};
     try {
       if (order) {
         await update.mutateAsync({
           id: order.id,
-          input: { title: title.trim(), description: description.trim() || null, priority, ...blockWindow },
+          input: { title: title.trim(), description: description.trim() || null, priority, ...blockWindow, ...answer },
         });
       } else {
         await create.mutateAsync({
@@ -123,11 +129,13 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
           contractor_phone: contractorPhone.trim() || null,
           cost_amount: cost ? Math.round(parseFloat(cost) * 100) : null,
           ...blockWindow,
+          ...answer,
         });
       }
       onOpenChange(false);
-    } catch {
+    } catch (e) {
       /* hook surfaces the error toast; keep the drawer open */
+      setOverlap(repairOverlapMessage(e));
     }
   }
 
@@ -387,11 +395,22 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
             )}
           </div>
 
+          {overlap && (
+            <div role="alert" className="flex flex-col gap-2 rounded-md border border-terra/40 bg-cream p-3 text-sm text-char">
+              <p>{overlap}</p>
+              <div>
+                <Button variant="outline" onClick={() => submit(true)} disabled={busy}>
+                  Save anyway
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={submit} disabled={busy || !valid}>
+            <Button variant="primary" onClick={() => submit()} disabled={busy || !valid}>
               {busy && <Spinner className="text-white" />} {isEdit ? 'Save changes' : 'Log repair'}
             </Button>
           </div>

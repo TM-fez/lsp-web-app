@@ -45,7 +45,7 @@ export class ExpensesRepository {
     else if (status === 'APPROVED')
       q = q.where('wo.cost_approved_at', 'is not', null).where('wo.cost_reconciled_at', 'is', null);
     else if (status === 'RECONCILED') q = q.where('wo.cost_reconciled_at', 'is not', null);
-    return q.orderBy('wo.opened_at', 'desc').execute();
+    return q.orderBy('wo.opened_at', 'desc').orderBy('wo.id', 'desc').execute();
   }
 
   async propertyOf(id: string): Promise<string | null> {

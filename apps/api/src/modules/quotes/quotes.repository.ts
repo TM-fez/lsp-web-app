@@ -47,7 +47,7 @@ export class QuotesRepository {
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('created_at', 'desc').orderBy('id', 'desc').execute(),
       countQuery.execute(),
     ]);
 

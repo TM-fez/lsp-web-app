@@ -146,7 +146,7 @@ export class PaymentsRepository {
 
     const offset = (pagination.page - 1) * pagination.limit;
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('payment_intents.created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('payment_intents.created_at', 'desc').orderBy('payment_intents.id', 'desc').execute(),
       countQuery.execute(),
     ]);
 

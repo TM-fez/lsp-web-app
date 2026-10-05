@@ -225,7 +225,7 @@ export class ReservationsRepository {
     const offset = (pagination.page - 1) * pagination.limit;
 
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('reservations.created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('reservations.created_at', 'desc').orderBy('reservations.id', 'desc').execute(),
       countQuery.execute(),
     ]);
 
@@ -457,6 +457,18 @@ export class ReservationsRepository {
    */
   async softDelete(id: string, meta: ReservationRequestMeta): Promise<boolean> {
     return this.db.transaction().execute(async (trx) => {
+      // (R6 / R5 NEW-6) A booking that still holds the guest's money can't just vanish: it
+      // would drop out of "Cancelled with money held" while its PAID receipt stayed in
+      // Invoices with nothing to explain it. Read under the booking's row lock (invariant:
+      // every money read that decides a write is taken under the lock).
+      await lockReservation(trx, id);
+      const held = (await paidToDate(trx, [id])).get(id) ?? 0;
+      if (held > 0) {
+        throw AppError.conflict(
+          `This booking still holds ${describeThebe(held)} of the guest’s money. Refund it from the booking (or note why it is kept) before removing the booking.`,
+        );
+      }
+
       const deleted = await trx
         .updateTable('reservations')
         .set({ deleted_at: sql`now()`, deleted_by: meta.userId })

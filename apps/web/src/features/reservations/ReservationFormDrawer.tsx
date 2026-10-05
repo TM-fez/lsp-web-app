@@ -517,9 +517,16 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                     </div>
 
                     {/* (2026-10-04) A stay agreed at P0 has no invoice by design — nothing is
-                        owed — so say so rather than leave it looking like a missing one. */}
+                        owed — so say so rather than leave it looking like a missing one.
+                        (R6) A FULL refund also brings the agreed total to P0 (refunding lowers
+                        it, 2026-10-02), but it has a receipt and a credit note — so it is
+                        "fully refunded", never "complimentary". */}
                     {folio.data.total_amount === 0 && folio.data.total_source === 'FOLIO' && (
-                      <p className="mt-1 text-sm text-muted">Complimentary — no charge, so there is no invoice.</p>
+                      folio.data.invoices.some((i) => i.kind === 'REFUND' || i.status === 'REFUNDED') ? (
+                        <p className="mt-1 text-sm text-muted">Fully refunded — everything paid has gone back to the guest, so nothing is owed.</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted">Complimentary — no charge, so there is no invoice.</p>
+                      )
                     )}
 
                     {folio.data.outstanding_amount > 0 && (
