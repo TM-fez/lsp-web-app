@@ -82,7 +82,7 @@ export class UsersRepository {
   }
 
   async listAll(): Promise<StaffUser[]> {
-    const rows = await this.selectUserWithRole().orderBy('users.created_at', 'asc').execute();
+    const rows = await this.selectUserWithRole().orderBy('users.created_at', 'asc').orderBy('users.id', 'asc').execute();
     const ids = rows.map((r) => r.id);
     const [extras, props] = await Promise.all([this.extrasFor(ids), this.propertiesFor(ids)]);
     return rows.map((r) => toStaffUser(r, extras.get(r.id) ?? [], props.get(r.id) ?? []));

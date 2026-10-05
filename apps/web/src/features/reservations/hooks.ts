@@ -112,7 +112,14 @@ export function useMarkPaid() {
   return useMutation({
     mutationFn: ({ id, input, idempotencyKey }: { id: string; input: MarkPaidInput; idempotencyKey?: string }) =>
       markReservationPaid(id, input, idempotencyKey),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // (R6 NEW-1) A replayed duplicate changed nothing — saying "Payment recorded" again
+      // made a clerk think two payments went in.
+      if (data.replayed) {
+        toast.info('This payment was already recorded a moment ago — nothing new was added.');
+        invalidate();
+        return;
+      }
       // Deliberately not "confirmed ✓": a PART payment leaves a balance owing, and a
       // tick beside "confirmed" is exactly how staff come to believe a booking is
       // settled when it is not. The drawer's folio panel shows what is actually left.

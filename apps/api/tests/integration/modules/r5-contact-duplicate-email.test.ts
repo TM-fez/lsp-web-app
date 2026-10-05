@@ -52,4 +52,14 @@ describe('duplicate guest email', () => {
     const err = await service.updateContact(mine.id, { email: other }, meta()).catch((e) => e);
     expect(err.error).toBe('Duplicate Email');
   });
+
+  // (R6 NEW-3) A full-form edit resends every field. A guest who already SHARES an email
+  // (saved with "Save anyway") got 409 on every edit, even with the email untouched.
+  it('does not ask again when an edit resends a shared email unchanged', async () => {
+    const shared = `shared-${uniq}@t.example`;
+    await service.createContact({ type: 'individual', name: 'Parent', email: shared }, meta());
+    const child = await service.createContact({ type: 'individual', name: 'Child', email: shared, allow_duplicate_email: true }, meta());
+    const edited = await service.updateContact(child.id, { name: 'Child B', email: shared.toUpperCase(), phone: '+267 70 000 000' }, meta());
+    expect(edited.name).toBe('Child B');
+  });
 });

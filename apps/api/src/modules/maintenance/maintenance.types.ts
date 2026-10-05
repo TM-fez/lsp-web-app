@@ -23,6 +23,8 @@ const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-
 const blockWindow = {
   blocks_from: isoDay.optional().nullable(),
   blocks_to: isoDay.optional().nullable(),
+  // (R6) "Save anyway" after the server warned the repair falls on booked or held nights.
+  confirm_overlap: z.boolean().optional(),
 };
 function windowIsValid(d: { blocks_from?: string | null; blocks_to?: string | null }): boolean {
   const from = d.blocks_from ?? null;

@@ -22,6 +22,8 @@ describe('MaintenanceService', () => {
       softDelete: vi.fn(),
       updateRoomStatus: vi.fn(),
       syncRoomForMaintenance: vi.fn(),
+      repairConflicts: vi.fn().mockResolvedValue({ bookings: 0, holdIds: [] }),
+      releaseHoldsForRepair: vi.fn(),
       roomPropertyId: vi.fn().mockResolvedValue('p1'),
       workOrderPropertyId: vi.fn().mockResolvedValue('p1'),
       transaction: vi.fn(async (cb) => cb({} as any)),

@@ -1,3 +1,4 @@
+import { propertyToday } from '../../core/time.js';
 import { Kysely, sql, Transaction } from 'kysely';
 import type { Database, MaintenanceWorkOrderRow, NewMaintenanceWorkOrder, UpdateMaintenanceWorkOrder } from '../../db/types.js';
 import type { MaintenanceQueryDTO } from './maintenance.types.js';
@@ -153,7 +154,7 @@ export class MaintenanceRepository {
     const offset = (query.page - 1) * query.limit;
 
     const [data, [{ total }]] = await Promise.all([
-      q.limit(query.limit).offset(offset).orderBy('wo.created_at', 'desc').execute(),
+      q.limit(query.limit).offset(offset).orderBy('wo.created_at', 'desc').orderBy('wo.id', 'desc').execute(),
       countQ.execute(),
     ]);
 
@@ -233,6 +234,50 @@ export class MaintenanceRepository {
       .limit(1).executeTakeFirst();
     const want = blocking ? 'MAINTENANCE' : 'AVAILABLE';
     if (room.status !== want) await this.updateRoomStatus(roomId, want, meta, trx);
+  }
+
+  /**
+   * (R6) What a serious repair would take out of use: live bookings and live bare holds on
+   * this unit during [from, to). With no window the repair closes the unit from today on,
+   * open-ended, so anything still to come counts.
+   */
+  async repairConflicts(roomId: string, from: string | null, to: string | null, trx: DB = this.db) {
+    const start = from ?? propertyToday();
+    const bookings = await sql<{ n: string }>`
+      SELECT count(*) AS n FROM reservations r
+       WHERE r.room_id = ${roomId}::uuid AND r.deleted_at IS NULL
+         AND r.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN', 'BLOCKED')
+         AND r.check_out_date > ${start}::date
+         AND (${to}::date IS NULL OR r.check_in_date < ${to}::date)`.execute(trx);
+    const holds = await sql<{ id: string }>`
+      SELECT h.id FROM holds h
+       WHERE h.room_id = ${roomId}::uuid AND h.status = 'HELD' AND h.deleted_at IS NULL
+         AND h.reservation_id IS NULL AND h.held_until > now()
+         AND h.check_out_date > ${start}::date
+         AND (${to}::date IS NULL OR h.check_in_date < ${to}::date)`.execute(trx);
+    return { bookings: Number(bookings.rows[0]?.n ?? 0), holdIds: holds.rows.map((h) => h.id) };
+  }
+
+  /** Release bare holds a confirmed repair now covers (their payment attempts expire too). */
+  async releaseHoldsForRepair(holdIds: string[], meta: { userId: string; requestId?: string }, trx: DB = this.db) {
+    if (holdIds.length === 0) return;
+    await trx.updateTable('holds')
+      .set({ status: 'RELEASED', release_reason: 'repair', updated_by: meta.userId, updated_at: sql`now()` })
+      .where('id', 'in', holdIds).where('status', '=', 'HELD').execute();
+    const expired = await trx.updateTable('payment_intents')
+      .set({ status: 'EXPIRED', last_error: 'unit closed for a repair', updated_by: meta.userId, updated_at: sql`now()` })
+      .where('hold_id', 'in', holdIds).where('status', 'in', ['PENDING', 'RETRY'])
+      .returning('id').execute();
+    await trx.insertInto('audit_logs').values([
+      ...holdIds.map((id) => ({
+        request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+        entity: 'holds', entity_id: id, diff: { status: 'RELEASED', release_reason: 'repair' },
+      })),
+      ...expired.map((pi) => ({
+        request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+        entity: 'payment_intents', entity_id: pi.id, diff: { status: 'EXPIRED', reason: 'repair' },
+      })),
+    ]).execute();
   }
 
   async updateRoomStatus(roomId: string, status: 'AVAILABLE' | 'MAINTENANCE', meta: { userId: string, requestId?: string }, trx: DB = this.db) {
