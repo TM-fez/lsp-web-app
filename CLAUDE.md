@@ -177,6 +177,16 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    commas or spaces (`"10,5"` is NaN, not P105). Show `<AmountError>` under the box. (f) A discount can
    only be added to a PENDING booking; the drawer says so instead of offering a form that 409s.
 
+   **R6 — should-fix (2026-10-05).** (a) **Every paged list breaks ties on `id`** after its sort column —
+   rows sharing a timestamp otherwise repeat or vanish between pages. (b) **A cancelled booking still
+   holding money can't be removed** (`ReservationsRepository.softDelete`, under the row lock). (c) **A
+   HIGH/CRITICAL repair over booked or bare-held nights is a question** (409 `error: 'Repair Overlap'`,
+   answered with `confirm_overlap`, which releases the bare holds it covers; bookings are never moved
+   automatically). (d) A contact edit only re-checks the email when it changed. (e) Replayed money POSTs:
+   the web reads `Idempotent-Replayed` and says "already recorded" instead of a second success.
+   (f) **Never edit an applied migration** — postgres-migrations refuses a changed hash and the API won't
+   boot. A large backfill goes in a NEW migration, in batches, deployed in a quiet window.
+
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
 **Forward view only.** `occupancyByProperty`, `occupancyByMonth` and `occupancyByOwnedRoom` are

@@ -65,8 +65,8 @@ export class ContactsRepository {
     
     const [data, [{ total }]] = await Promise.all([
       (filters.sort === 'stays'
-        ? query.orderBy('previous_stays', 'desc').orderBy('name', 'asc')
-        : query.orderBy('created_at', 'desc')
+        ? query.orderBy('previous_stays', 'desc').orderBy('name', 'asc').orderBy('id', 'asc')
+        : query.orderBy('created_at', 'desc').orderBy('id', 'desc')
       )
         .limit(pagination.limit)
         .offset(offset)

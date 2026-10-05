@@ -138,7 +138,7 @@ export class RoomsRepository {
     const offset = (pagination.page - 1) * pagination.limit;
 
     const [data, [{ total }]] = await Promise.all([
-      query.limit(pagination.limit).offset(offset).orderBy('rooms.created_at', 'desc').execute(),
+      query.limit(pagination.limit).offset(offset).orderBy('rooms.created_at', 'desc').orderBy('rooms.id', 'desc').execute(),
       countQuery.execute(),
     ]);
 

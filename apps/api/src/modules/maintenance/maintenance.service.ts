@@ -43,6 +43,40 @@ export class MaintenanceService {
     return order;
   }
 
+  /**
+   * (R6, related to NEW-8) A HIGH / CRITICAL repair takes its unit out of use — on its
+   * dates, or (with none) from today on. Logged over nights a guest is booked or a quote is
+   * held, it used to save silently: the booking stayed on a unit nobody could use and the
+   * hold stayed HELD. Now it is a question the web turns into "Save anyway"
+   * (`confirm_overlap`); going ahead releases the bare holds it covers. Bookings are left
+   * for a person to move — the system never moves a guest by itself.
+   */
+  private async checkRepairOverlap(
+    roomId: string,
+    priority: string,
+    from: string | null,
+    to: string | null,
+    confirmed: boolean | undefined,
+    meta: { userId: string; requestId?: string },
+    trx: Parameters<MaintenanceRepository['repairConflicts']>[3],
+  ) {
+    if (priority !== 'HIGH' && priority !== 'CRITICAL') return;
+    const { bookings, holdIds } = await this.repo.repairConflicts(roomId, from, to, trx);
+    if (bookings === 0 && holdIds.length === 0) return;
+    if (!confirmed) {
+      const parts = [
+        bookings ? `${bookings} booking${bookings === 1 ? '' : 's'}` : '',
+        holdIds.length ? `${holdIds.length} hold${holdIds.length === 1 ? '' : 's'} for a quote` : '',
+      ].filter(Boolean).join(' and ');
+      throw new AppError(
+        409,
+        'Repair Overlap',
+        `This unit has ${parts} on ${from ? 'some of those nights' : 'nights still to come'}. Move the guest first — or save anyway if the repair can’t wait (holds on those nights will be released).`,
+      );
+    }
+    await this.repo.releaseHoldsForRepair(holdIds, meta, trx);
+  }
+
   async openWorkOrder(data: CreateWorkOrderDTO, meta: { userId: string, requestId?: string }, activePropertyId?: string) {
     // Scope: a work order can only be opened against a unit in the active property.
     if (activePropertyId) {
@@ -52,6 +86,9 @@ export class MaintenanceService {
       }
     }
     const order = await this.repo.transaction(async (trx) => {
+      await this.checkRepairOverlap(
+        data.room_id, data.priority, data.blocks_from ?? null, data.blocks_to ?? null, data.confirm_overlap, meta, trx,
+      );
       // Create work order
       const created = await this.repo.create({
         room_id: data.room_id,
@@ -249,15 +286,28 @@ export class MaintenanceService {
     // so a P500 approval could be quietly turned into P50,000 approved spend. A changed
     // cost needs approving again, exactly as setCost already enforces.
     const costChanged = data.cost_amount !== undefined && (data.cost_amount ?? null) !== (order.cost_amount ?? null);
+    // `confirm_overlap` is the "save anyway" answer, not a column.
+    const fields = { ...data };
+    delete fields.confirm_overlap;
     const changes = costChanged
-      ? { ...data, cost_approved_by: null, cost_approved_at: null, cost_reconciled_by: null, cost_reconciled_at: null }
-      : data;
+      ? { ...fields, cost_approved_by: null, cost_approved_at: null, cost_reconciled_by: null, cost_reconciled_at: null }
+      : fields;
     // A priority change, or adding / removing a repair window (R5), can start or end the
     // unit's all-dates block — so the unit's status is re-read in the same transaction.
     const priorityChanged = data.priority !== undefined && data.priority !== order.priority;
     const windowChanged = data.blocks_from !== undefined || data.blocks_to !== undefined;
     if (priorityChanged || windowChanged) {
       return this.repo.transaction(async (trx) => {
+        const day = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+        await this.checkRepairOverlap(
+          order.room_id,
+          data.priority ?? order.priority,
+          windowChanged ? data.blocks_from ?? null : day(order.blocks_from),
+          windowChanged ? data.blocks_to ?? null : day(order.blocks_to),
+          data.confirm_overlap,
+          meta,
+          trx,
+        );
         const updated = await this.repo.update(id, changes, meta, trx);
         await this.repo.syncRoomForMaintenance(order.room_id, meta, trx);
         return updated;

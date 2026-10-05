@@ -130,6 +130,29 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     expect(screen.getByText('part paid')).toBeInTheDocument();
   });
 
+  // (R6) A FULL refund also leaves the agreed total at P0 — refunding lowers it by what went
+  // back (owner decision 2026-10-02). That is not a complimentary stay, and saying "there is
+  // no invoice" was false: the receipt and its credit note are right there.
+  it('says "Fully refunded" — not "Complimentary" — after a full refund', () => {
+    folioData = {
+      ...folioData!, total_amount: 0, paid_amount: 0, outstanding_amount: 0, payment_state: 'PAID',
+      invoices: [
+        { id: 'i1', number: 'INV-1', kind: 'BALANCE', status: 'REFUNDED', total_amount: 100_800, created_at: '2026-08-24T10:00:00Z' },
+        { id: 'i2', number: 'CN-1', kind: 'REFUND', status: 'PAID', total_amount: 100_800, created_at: '2026-08-25T10:00:00Z' },
+      ],
+    };
+    open();
+    expect(screen.getByText(/Fully refunded/)).toBeInTheDocument();
+    expect(screen.queryByText(/Complimentary/)).not.toBeInTheDocument();
+  });
+
+  it('keeps "Complimentary" for a stay that was agreed at P0 and never invoiced', () => {
+    folioData = { ...folioData!, total_amount: 0, paid_amount: 0, outstanding_amount: 0, payment_state: 'PAID', invoices: [] };
+    open();
+    expect(screen.getByText(/Complimentary — no charge/)).toBeInTheDocument();
+    expect(screen.queryByText(/Fully refunded/)).not.toBeInTheDocument();
+  });
+
   it('flags a price that was never agreed, so nobody quotes it as a debt', () => {
     folioData = { ...folioData!, total_source: 'PRICED' };
     open();

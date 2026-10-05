@@ -91,6 +91,7 @@ export class NotificationsRepository {
     if (opts.unreadOnly) q = q.where('read_at', 'is', null);
     return q
       .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
       .limit(Math.min(opts.limit ?? 30, 100))
       .execute();
   }

@@ -37,7 +37,7 @@ export class OperatingExpensesRepository {
     if (filters.category) q = q.where('oe.category', '=', filters.category);
     if (filters.from) q = q.where('oe.incurred_on', '>=', new Date(filters.from));
     if (filters.to) q = q.where('oe.incurred_on', '<=', new Date(filters.to));
-    return q.orderBy('oe.incurred_on', 'desc').orderBy('oe.created_at', 'desc').execute();
+    return q.orderBy('oe.incurred_on', 'desc').orderBy('oe.created_at', 'desc').orderBy('oe.id', 'desc').execute();
   }
 
   async findById(id: string) {

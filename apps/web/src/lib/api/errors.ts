@@ -9,3 +9,11 @@ export function isDuplicateEmail(e: unknown): boolean {
   const a = e as { response?: { status?: number; data?: { error?: string } } };
   return a?.response?.status === 409 && a?.response?.data?.error === 'Duplicate Email';
 }
+
+/** (R6) The server's question "this repair falls on booked / held nights" — answered with "Save anyway". */
+export function repairOverlapMessage(e: unknown): string | null {
+  const a = e as { response?: { status?: number; data?: { error?: string; message?: string } } };
+  return a?.response?.status === 409 && a?.response?.data?.error === 'Repair Overlap'
+    ? a.response.data.message ?? 'This repair falls on booked or held nights.'
+    : null;
+}

@@ -17,10 +17,11 @@ export interface CreateWorkOrderInput {
   cost_amount?: number | null; // thebe
   blocks_from?: string | null; // YYYY-MM-DD, first night closed
   blocks_to?: string | null; // YYYY-MM-DD, first night back in use
+  confirm_overlap?: boolean; // (R6) "Save anyway" over booked / held nights
 }
 
 export type UpdateWorkOrderInput = Partial<
-  Pick<CreateWorkOrderInput, 'title' | 'description' | 'priority' | 'blocks_from' | 'blocks_to'>
+  Pick<CreateWorkOrderInput, 'title' | 'description' | 'priority' | 'blocks_from' | 'blocks_to' | 'confirm_overlap'>
 >;
 
 export const WORK_ORDER_LIST_LIMIT = 100;

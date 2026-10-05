@@ -114,7 +114,7 @@ export class FilesRepository {
     const offset = (page - 1) * limit;
 
     const [data, [{ total }]] = await Promise.all([
-      query.limit(limit).offset(offset).orderBy('created_at', 'desc').execute(),
+      query.limit(limit).offset(offset).orderBy('created_at', 'desc').orderBy('id', 'desc').execute(),
       countQuery.execute(),
     ]);
 

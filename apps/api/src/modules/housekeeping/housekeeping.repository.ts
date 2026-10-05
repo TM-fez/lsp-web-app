@@ -138,7 +138,7 @@ export class HousekeepingRepository {
 
     const offset = (query.page - 1) * query.limit;
     const [data, [{ total }]] = await Promise.all([
-      q.limit(query.limit).offset(offset).orderBy('opened_at', 'desc').execute(),
+      q.limit(query.limit).offset(offset).orderBy('opened_at', 'desc').orderBy('id', 'desc').execute(),
       countQ.execute(),
     ]);
 
