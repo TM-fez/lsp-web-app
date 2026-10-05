@@ -30,19 +30,25 @@ function LateBadge({ days }: { days: number }) {
 
 function GuestRow({ no, card, action, late = 0 }: { no: number; card: CockpitGuestCard; action?: ReactNode; late?: number }) {
   return (
-    <div className="group flex items-center gap-4 border-b border-line py-3 transition-[padding] duration-500 ease-[cubic-bezier(.19,1,.22,1)] last:border-b-0 hover:pl-2">
+    // (R6 #11) On a phone the name was cut to "Kab…" and the unit/date wrapped into 3–4
+    // cramped lines beside the badges. The row now wraps: guest on top (name in full, unit/date
+    // on one unbroken line), badges + action on their own line below. From `sm` up it is one
+    // line again, exactly as before.
+    <div className="group flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3 transition-[padding] duration-500 ease-[cubic-bezier(.19,1,.22,1)] last:border-b-0 hover:pl-2 sm:flex-nowrap">
       <span className="font-display text-xs italic text-terra">{String(no).padStart(2, '0')}</span>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-lg text-ink">{card.guest_name}</div>
-        <div className="text-[11px] uppercase tracking-[0.12em] text-muted">
+        <div className="break-words font-display text-lg text-ink sm:truncate">{card.guest_name}</div>
+        <div className="whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-muted">
           {/* shortDay, not slice(5): API dates arrive as ISO timestamps. */}
           {card.room_code} · {shortDay(card.check_in_date)} → {shortDay(card.check_out_date)}
         </div>
       </div>
-      <LateBadge days={late} />
-      {FLAGGED_SOURCES.has(card.source) && <Badge tone="violet">{sourceLabel(card.source)}</Badge>}
-      <Badge tone={reservationTone[card.status]}>{card.status.toLowerCase().replace('_', ' ')}</Badge>
-      {action}
+      <div data-testid="guest-row-actions" className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+        <LateBadge days={late} />
+        {FLAGGED_SOURCES.has(card.source) && <Badge tone="violet">{sourceLabel(card.source)}</Badge>}
+        <Badge tone={reservationTone[card.status]}>{card.status.toLowerCase().replace('_', ' ')}</Badge>
+        {action}
+      </div>
     </div>
   );
 }
