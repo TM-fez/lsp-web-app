@@ -1,4 +1,4 @@
-import { Kysely, sql } from 'kysely';
+import { Kysely, sql, type Transaction } from 'kysely';
 import type { Database } from '../../db/types.js';
 import { EARNING_STATUSES } from './revenue.types.js';
 import type {
@@ -20,6 +20,33 @@ export class RevenueRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   /**
+   * (R6 NEW-9, R7 N7-1) Run `fn` holding a per-booking lock, so reconciles of ONE booking
+   * queue behind each other instead of racing (unlocked, the one that read the OLD price
+   * could finish last and leave the ledger disagreeing with the folio until the next sweep).
+   *
+   * The lock is a TRANSACTION advisory lock and `fn` gets a repository bound to that same
+   * transaction. R6 held a session lock on one pooled connection while `fn` asked the pool
+   * for more; with as many reconciles in flight as the pool has connections, every
+   * connection sat holding a lock and waiting for one that never came back — the API froze
+   * until restarted. So: inside `fn`, use ONLY the repository it is given, never the pool
+   * (no pricer, no other module) — anything that needs the pool is done before the lock.
+   */
+  async lockedFor<T>(reservationId: string, fn: (locked: RevenueRepository) => Promise<T>): Promise<T> {
+    const run = async (trx: Kysely<Database>) => {
+      await sql`SELECT pg_advisory_xact_lock(hashtext(${'revenue:' + reservationId}))`.execute(trx);
+      return fn(new RevenueRepository(trx));
+    };
+    return this.db.isTransaction ? run(this.db) : this.db.transaction().execute(run);
+  }
+
+  /** Run `fn` in a transaction — this repository's own when it is already bound to one. */
+  private inTransaction<T>(fn: (trx: Transaction<Database>) => Promise<T>): Promise<T> {
+    return this.db.isTransaction
+      ? fn(this.db as Transaction<Database>)
+      : this.db.transaction().execute(fn);
+  }
+
+  /**
    * Every booking whose nights should be on the ledger, with the money needed to put
    * them there.
    *
@@ -33,24 +60,6 @@ export class RevenueRepository {
    * The window bounds by STAY dates, not by booking dates: recognition is about the
    * nights, so a booking made last year for a stay next month belongs to next month.
    */
-  /**
-   * (R6 NEW-9) Run `fn` holding a per-booking advisory lock, so reconciles of ONE booking
-   * queue behind each other instead of racing. Two edits at once each trigger a reconcile;
-   * unlocked, the one that read the OLD price could finish last and leave the ledger
-   * disagreeing with the folio until the next sweep. Session-level on its own connection,
-   * so `fn` may use the pool freely (and its own transactions) while the lock is held.
-   */
-  async withReservationLock<T>(reservationId: string, fn: () => Promise<T>): Promise<T> {
-    return this.db.connection().execute(async (conn) => {
-      await sql`SELECT pg_advisory_lock(hashtext(${'revenue:' + reservationId}))`.execute(conn);
-      try {
-        return await fn();
-      } finally {
-        await sql`SELECT pg_advisory_unlock(hashtext(${'revenue:' + reservationId}))`.execute(conn);
-      }
-    });
-  }
-
   async findRecognisable(window?: {
     from?: string;
     toExcl?: string;
@@ -198,7 +207,7 @@ export class RevenueRepository {
     },
     meta: RevenueRequestMeta
   ): Promise<{ written: number; superseded: number }> {
-    return this.db.transaction().execute(async (trx) => {
+    return this.inTransaction(async (trx) => {
       const previous = await trx
         .selectFrom('revenue_recognition')
         .select(['id', 'version'])

@@ -194,8 +194,12 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    **R6 — low (2026-10-05).** (a) **One live contact per email** unless someone chose "Save anyway":
    `contacts_email_unique` (migration 089, partial on `lower(email)` where `NOT email_shared`); a 23505 on it
    maps to the same 409 'Duplicate Email' question, so six parallel saves make one guest. (b) **Revenue
-   recognition takes a per-booking advisory lock** (`withReservationLock`) and re-reads before booking,
-   so the sweep and an after-write call can't both book the same night. (c) A check-out can't be dated
+   recognition takes a per-booking lock** (`RevenueRepository.lockedFor`) and re-reads before booking,
+   so the sweep and an after-write call can't both book the same night. **R7 N7-1 (critical):** the lock
+   is `pg_advisory_xact_lock` inside ONE transaction, and the callback may use only the repository it is
+   handed — pricing happens *before* the lock. Never hold a pooled connection while asking the same pool
+   for another: R6 did, and ten concurrent booking writes froze the whole API. The pool also fails a
+   request after `DATABASE_POOL_ACQUIRE_TIMEOUT_MS` (15 s) instead of hanging it forever. (c) A check-out can't be dated
    after today (Gaborone day), same as check-in. (d) **P&L `vat_output` follows the basis** — earned VAT on
    accrual, collected VAT on cash. (e) Repair dates are real days in 2000–2099, at most 366 nights apart.
    (f) Housekeeping times show in Gaborone time (`propertyMoment`). (g) The workspace switcher only offers
