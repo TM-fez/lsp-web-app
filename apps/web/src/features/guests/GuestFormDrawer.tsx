@@ -62,8 +62,13 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
   const emailValid = email.trim() === '' || emailOk(email.trim());
   const valid = name.trim().length > 0 && emailValid;
 
+  // (R6 item 20) `busy` only greys the button after the next render, so two quick clicks
+  // both got through. A ref is set synchronously and holds the second one back.
+  const inFlight = useRef(false);
+
   async function submit(allowDuplicateEmail = false) {
-    if (!valid) return;
+    if (!valid || inFlight.current) return;
+    inFlight.current = true;
     setDuplicateEmail(false);
     const payload = {
       type,
@@ -87,6 +92,8 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
     } catch (e) {
       /* hook surfaces the error toast; keep the drawer open */
       if (isDuplicateEmail(e)) setDuplicateEmail(true);
+    } finally {
+      inFlight.current = false;
     }
   }
 

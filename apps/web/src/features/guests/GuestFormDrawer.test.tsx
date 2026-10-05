@@ -33,10 +33,27 @@ describe('GuestFormDrawer — add guest', () => {
     expect(arg.idempotencyKey).toMatch(UUID);
   });
 
-  it('reuses the key for a second press within the same open, and a fresh one after reopening', async () => {
+  // (R6 item 20) Two clicks before the button greys out sent two requests and showed two
+  // "Guest added" toasts. The second click while the first is in flight does nothing.
+  it('ignores a second click while the first add is still in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    createMutate.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    setup();
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Neo Kgosi' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add guest/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Add guest/ }));
+    resolve({});
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the key for a retry within the same open, and a fresh one after reopening', async () => {
+    createMutate.mockRejectedValueOnce(new Error('network'));
     const { rerender } = setup();
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: 'Neo Kgosi' } });
     fireEvent.click(screen.getByRole('button', { name: /Add guest/ }));
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /Add guest/ }));
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(2));
     const [a, b] = createMutate.mock.calls.map((c) => c[0].idempotencyKey);

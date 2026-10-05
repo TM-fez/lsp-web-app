@@ -62,7 +62,7 @@ export interface PnlSummary {
   total_cost: number;
   net: number;
   margin_pct: number;            // net / revenue * 100 (1dp), 0 when no revenue
-  vat_output: number;            // VAT collected on PAID invoices (thebe) — BURS output VAT
+  vat_output: number;            // output VAT on the report's basis: earned (accrual) or collected (cash), thebe
   reservations: number;          // confirmed+ stays overlapping the window
   room_nights_booked: number;
   room_nights_available: number;

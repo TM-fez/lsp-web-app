@@ -131,6 +131,16 @@ describe('CheckinsService', () => {
       ).rejects.toThrow('before check-in');
     });
 
+    // (R6 item 19) A check-out stamped 2099-01-01 was accepted — the stay then read as
+    // still running for 70 years in every report that measures nights.
+    it('refuses a check-out time in the future', async () => {
+      repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: new Date('2020-01-01'), reservation_id: 'res1', room_id: 'rm1', ...STAY_DAYS } as any);
+      await expect(
+        service.checkOut('occ1', { checked_out_at: new Date('2099-01-01T10:00:00Z') } as any, meta)
+      ).rejects.toThrow('can’t be in the future');
+      expect(repository.checkOut).not.toHaveBeenCalled();
+    });
+
     it('checks out an active occupancy', async () => {
       repository.findById.mockResolvedValue({ id: 'occ1', status: 'CHECKED_IN', checked_in_at: new Date('2020-01-01'), reservation_id: 'res1', room_id: 'rm1', ...STAY_DAYS } as any);
       repository.checkOut.mockResolvedValue({ id: 'occ1', status: 'CHECKED_OUT' } as any);

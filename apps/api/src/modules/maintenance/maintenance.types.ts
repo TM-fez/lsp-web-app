@@ -19,7 +19,22 @@ export const MaintenancePriorityEnum = z.enum([
 // (R5, migration 085) The nights a HIGH / CRITICAL repair takes the unit out of use,
 // half-open like a booking: from the first night closed to the first night back in use.
 // Both or neither — without them the unit is out of use for every date until it's done.
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-14.');
+//
+// (R6 item 19) Years 0001 / 9999, 30 February and a twenty-year window were all accepted —
+// typing slips that either never block or take a unit off sale for good. A real calendar
+// day in 2000–2099, and at most a year (366 nights); longer than that, leave the dates
+// empty and the unit is closed until the repair is done.
+const MAX_REPAIR_NIGHTS = 366;
+const realDay = (v: string) => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+const isoDay = z
+  .string()
+  .regex(/^20\d{2}-\d{2}-\d{2}$/, 'Use a date like 2026-10-14.')
+  .refine(realDay, 'That date isn’t on the calendar.');
+const nightsBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 const blockWindow = {
   blocks_from: isoDay.optional().nullable(),
   blocks_to: isoDay.optional().nullable(),
@@ -30,10 +45,10 @@ function windowIsValid(d: { blocks_from?: string | null; blocks_to?: string | nu
   const from = d.blocks_from ?? null;
   const to = d.blocks_to ?? null;
   if (from === null && to === null) return true;
-  return from !== null && to !== null && to > from;
+  return from !== null && to !== null && to > from && nightsBetween(from, to) <= MAX_REPAIR_NIGHTS;
 }
 const windowMessage = {
-  message: 'Give both repair dates, with the “back in use” day after the first day closed — or leave both empty.',
+  message: 'Give both repair dates, with the “back in use” day after the first day closed and no more than a year apart — or leave both empty.',
   path: ['blocks_to'],
 };
 

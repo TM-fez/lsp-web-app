@@ -32,3 +32,18 @@ export function shortDay(iso: string): string {
   const md = day.slice(5);
   return /^\d{2}-\d{2}$/.test(md) ? md : day;
 }
+
+/**
+ * (R6 #14) `MM-DD HH:mm` for a MOMENT (a timestamptz such as a task's `opened_at`) on the
+ * property's clock. Slicing the ISO string — fine for a calendar `date` — showed UTC for a
+ * moment: "opened 10-05 04:49" when it was 06:49 in Gaborone.
+ */
+export function propertyMoment(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: PROPERTY_TIMEZONE, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+}

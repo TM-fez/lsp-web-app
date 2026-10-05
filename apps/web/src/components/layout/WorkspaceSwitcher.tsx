@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronsUpDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
-import { WORKSPACES, getWorkspace, type WorkspaceId } from './nav';
+import { useAuthStore } from '@/store/auth';
+import { getWorkspace, workspacesFor, type WorkspaceId } from './nav';
 
 interface Props {
   current: WorkspaceId;
@@ -13,6 +14,11 @@ export function WorkspaceSwitcher({ current, onSelect }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const active = getWorkspace(current);
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  // Only workspaces with a screen this user can open — plus the one they're in, so the
+  // switcher never hides where they are.
+  const workspaces = workspacesFor(hasPerm);
+  if (!workspaces.some((w) => w.id === current)) workspaces.unshift(active);
   const ActiveIcon = active.icon;
 
   useEffect(() => {
@@ -56,7 +62,7 @@ export function WorkspaceSwitcher({ current, onSelect }: Props) {
           role="listbox"
           className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg"
         >
-          {WORKSPACES.map((ws) => {
+          {workspaces.map((ws) => {
             const Icon = ws.icon;
             const selected = ws.id === current;
             return (

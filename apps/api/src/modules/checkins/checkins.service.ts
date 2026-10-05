@@ -155,6 +155,11 @@ export class CheckinsService {
     if (checkedOutAt < occupancy.checked_in_at) {
       throw AppError.badRequest('Cannot check out before check-in time');
     }
+    // (R6 item 19) A check-out dated 2099 was accepted, so the stay read as running for
+    // decades. Same rule as check-in: judged by the Gaborone day, never later than today.
+    if (todayInPropertyTZ(checkedOutAt) > todayInPropertyTZ()) {
+      throw AppError.badRequest('The check-out time can’t be in the future.');
+    }
 
     const updated = await this.repository.checkOut(
       occupancy.id,

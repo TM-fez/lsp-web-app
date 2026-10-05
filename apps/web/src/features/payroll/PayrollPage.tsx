@@ -76,6 +76,7 @@ export function PayrollPage() {
   };
 
   const rows = employees.data ?? [];
+  const offPayroll = rows.filter((e) => e.gross_amount !== null && !e.active).length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -109,6 +110,15 @@ export function PayrollPage() {
           <div className="mt-2 font-display text-3xl tabnum text-ink">{summary.data ? formatMoney(summary.data.monthly_total * 12) : '—'}</div>
         </div>
       </div>
+
+      {/* (R6 item 20) Pay saved without "On payroll" ticked left the totals at P0 and nothing
+          said why. Name it here and on the row. */}
+      {offPayroll > 0 && (
+        <p role="note" className="rounded-md border border-line bg-cream px-3 py-2 text-xs text-char">
+          {offPayroll === 1 ? '1 person has' : `${offPayroll} people have`} pay set but {offPayroll === 1 ? 'isn’t' : 'aren’t'} on
+          payroll, so they aren’t in these totals. Edit their pay and tick “On payroll” to count them.
+        </p>
+      )}
 
       {employees.isLoading ? (
         <div className="flex h-40 items-center justify-center"><Spinner className="h-6 w-6" /></div>
@@ -147,6 +157,9 @@ export function PayrollPage() {
                     {e.gross_amount !== null
                       ? <span className="tabnum">{formatMoney(e.gross_amount)} <span className="text-xs text-muted">/ {e.frequency === 'WEEKLY' ? 'week' : 'month'}</span></span>
                       : <span className="text-muted">Not set</span>}
+                    {e.gross_amount !== null && !e.active && (
+                      <Badge tone="amber" className="ml-2">Not on payroll</Badge>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-right tabnum text-ink">{e.monthly_equivalent !== null ? formatMoney(e.monthly_equivalent) : '—'}</td>
                   <td className="px-4 py-3.5 text-muted">{e.payment_method ?? '—'}</td>

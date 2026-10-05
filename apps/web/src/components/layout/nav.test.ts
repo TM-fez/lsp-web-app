@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceForPath, landingRoute, homePathFor, permForPath, titleForPath } from './nav';
+import { workspaceForPath, landingRoute, homePathFor, permForPath, titleForPath, workspacesFor } from './nav';
+import { ROLE_PERMISSIONS } from '@/test/rolePermissions';
 
 describe('workspaceForPath', () => {
   it('maps built routes to their workspace', () => {
@@ -112,3 +113,26 @@ describe('titleForPath', () => {
     expect(titleForPath('/nowhere')).toBe('Lifestyle Operations');
   });
 });
+
+// (R6 item 20) Maintenance, housekeeping and contractor logins were offered a Finance
+// workspace in which they can open nothing — an empty sidebar, then a "not allowed" page.
+describe('workspacesFor', () => {
+  const ids = (role: string) =>
+    workspacesFor((p) => ROLE_PERMISSIONS[role]!.includes(p)).map((w) => w.id);
+
+  it('hides Finance from roles that can open none of its screens', () => {
+    expect(ids('maintenance')).not.toContain('FINANCE');
+    expect(ids('housekeeping')).not.toContain('FINANCE');
+    expect(ids('contractor')).not.toContain('FINANCE');
+  });
+
+  it('keeps Finance for the roles that work there', () => {
+    expect(ids('accounts')).toContain('FINANCE');
+    expect(ids('operations')).toContain('FINANCE');
+  });
+
+  it('keeps Admin for everyone — Settings (your own password) lives there', () => {
+    expect(ids('contractor')).toContain('ADMIN');
+  });
+});
+

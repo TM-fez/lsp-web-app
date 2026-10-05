@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { ActivityService } from '../../../src/modules/activity/activity.service.js';
 
 function serviceWith(rows: unknown[]) {
@@ -44,5 +46,47 @@ describe('ActivityService.recent', () => {
     const svc = serviceWith([row({ entity: 'something_new', action: 'UPDATE' })]);
     const [item] = await svc.recent();
     expect(item!.action).toBe('updated a record');
+  });
+
+  // (R6 item 20) The global feed was full of "updated a record" — payments, invoices, holds,
+  // check-outs all fell through. Every entity the code audits (and the feed shows) now has
+  // its own phrase; this scans the source so a new entity can't quietly fall through.
+  it('has a real phrase for every entity the code writes to the audit log', async () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (p.endsWith('.ts')) files.push(p);
+      }
+    };
+    walk(join(__dirname, '../../../src'));
+    const entities = new Set<string>();
+    for (const f of files) {
+      for (const m of readFileSync(f, 'utf8').matchAll(/entity: ?'([a-z_]+)'/g)) entities.add(m[1]!);
+    }
+    const hidden = ['auth_login', 'refresh_token', 'staff_compensation', 'user_password'];
+    const shown = [...entities].filter((e) => !hidden.includes(e));
+    expect(shown.length).toBeGreaterThan(15);
+
+    const vague: string[] = [];
+    for (const entity of shown) {
+      for (const action of ['CREATE', 'UPDATE', 'DELETE']) {
+        const [item] = await serviceWith([row({ entity, action })]).recent();
+        if (item!.action.includes('a record')) vague.push(`${entity}/${action}`);
+      }
+    }
+    expect(vague).toEqual([]);
+  });
+
+  it('says what happened to a payment, an invoice and a stay', async () => {
+    const phrase = async (entity: string, action: string, diff: unknown) =>
+      (await serviceWith([row({ entity, action, diff })]).recent())[0]!.action;
+    expect(await phrase('payment_intents', 'UPDATE', { status: 'PAID' })).toBe('recorded a payment');
+    expect(await phrase('payment_intents', 'UPDATE', { status: 'FAILED' })).toBe('marked a payment failed');
+    expect(await phrase('invoices', 'UPDATE', { status: 'VOID' })).toBe('voided an invoice');
+    expect(await phrase('invoices', 'UPDATE', { emailed_to: 'a@b.c' })).toBe('emailed an invoice');
+    expect(await phrase('occupancy', 'UPDATE', { status: 'CHECKED_OUT' })).toBe('checked a guest out');
+    expect(await phrase('occupancy', 'CREATE', null)).toBe('checked a guest in');
   });
 });

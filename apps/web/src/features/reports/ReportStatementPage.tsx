@@ -70,7 +70,7 @@ export function ReportStatementPage() {
             {row('Operating expenses', s.operating_expenses)}
             {row('Net', s.net, true)}
             <div className="mt-3 flex justify-between py-1.5 text-sm text-slate-500"><span>Margin</span><span className="tabnum">{s.margin_pct}%</span></div>
-            <div className="flex justify-between py-1.5 text-sm text-slate-500"><span>VAT collected (output)</span><span className="tabnum">{formatMoney(s.vat_output, 'BWP')}</span></div>
+            <div className="flex justify-between py-1.5 text-sm text-slate-500"><span>Output VAT ({s.revenue_basis === 'CASH' ? 'on money received' : 'on revenue earned'})</span><span className="tabnum">{formatMoney(s.vat_output, 'BWP')}</span></div>
             <div className="flex justify-between py-1.5 text-sm text-slate-500"><span>Occupancy</span><span className="tabnum">{s.occupancy_pct}%</span></div>
           </section>
 

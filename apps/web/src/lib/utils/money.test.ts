@@ -73,3 +73,18 @@ describe('pulaAmountError — the sentence shown under the field', () => {
     }
   });
 });
+
+// (R6 item 20) "0" is a well-formed amount, so the box said nothing while the button stayed
+// grey. Where money must actually move, zero gets its own sentence.
+describe('pulaAmountError — zero where an amount is required', () => {
+  it('says so when the field needs more than nothing', () => {
+    expect(pulaAmountError('0', { positive: true })).toBe('Enter more than P0.00');
+    expect(pulaAmountError('0.00', { positive: true })).toBe('Enter more than P0.00');
+  });
+
+  it('leaves zero alone where zero is allowed, and a real amount alone either way', () => {
+    expect(pulaAmountError('0')).toBeNull();
+    expect(pulaAmountError('0.01', { positive: true })).toBeNull();
+  });
+});
+

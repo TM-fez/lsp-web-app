@@ -67,52 +67,58 @@ export class RevenueService {
     const earning = await this.repository.findRecognisable(window);
     result.reservations_examined = earning.length;
 
-    for (const reservation of earning) {
-      const desired = await this.desiredNights(reservation);
+    for (const listed of earning) {
+      // (R6 NEW-9) One booking at a time, re-read once we hold its lock: the row listed
+      // above may already be stale if another edit committed while we waited.
+      await this.repository.withReservationLock(listed.id, async () => {
+        const [reservation] = await this.repository.findRecognisable({ reservationIds: [listed.id] });
+        if (!reservation) return; // stopped earning meanwhile — the loop below handles that
+        const desired = await this.desiredNights(reservation);
 
-      // No agreed total and nothing to reconstruct one from: leave the booking
-      // completely alone, rather than treating "we cannot price it" as "it earns
-      // nothing". The difference matters — falling through would supersede real
-      // recognised nights the moment a pricer went missing, destroying a month of
-      // ledger because of a wiring change.
-      if (desired.unpriced) {
-        result.unpriced += 1;
-        continue;
-      }
-      if (desired.totalSource === 'PRICED') result.reconstructed += 1;
+        // No agreed total and nothing to reconstruct one from: leave the booking
+        // completely alone, rather than treating "we cannot price it" as "it earns
+        // nothing". The difference matters — falling through would supersede real
+        // recognised nights the moment a pricer went missing, destroying a month of
+        // ledger because of a wiring change.
+        if (desired.unpriced) {
+          result.unpriced += 1;
+          return;
+        }
+        if (desired.totalSource === 'PRICED') result.reconstructed += 1;
 
-      const live = await this.repository.liveNights(reservation.id);
-      const reason = supersedeReason(live, desired.slices, reservation.room_id);
-      if (reason === null) continue; // already agrees — leave it entirely alone
+        const live = await this.repository.liveNights(reservation.id);
+        const reason = supersedeReason(live, desired.slices, reservation.room_id);
+        if (reason === null) return; // already agrees — leave it entirely alone
 
-      const amount = desired.slices.reduce((sum, slice) => sum + slice.amount, 0);
+        const amount = desired.slices.reduce((sum, slice) => sum + slice.amount, 0);
 
-      // A dry run counts exactly what an apply would write, and writes nothing. Each
-      // booking is measured against the live ledger independently, so skipping the
-      // write cannot skew the ones that follow.
-      const written = options.dryRun
-        ? { written: desired.slices.length, superseded: live.length }
-        : await this.repository.replaceNights(
-            {
-              reservationId: reservation.id,
-              roomId: reservation.room_id,
-              currency: reservation.folio_currency,
-              taxRateBps: reservation.tax_rate_bps,
-              totalSource: desired.totalSource,
-              slices: desired.slices,
-              reason,
-            },
-            meta
-          );
+        // A dry run counts exactly what an apply would write, and writes nothing. Each
+        // booking is measured against the live ledger independently, so skipping the
+        // write cannot skew the ones that follow.
+        const written = options.dryRun
+          ? { written: desired.slices.length, superseded: live.length }
+          : await this.repository.replaceNights(
+              {
+                reservationId: reservation.id,
+                roomId: reservation.room_id,
+                currency: reservation.folio_currency,
+                taxRateBps: reservation.tax_rate_bps,
+                totalSource: desired.totalSource,
+                slices: desired.slices,
+                reason,
+              },
+              meta
+            );
 
-      result.reservations_changed += 1;
-      result.nights_written += written.written;
-      result.nights_superseded += written.superseded;
-      result.amount_written += amount;
-      if (desired.totalSource === 'PRICED') {
-        result.nights_reconstructed += written.written;
-        result.amount_reconstructed += amount;
-      }
+        result.reservations_changed += 1;
+        result.nights_written += written.written;
+        result.nights_superseded += written.superseded;
+        result.amount_written += amount;
+        if (desired.totalSource === 'PRICED') {
+          result.nights_reconstructed += written.written;
+          result.amount_reconstructed += amount;
+        }
+      });
     }
 
     // The other half of agreement: bookings that still have live nights but have

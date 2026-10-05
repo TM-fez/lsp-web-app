@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 const scope = vi.hoisted(() => ({ note: null as string | null }));
@@ -80,5 +80,14 @@ describe('ReportsPage', () => {
       render(<ReportsPage />);
       expect(screen.queryByRole('note')).not.toBeInTheDocument();
     });
+  });
+
+  // (R6 item 20) A custom range typed back to front silently fell back to the preset, so
+  // the figures on screen were not for the dates in the boxes. Say so.
+  it('says when a custom range is back to front, and what it is showing instead', () => {
+    render(<ReportsPage />);
+    fireEvent.change(screen.getByLabelText('Custom range from'), { target: { value: '2026-09-30' } });
+    fireEvent.change(screen.getByLabelText('Custom range to'), { target: { value: '2026-09-01' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('The end date is before the start date');
   });
 });

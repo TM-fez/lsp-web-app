@@ -274,7 +274,7 @@ export function OperatingExpensesPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="oe-amount">Amount (Pula)</Label>
               <Input id="oe-amount" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" />
-              <AmountError value={form.amount} />
+              <AmountError value={form.amount} positive />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="oe-prop">Property</Label>

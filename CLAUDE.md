@@ -191,6 +191,16 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    the web reads `Idempotent-Replayed` and says "already recorded" instead of a second success.
    (f) **Never edit an applied migration** — postgres-migrations refuses a changed hash and the API won't
    boot. A large backfill goes in a NEW migration, in batches, deployed in a quiet window.
+   **R6 — low (2026-10-05).** (a) **One live contact per email** unless someone chose "Save anyway":
+   `contacts_email_unique` (migration 089, partial on `lower(email)` where `NOT email_shared`); a 23505 on it
+   maps to the same 409 'Duplicate Email' question, so six parallel saves make one guest. (b) **Revenue
+   recognition takes a per-booking advisory lock** (`withReservationLock`) and re-reads before booking,
+   so the sweep and an after-write call can't both book the same night. (c) A check-out can't be dated
+   after today (Gaborone day), same as check-in. (d) **P&L `vat_output` follows the basis** — earned VAT on
+   accrual, collected VAT on cash. (e) Repair dates are real days in 2000–2099, at most 366 nights apart.
+   (f) Housekeeping times show in Gaborone time (`propertyMoment`). (g) The workspace switcher only offers
+   workspaces with a screen the user can open (`workspacesFor`). (h) An unpaid PENDING check-in stays
+   allowed — that is invariant 3, not a bug.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
@@ -239,7 +249,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 088). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 089). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so

@@ -28,7 +28,10 @@ function setup(bookings = [BOOKING], live: unknown[] = []) {
     superseded: live.length,
   }));
   const repository = {
-    findRecognisable: vi.fn(async () => bookings),
+    // The service re-reads each booking by id once it holds that booking's lock (R6).
+    findRecognisable: vi.fn(async (w?: { reservationIds?: string[] }) =>
+      w?.reservationIds ? bookings.filter((b: { id: string }) => w.reservationIds!.includes(b.id)) : bookings),
+    withReservationLock: vi.fn(async (_id: string, fn: () => Promise<unknown>) => fn()),
     findNoLongerEarning: vi.fn(async () => [] as string[]),
     liveNights: vi.fn(async () => live),
     replaceNights,

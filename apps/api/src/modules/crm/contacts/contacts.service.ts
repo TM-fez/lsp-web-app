@@ -31,12 +31,21 @@ export class ContactsService {
    */
   private async assertEmailFree(email: string | null | undefined, allow: boolean | undefined, excludeId?: string) {
     if (!email || allow) return;
-    if (await this.repository.emailInUse(email, excludeId)) {
-      throw new AppError(
-        409,
-        'Duplicate Email',
-        'Another guest already uses this email. Search for them first — or save anyway if they really share it.',
-      );
+    if (await this.repository.emailInUse(email, excludeId)) throw duplicateEmail();
+  }
+
+  /**
+   * (R6 NEW-4) The check above runs before the write, so two saves at the same moment could
+   * both pass it. The unique index (migration 089) settles that race; its loser gets the
+   * same question as anyone else instead of a raw database error.
+   */
+  private async raceSafe<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (err) {
+      const e = err as { code?: string; constraint?: string };
+      if (e.code === '23505' && e.constraint === 'contacts_email_unique') throw duplicateEmail();
+      throw err;
     }
   }
 
@@ -45,10 +54,12 @@ export class ContactsService {
     await this.assertEmailFree(fields.email, allow_duplicate_email);
     const newContact: NewContact = {
       ...fields,
+      // (R6 NEW-2) "Save anyway" is recorded on the guest — and so in the audit entry.
+      ...(allow_duplicate_email && fields.email ? { email_shared: true } : {}),
       created_by: meta.userId,
       updated_by: meta.userId,
     };
-    return this.repository.create(newContact, meta);
+    return this.raceSafe(() => this.repository.create(newContact, meta));
   }
 
   async updateContact(id: string, dto: UpdateContactDTO, meta: CRMRequestMeta, viewer?: ContactViewer): Promise<ContactRow> {
@@ -59,13 +70,16 @@ export class ContactsService {
     // as it was, and a guest who already shares one (saved with "Save anyway") must stay editable.
     const emailChanged = fields.email !== undefined && (fields.email ?? '').toLowerCase() !== (current.email ?? '').toLowerCase();
     if (emailChanged) await this.assertEmailFree(fields.email, allow_duplicate_email, id);
+    // A changed email saved with "Save anyway" is a shared one from now on (R6 NEW-2).
+    const sharedFlag = emailChanged && allow_duplicate_email && fields.email ? { email_shared: true } : {};
 
     const updatePayload: UpdateContact = {
       ...fields,
+      ...sharedFlag,
       updated_by: meta.userId,
     };
     
-    const updated = await this.repository.update(id, updatePayload, meta);
+    const updated = await this.raceSafe(() => this.repository.update(id, updatePayload, meta));
     if (!updated) {
       throw AppError.notFound(`Failed to update contact with id ${id}`);
     }
@@ -81,4 +95,13 @@ export class ContactsService {
       throw AppError.notFound(`Failed to delete contact with id ${id}`);
     }
   }
+}
+
+/** The one wording of the duplicate-email question (never names the other guest). */
+function duplicateEmail(): AppError {
+  return new AppError(
+    409,
+    'Duplicate Email',
+    'Another guest already uses this email. Search for them first — or save anyway if they really share it.',
+  );
 }

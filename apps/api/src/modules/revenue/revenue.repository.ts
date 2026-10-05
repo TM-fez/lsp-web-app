@@ -33,6 +33,24 @@ export class RevenueRepository {
    * The window bounds by STAY dates, not by booking dates: recognition is about the
    * nights, so a booking made last year for a stay next month belongs to next month.
    */
+  /**
+   * (R6 NEW-9) Run `fn` holding a per-booking advisory lock, so reconciles of ONE booking
+   * queue behind each other instead of racing. Two edits at once each trigger a reconcile;
+   * unlocked, the one that read the OLD price could finish last and leave the ledger
+   * disagreeing with the folio until the next sweep. Session-level on its own connection,
+   * so `fn` may use the pool freely (and its own transactions) while the lock is held.
+   */
+  async withReservationLock<T>(reservationId: string, fn: () => Promise<T>): Promise<T> {
+    return this.db.connection().execute(async (conn) => {
+      await sql`SELECT pg_advisory_lock(hashtext(${'revenue:' + reservationId}))`.execute(conn);
+      try {
+        return await fn();
+      } finally {
+        await sql`SELECT pg_advisory_unlock(hashtext(${'revenue:' + reservationId}))`.execute(conn);
+      }
+    });
+  }
+
   async findRecognisable(window?: {
     from?: string;
     toExcl?: string;
