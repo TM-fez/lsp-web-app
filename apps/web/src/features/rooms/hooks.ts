@@ -14,7 +14,7 @@ import {
   type CreateRoomInput,
   type UpdateRoomInput,
 } from '@/lib/api/rooms';
-import { errMessage } from '@/lib/api/errors';
+import { errMessage, unitHasBookingsMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
 import type { Room } from '@/types';
 
@@ -112,10 +112,10 @@ export function useRotateGuestToken() {
 
 export type RoomStatusAction = 'maintenance' | 'out-of-service' | 'restore';
 
-const STATUS_FN: Record<RoomStatusAction, (id: string) => Promise<Room>> = {
+const STATUS_FN: Record<RoomStatusAction, (id: string, confirm?: boolean) => Promise<Room>> = {
   maintenance: setRoomMaintenance,
   'out-of-service': setRoomOutOfService,
-  restore: restoreRoom,
+  restore: (id) => restoreRoom(id),
 };
 
 const STATUS_MSG: Record<RoomStatusAction, string> = {
@@ -127,11 +127,13 @@ const STATUS_MSG: Record<RoomStatusAction, string> = {
 export function useRoomStatusAction() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: RoomStatusAction }) => STATUS_FN[action](id),
+    mutationFn: ({ id, action, confirm }: { id: string; action: RoomStatusAction; confirm?: boolean }) =>
+      STATUS_FN[action](id, confirm),
     onSuccess: (_data, { action }) => {
       toast.success(STATUS_MSG[action]);
       invalidate();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    // "This unit still has bookings ahead" is a question the page asks inline, not an error toast.
+    onError: (e) => { if (!unitHasBookingsMessage(e)) toast.error(errMessage(e)); },
   });
 }

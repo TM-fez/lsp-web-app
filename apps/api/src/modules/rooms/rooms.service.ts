@@ -10,6 +10,7 @@ import type {
   CreateRoomDTO,
   UpdateRoomDTO,
   UpdateChannelConfigDTO,
+  RoomCloseDTO,
 } from './rooms.types.js';
 
 export class RoomsService {
@@ -105,7 +106,7 @@ export class RoomsService {
     return updated;
   }
 
-  async setMaintenance(id: string, meta: RoomRequestMeta): Promise<RoomRow> {
+  async setMaintenance(id: string, meta: RoomRequestMeta, answer: RoomCloseDTO = {}): Promise<RoomRow> {
     const room = await this.getRoomById(id);
 
     // An occupied room cannot be put into maintenance.
@@ -113,17 +114,31 @@ export class RoomsService {
       throw AppError.conflict('Cannot set an occupied room to maintenance');
     }
 
-    return this.applyStatus(id, 'MAINTENANCE', meta);
+    return this.close(id, 'MAINTENANCE', answer, meta);
   }
 
-  async setOutOfService(id: string, meta: RoomRequestMeta): Promise<RoomRow> {
+  async setOutOfService(id: string, meta: RoomRequestMeta, answer: RoomCloseDTO = {}): Promise<RoomRow> {
     const room = await this.getRoomById(id);
 
     if (room.status === 'OCCUPIED') {
       throw AppError.conflict('Cannot take an occupied room out of service');
     }
 
-    return this.applyStatus(id, 'OUT_OF_SERVICE', meta);
+    return this.close(id, 'OUT_OF_SERVICE', answer, meta);
+  }
+
+  /** (R7 N7-4) Off sale — asks first when bookings or holds are still ahead (see closeUnit). */
+  private async close(
+    id: string,
+    status: 'MAINTENANCE' | 'OUT_OF_SERVICE',
+    answer: RoomCloseDTO,
+    meta: RoomRequestMeta
+  ): Promise<RoomRow> {
+    const updated = await this.repository.closeUnit(id, status, answer.confirm_overlap === true, meta);
+    if (!updated) {
+      throw AppError.notFound(`Failed to update room with id ${id}`);
+    }
+    return updated;
   }
 
   async restoreRoom(id: string, meta: RoomRequestMeta): Promise<RoomRow> {

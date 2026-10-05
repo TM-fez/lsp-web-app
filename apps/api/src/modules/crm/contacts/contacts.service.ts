@@ -35,6 +35,15 @@ export class ContactsService {
   }
 
   /**
+   * (R7 N7-3) Is this a second record sharing an email? Only when the caller said "Save
+   * anyway" AND another live guest really has it — otherwise the record owns its email.
+   */
+  private async sharesEmail(email: string | null | undefined, allow: boolean | undefined, excludeId?: string): Promise<boolean> {
+    if (!email || !allow) return false;
+    return this.repository.emailInUse(email, excludeId);
+  }
+
+  /**
    * (R6 NEW-4) The check above runs before the write, so two saves at the same moment could
    * both pass it. The unique index (migration 089) settles that race; its loser gets the
    * same question as anyone else instead of a raw database error.
@@ -52,10 +61,11 @@ export class ContactsService {
   async createContact(dto: CreateContactDTO, meta: CRMRequestMeta): Promise<ContactRow> {
     const { allow_duplicate_email, ...fields } = dto;
     await this.assertEmailFree(fields.email, allow_duplicate_email);
+    const shared = await this.sharesEmail(fields.email, allow_duplicate_email);
     const newContact: NewContact = {
       ...fields,
       // (R6 NEW-2) "Save anyway" is recorded on the guest — and so in the audit entry.
-      ...(allow_duplicate_email && fields.email ? { email_shared: true } : {}),
+      ...(shared ? { email_shared: true } : {}),
       created_by: meta.userId,
       updated_by: meta.userId,
     };
@@ -70,8 +80,10 @@ export class ContactsService {
     // as it was, and a guest who already shares one (saved with "Save anyway") must stay editable.
     const emailChanged = fields.email !== undefined && (fields.email ?? '').toLowerCase() !== (current.email ?? '').toLowerCase();
     if (emailChanged) await this.assertEmailFree(fields.email, allow_duplicate_email, id);
-    // A changed email saved with "Save anyway" is a shared one from now on (R6 NEW-2).
-    const sharedFlag = emailChanged && allow_duplicate_email && fields.email ? { email_shared: true } : {};
+    // (R6 NEW-2, R7 N7-3) A changed email decides the flag afresh: shared only if someone
+    // else really has it, so moving to a fresh email puts the guest back under the
+    // one-live-email rule instead of leaving them flagged for good.
+    const sharedFlag = emailChanged ? { email_shared: await this.sharesEmail(fields.email, allow_duplicate_email, id) } : {};
 
     const updatePayload: UpdateContact = {
       ...fields,

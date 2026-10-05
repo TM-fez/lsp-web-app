@@ -79,7 +79,14 @@ export const UpdateChannelConfigSchema = z.object({
     .nullable(),
 });
 
+// (R7 N7-4) Closing a unit that still has bookings or holds ahead is a question; this is
+// the answer ("close it anyway"). No body at all means "no answer yet".
+export const RoomCloseSchema = z
+  .object({ confirm_overlap: z.boolean().optional() })
+  .default({});
+
 export type CreateRoomDTO = z.infer<typeof CreateRoomSchema>;
+export type RoomCloseDTO = z.infer<typeof RoomCloseSchema>;
 export type UpdateRoomDTO = z.infer<typeof UpdateRoomSchema>;
 export type UpdateChannelConfigDTO = z.infer<typeof UpdateChannelConfigSchema>;
 

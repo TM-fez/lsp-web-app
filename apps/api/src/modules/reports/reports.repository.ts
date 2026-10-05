@@ -282,7 +282,8 @@ export class ReportsRepository {
   }
 
   // ── H6 nudges — forward-looking occupancy over the next 7/30 property-days ────
-  // Demand = CONFIRMED/CHECKED_IN/BLOCKED nights (unpaid PENDING is not demand);
+  // Demand = PENDING/CONFIRMED/CHECKED_IN/BLOCKED nights — an unpaid booking holds the room
+  // (D01), so it is demand too (D02, counted since R6);
   // capacity = active non-out-of-service rooms × days.
   async forwardOccupancy(): Promise<
     Array<{ property_id: string; property_name: string; booked_nights_7: number; booked_nights_30: number; room_count: number }>

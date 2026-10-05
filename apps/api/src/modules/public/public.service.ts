@@ -8,6 +8,7 @@ import { logger } from '../../core/logger.js';
 import { sendEmail, isEmailConfigured } from '../../core/email/email.service.js';
 import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo, CreateEnquiryDTO, EnquiryConfirmation, PublicPropertyOption } from './public.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
+import type { CRMRequestMeta } from '../crm/crm.types.js';
 
 const unitLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 
@@ -108,6 +109,33 @@ export class PublicService {
    * free unit of the requested type, and create a PENDING reservation (the same
    * money-loop invariant — only payment confirms it). Returns a confirmation.
    */
+  /** (R6 NEW-5) The guest record a website booking belongs to — see createBooking. */
+  private async resolveContact(
+    dto: CreateBookingDTO,
+    actorId: string,
+    actorMeta: CRMRequestMeta
+  ): Promise<{ id: string }> {
+    const existing = await this.repository.findContactByEmail(dto.email);
+    const samePerson = !!existing && !!dto.phone && digitsOf(existing.phone) !== '' && digitsOf(existing.phone) === digitsOf(dto.phone);
+    if (samePerson) return existing!;
+    return this.contacts.create(
+      {
+        type: 'individual',
+        name: dto.name,
+        email: dto.email,
+        phone: dto.phone,
+        notes: existing
+          ? 'Created from a website booking — possible duplicate: another guest already uses this email. Check before merging.'
+          : 'Created from a website booking',
+        // Not a new owner of the email — a second record that shares it (migration 089).
+        ...(existing ? { email_shared: true } : {}),
+        created_by: actorId,
+        updated_by: actorId,
+      },
+      actorMeta,
+    );
+  }
+
   async createBooking(dto: CreateBookingDTO, meta: PublicRequestMeta) {
     // Refuse a layout we can't price BEFORE writing anything. With no active rate plan
     // (or a zero rate) the booking used to be created anyway — a P0 stay holding a real
@@ -130,26 +158,17 @@ export class PublicService {
     // existing record is reused only when email AND phone both match (the same person
     // coming back). Otherwise a new record is made from what was typed and flagged as a
     // possible duplicate for staff to check; nothing about the existing guest leaks.
-    const existing = await this.repository.findContactByEmail(dto.email);
-    const samePerson = !!existing && !!dto.phone && digitsOf(existing.phone) !== '' && digitsOf(existing.phone) === digitsOf(dto.phone);
-    const contact = samePerson
-      ? existing!
-      : await this.contacts.create(
-          {
-            type: 'individual',
-            name: dto.name,
-            email: dto.email,
-            phone: dto.phone,
-            notes: existing
-              ? 'Created from a website booking — possible duplicate: another guest already uses this email. Check before merging.'
-              : 'Created from a website booking',
-            // Not a new owner of the email — a second record that shares it (migration 089).
-            ...(existing ? { email_shared: true } : {}),
-            created_by: actorId,
-            updated_by: actorId,
-          },
-          actorMeta,
-        );
+    // (R7 N7-2) Two bookings with the same NEW email at once both see "nobody has it"; one
+    // saves and the other hits the one-live-email rule (migration 089). The loser looks
+    // again and carries on as if the first had been there all along — a reused record or
+    // a flagged duplicate — instead of answering a guest with a generic clash.
+    let contact: { id: string };
+    try {
+      contact = await this.resolveContact(dto, actorId, actorMeta);
+    } catch (err) {
+      if (!isEmailTaken(err)) throw err;
+      contact = await this.resolveContact(dto, actorId, actorMeta);
+    }
 
     // Pick the first unit of the requested type that's free for the dates.
     const candidates = await this.repository.bookableRoomsByType(dto.unit_type as UnitType);
@@ -318,6 +337,12 @@ export class PublicService {
 }
 
 /** Phone numbers compared by their digits only: "+267 71 234 567" = "+26771234567". */
+/** The one-live-email rule (migration 089) refused this save — someone just took the email. */
+function isEmailTaken(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string };
+  return e?.code === '23505' && e?.constraint === 'contacts_email_unique';
+}
+
 function digitsOf(phone: string | null | undefined): string {
   return (phone ?? '').replace(/\D/g, '');
 }
