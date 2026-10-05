@@ -240,6 +240,18 @@ describe('booking folio', () => {
     expect(folio.payment_state).toBe('PART_PAID');
   });
 
+  // (R8 #3) Refunding from the booking needs to know how much of each receipt is left.
+  it('tells each receipt how much has already been refunded from it', async () => {
+    const id = await makeBooking('refund-left', STAY_TOTAL);
+    const receipt = await addInvoice(id, { kind: 'BALANCE', status: 'PAID', total: 100_000 });
+    const note = await addInvoice(id, { kind: 'REFUND', status: 'PAID', total: 30_000 });
+    await db.updateTable('invoices').set({ refund_of_invoice_id: receipt } as never).where('id', '=', note).execute();
+
+    const folio = await buildService().getFolio(id, propertyId);
+    expect(folio.invoices.find((i) => i.id === receipt)?.refunded_amount).toBe(30_000);
+    expect(folio.invoices.find((i) => i.id === note)?.refunded_amount).toBe(0);
+  });
+
   it('returns to UNPAID when everything received is refunded', async () => {
     const id = await makeBooking('fullref', STAY_TOTAL);
     await addInvoice(id, { kind: 'BALANCE', status: 'REFUNDED', total: STAY_TOTAL });

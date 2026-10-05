@@ -213,6 +213,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    `contacts_email_unique`), so the loser becomes a reused or flagged record, never a generic clash.
    (c) `email_shared` follows the email: true only when "Save anyway" was used AND another live guest
    really has it; a changed email decides it afresh.
+   **R8 (2026-10-05, UX).** (a) The Units "still has bookings" question opens under that unit's row and
+   names it. (b) A fully refunded booking's badge reads "fully refunded", not "paid". (c) **Refund from the
+   booking** (`RefundFromBooking` in the reservation drawer, read-only cancelled view included): offered
+   with `invoices.refund` on a cancelled/no-show booking still holding money or a live one paid beyond its
+   total; it refunds the latest receipt with something left (`folioInvoices` now returns
+   `refunded_amount`). (d) Cockpit guest rows stay stacked up to `2xl`, since from `lg` the rail is three
+   narrow columns.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

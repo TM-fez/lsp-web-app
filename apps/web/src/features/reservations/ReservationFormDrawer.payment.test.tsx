@@ -70,6 +70,11 @@ vi.mock('./hooks', () => ({
   }),
 }));
 
+const refundMutate = vi.fn().mockResolvedValue({});
+vi.mock('@/features/invoices/hooks', () => ({
+  useRefundInvoice: () => ({ mutateAsync: refundMutate, isPending: false }),
+}));
+
 import { ReservationFormDrawer } from './ReservationFormDrawer';
 
 const booking = {
@@ -93,12 +98,12 @@ const booking = {
 
 const rooms = [{ id: 'room-1', code: 'B1', name: 'B Block', type: 'STANDARD' }] as never;
 
-function open() {
+function open(over: Record<string, unknown> = {}) {
   render(
     <ReservationFormDrawer
       open
       onOpenChange={() => {}}
-      reservation={booking}
+      reservation={{ ...(booking as object), ...over } as never}
       rooms={rooms}
       canUpdate
       canCancel
@@ -144,6 +149,62 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     open();
     expect(screen.getByText(/Fully refunded/)).toBeInTheDocument();
     expect(screen.queryByText(/Complimentary/)).not.toBeInTheDocument();
+  });
+
+  // (R8 #2) The words said "Fully refunded" but the badge beside "P0.00 of P0.00" still
+  // said "paid". When everything paid has gone back, the badge says so too.
+  it('badges a fully refunded booking "fully refunded", not "paid"', () => {
+    folioData = {
+      ...folioData!, total_amount: 0, paid_amount: 0, outstanding_amount: 0, payment_state: 'PAID',
+      invoices: [
+        { id: 'i1', number: 'INV-1', kind: 'BALANCE', status: 'REFUNDED', total_amount: 100_800, created_at: '2026-08-24T10:00:00Z' },
+        { id: 'i2', number: 'CN-1', kind: 'REFUND', status: 'PAID', total_amount: 100_800, created_at: '2026-08-25T10:00:00Z' },
+      ],
+    };
+    open();
+    expect(screen.getByText('fully refunded')).toBeInTheDocument();
+    expect(screen.queryByText('paid', { exact: true })).not.toBeInTheDocument();
+  });
+
+  // (R8 #3) A cancelled booking still holding money can't be removed — "refund it from the
+  // booking first" — but the booking had no way to refund. It does now, from the receipt.
+  describe('refunding from the booking', () => {
+    const cancelledWithMoney = () => {
+      folioData = {
+        ...folioData!, total_amount: 50_000, paid_amount: 50_000, outstanding_amount: 0, credit_amount: 0, payment_state: 'PAID',
+        invoices: [
+          { id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 50_000, refunded_amount: 10_000, created_at: '2026-08-24T10:00:00Z' },
+        ],
+      };
+    };
+    beforeEach(() => refundMutate.mockClear());
+
+    it('offers a refund on a cancelled booking that still holds money, capped at what is left', async () => {
+      perms = ['invoices.refund'];
+      cancelledWithMoney();
+      open({ status: 'CANCELLED' });
+      const amount = screen.getByLabelText('Refund amount (Pula)') as HTMLInputElement;
+      expect(amount.value).toBe('400.00'); // P500 receipt, P100 already refunded
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Cancelled within terms' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 400.00' }));
+      await waitFor(() => expect(refundMutate).toHaveBeenCalledWith({
+        id: 'rcpt-1', amount: 40_000, reason: 'Cancelled within terms', idempotencyKey: expect.stringMatching(UUID),
+      }));
+    });
+
+    it('is not offered without the refund permission', () => {
+      perms = ['payments.create', 'payments.update'];
+      cancelledWithMoney();
+      open({ status: 'CANCELLED' });
+      expect(screen.queryByLabelText('Refund amount (Pula)')).not.toBeInTheDocument();
+    });
+
+    it('is not offered on a live booking that is simply paid', () => {
+      perms = ['invoices.refund'];
+      cancelledWithMoney();
+      open({ status: 'CONFIRMED' });
+      expect(screen.queryByLabelText('Refund amount (Pula)')).not.toBeInTheDocument();
+    });
   });
 
   it('keeps "Complimentary" for a stay that was agreed at P0 and never invoiced', () => {

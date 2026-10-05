@@ -30,7 +30,8 @@ import { newIdempotencyKey } from '@/lib/api/idempotency';
 import { errMessage } from '@/lib/api/errors';
 import { AmountError } from '@/components/ui/amount-error';
 import { useAuthStore } from '@/store/auth';
-import type { Reservation, ReservationSource, Room, PaymentMethod } from '@/types';
+import { useRefundInvoice } from '@/features/invoices/hooks';
+import type { Reservation, ReservationSource, Room, PaymentMethod, ReservationFolio } from '@/types';
 
 const toDateInput = (s?: string | null) => (s ? s.slice(0, 10) : '');
 
@@ -325,7 +326,16 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
               night{nights(r.check_in_date, r.check_out_date) === 1 ? '' : 's'})
             </Row>
             {r.notes && <Row label="Notes">{r.notes}</Row>}
+            {/* (R8 #3) Removing a cancelled booking that still holds money says "refund it from
+                the booking first" — so the booking shows what it holds and can refund it. */}
+            {folio.data && folio.data.paid_amount > 0 && (
+              <Row label="Money">
+                {formatMoney(folio.data.paid_amount)} received
+                {fullyRefunded(folio.data) ? ' — fully refunded' : ''}
+              </Row>
+            )}
           </div>
+          {folio.data && <RefundFromBooking folio={folio.data} status={r.status} />}
           {r.status === 'BLOCKED' && r.source === 'BOOKING_COM' && canUpdate && (
             <ClaimBookingSection reservationId={r.id} onClaimed={() => onOpenChange(false)} />
           )}
@@ -511,9 +521,15 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       <span className="font-display text-lg text-ink">
                         {formatMoney(folio.data.paid_amount)} of {formatMoney(folio.data.total_amount)} paid
                       </span>
-                      <Badge tone={paymentTone[folio.data.payment_state]} className="shrink-0">
-                        {paymentLabel[folio.data.payment_state]}
-                      </Badge>
+                      {/* (R8 #2) "P0.00 of P0.00 — paid" after a full refund read as if the guest
+                          had paid in full; the badge now says what the words below say. */}
+                      {fullyRefunded(folio.data) ? (
+                        <Badge tone="slate" className="shrink-0">fully refunded</Badge>
+                      ) : (
+                        <Badge tone={paymentTone[folio.data.payment_state]} className="shrink-0">
+                          {paymentLabel[folio.data.payment_state]}
+                        </Badge>
+                      )}
                     </div>
 
                     {/* (2026-10-04) A stay agreed at P0 has no invoice by design — nothing is
@@ -522,7 +538,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                         it, 2026-10-02), but it has a receipt and a credit note — so it is
                         "fully refunded", never "complimentary". */}
                     {folio.data.total_amount === 0 && folio.data.total_source === 'FOLIO' && (
-                      folio.data.invoices.some((i) => i.kind === 'REFUND' || i.status === 'REFUNDED') ? (
+                      fullyRefunded(folio.data) ? (
                         <p className="mt-1 text-sm text-muted">Fully refunded — everything paid has gone back to the guest, so nothing is owed.</p>
                       ) : (
                         <p className="mt-1 text-sm text-muted">Complimentary — no charge, so there is no invoice.</p>
@@ -564,6 +580,10 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                     )}
                   </div>
                 )
+              )}
+
+              {folio.data && reservation && (
+                <RefundFromBooking folio={folio.data} status={reservation.status} />
               )}
 
               {showConfirm && (
@@ -1001,3 +1021,91 @@ function ClaimBookingSection({ reservationId, onClaimed }: { reservationId: stri
     </div>
   );
 }
+
+/** Everything paid has gone back: agreed total P0 with a receipt and its credit note behind it. */
+function fullyRefunded(f: ReservationFolio): boolean {
+  return (
+    f.total_amount === 0 &&
+    f.total_source === 'FOLIO' &&
+    f.invoices.some((i) => i.kind === 'REFUND' || i.status === 'REFUNDED')
+  );
+}
+
+/**
+ * (R8 #3) Refund straight from the booking. A cancelled booking still holding money can't be
+ * removed ("refund it from the booking first"), but the booking had no refund button — staff
+ * had to find the receipt on the Invoices page. Offered when money is due back or may be:
+ * a cancelled / no-show booking that still holds payment, or a live one paid beyond its
+ * agreed total. It refunds the latest receipt with something left on it, capped at what is
+ * left there and at what the booking holds; the server re-checks both under its locks.
+ */
+function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status: Reservation['status'] }) {
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const refund = useRefundInvoice();
+  const closed = status === 'CANCELLED' || status === 'NO_SHOW';
+  const held = closed ? folio.paid_amount : folio.credit_amount;
+  const receipt = [...folio.invoices]
+    .reverse()
+    .find((i) => i.kind !== 'REFUND' && i.status === 'PAID' && i.total_amount - (i.refunded_amount ?? 0) > 0);
+  const cap = receipt ? Math.min(held, receipt.total_amount - (receipt.refunded_amount ?? 0)) : 0;
+
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const key = useRef('');
+  const inFlight = useRef(false);
+  useEffect(() => {
+    setAmount(cap > 0 ? (cap / 100).toFixed(2) : '');
+    setReason('');
+    key.current = newIdempotencyKey();
+  }, [receipt?.id, cap]);
+
+  if (!hasPerm('invoices.refund') || !receipt || cap <= 0) return null;
+
+  const thebe = pulaToThebe(amount);
+  const valid = !Number.isNaN(thebe) && thebe > 0 && thebe <= cap && reason.trim().length > 0;
+
+  async function submit() {
+    if (!valid || !receipt || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await refund.mutateAsync({ id: receipt.id, amount: thebe, reason: reason.trim(), idempotencyKey: key.current });
+      key.current = newIdempotencyKey();
+    } catch {
+      /* hook surfaces the error toast */
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-line pt-4">
+      <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Refund</Label>
+      <p className="text-xs text-muted">
+        Refunds from receipt {receipt.number}. Up to {formatMoney(cap)} can go back from here.
+      </p>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="res-refund-amount">Refund amount (Pula)</Label>
+        <Input id="res-refund-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <AmountError value={amount} positive />
+        {!Number.isNaN(thebe) && thebe > cap && (
+          <p className="text-[11px] text-terra">That is more than can be refunded from here.</p>
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="res-refund-reason">Reason</Label>
+        <Input
+          id="res-refund-reason"
+          placeholder="e.g. Cancelled within the free-cancellation period"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div>
+        <Button variant="outline" disabled={!valid || refund.isPending} onClick={submit}>
+          {refund.isPending ? <Spinner className="h-4 w-4" /> : `Refund ${formatMoney(Number.isNaN(thebe) ? 0 : thebe)}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+

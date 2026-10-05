@@ -65,13 +65,18 @@ export class ReservationsRepository {
 
   /** The invoice documents behind a booking's folio, newest last. */
   async folioInvoices(reservationId: string): Promise<FolioInvoiceLine[]> {
-    return this.db
+    const rows = await this.db
       .selectFrom('invoices')
       .select(['id', 'number', 'kind', 'status', 'total_amount', 'created_at'])
+      // (R8 #3) How much has gone back from each receipt, so the booking can offer a refund
+      // of what is left (the server re-checks it under the receipt's lock when refunding).
+      .select(sql<string>`(SELECT COALESCE(SUM(cn.total_amount), 0) FROM invoices cn
+                           WHERE cn.refund_of_invoice_id = invoices.id AND cn.deleted_at IS NULL)`.as('refunded_amount'))
       .where('reservation_id', '=', reservationId)
       .where('deleted_at', 'is', null)
       .orderBy('created_at', 'asc')
       .execute();
+    return rows.map((r) => ({ ...r, refunded_amount: Number(r.refunded_amount) }));
   }
 
   /**

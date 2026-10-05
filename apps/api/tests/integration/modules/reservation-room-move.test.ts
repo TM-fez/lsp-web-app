@@ -159,11 +159,15 @@ describe('moving an in-house guest between units', () => {
 
     // (R5, issue #110) …and the clean is put on the board as a task, the same way a
     // check-out does, so housekeeping is actually asked to do it.
-    const tasks = await db.selectFrom('housekeeping_tasks').select(['status', 'occupancy_id'])
+    const tasks = await db.selectFrom('housekeeping_tasks').select(['status', 'occupancy_id', 'opened_at'])
       .where('room_id', '=', fromRoomId).execute();
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.status).toBe('OPEN');
     expect(tasks[0]!.occupancy_id).toBe(occupancyId);
+    // (R8 #5) "Opened" is the real moment the guest left — an absolute time (timestamptz),
+    // not a clock reading off by the Gaborone offset. The screen shows it in Gaborone time
+    // (`propertyMoment`, R6), so here it must be within a minute of now.
+    expect(Math.abs(new Date(tasks[0]!.opened_at).getTime() - Date.now())).toBeLessThan(60_000);
 
     const entered = await db.selectFrom('rooms').select('status')
       .where('id', '=', toRoomId).executeTakeFirstOrThrow();

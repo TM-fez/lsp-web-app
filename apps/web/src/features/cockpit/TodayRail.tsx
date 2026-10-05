@@ -34,16 +34,19 @@ function GuestRow({ no, card, action, late = 0 }: { no: number; card: CockpitGue
     // cramped lines beside the badges. The row now wraps: guest on top (name in full, unit/date
     // on one unbroken line), badges + action on their own line below. From `sm` up it is one
     // line again, exactly as before.
-    <div className="group flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3 transition-[padding] duration-500 ease-[cubic-bezier(.19,1,.22,1)] last:border-b-0 hover:pl-2 sm:flex-nowrap">
+    // (R8 #4) …except that from `lg` the rail is three columns, a third of the screen each, so
+    // "from `sm` up" cut names short again at ~1024 px. The stacked row now holds up to `2xl`,
+    // where a column is finally wide enough for name, badges and action on one line.
+    <div className="group flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3 transition-[padding] duration-500 ease-[cubic-bezier(.19,1,.22,1)] last:border-b-0 hover:pl-2 2xl:flex-nowrap">
       <span className="font-display text-xs italic text-terra">{String(no).padStart(2, '0')}</span>
       <div className="min-w-0 flex-1">
-        <div className="break-words font-display text-lg text-ink sm:truncate">{card.guest_name}</div>
+        <div className="break-words font-display text-lg text-ink 2xl:truncate" title={card.guest_name}>{card.guest_name}</div>
         <div className="whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-muted">
           {/* shortDay, not slice(5): API dates arrive as ISO timestamps. */}
           {card.room_code} · {shortDay(card.check_in_date)} → {shortDay(card.check_out_date)}
         </div>
       </div>
-      <div data-testid="guest-row-actions" className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+      <div data-testid="guest-row-actions" className="flex w-full flex-wrap items-center justify-end gap-2 2xl:w-auto 2xl:flex-nowrap">
         <LateBadge days={late} />
         {FLAGGED_SOURCES.has(card.source) && <Badge tone="violet">{sourceLabel(card.source)}</Badge>}
         <Badge tone={reservationTone[card.status]}>{card.status.toLowerCase().replace('_', ' ')}</Badge>
