@@ -3,6 +3,7 @@ import { HoldsService } from './holds.service.js';
 import { HoldStatusEnum } from './holds.types.js';
 import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import type { CreateHoldDTO, ReleaseHoldDTO } from './holds.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class HoldsController {
   constructor(private readonly service: HoldsService) {}
@@ -13,8 +14,8 @@ export class HoldsController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
       const status = req.query.status ? HoldStatusEnum.parse(req.query.status) : undefined;
       const quote_id = req.query.quote_id as string | undefined;
       res.json(await this.service.listHolds({ status, quote_id, property_id: req.activePropertyId }, { page, limit }));

@@ -5,6 +5,7 @@ import { authenticate } from '../../core/auth/authenticate.middleware.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
 import { NotificationsRepository } from './notifications.repository.js';
 import { NotificationsService } from './notifications.service.js';
+import { parseLimit } from '../../core/http/pagination.js';
 
 /**
  * Shared singleton bound to the app `db`. Other modules import this to raise alerts
@@ -29,7 +30,7 @@ export function createNotificationsRouter(service: NotificationsService = notifi
     try {
       const userId = req.user!.sub;
       const unreadOnly = req.query.unread === '1' || req.query.unread === 'true';
-      const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+      const limit = parseLimit(req.query, 30, 100);
       const [data, unread_count] = await Promise.all([
         service.list(userId, { unreadOnly, limit }),
         service.unreadCount(userId),

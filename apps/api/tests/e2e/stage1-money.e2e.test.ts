@@ -131,7 +131,10 @@ describe('Stage 1 money — end to end', () => {
   it('lets exactly one of five parallel mark-paid requests collect the full amount', async () => {
     const id = await newBooking(10);
     const results = await Promise.all(
-      Array.from({ length: 5 }, () => api('post', `/reservations/${id}/mark-paid`, propertyId).send({ method: 'CASH' })),
+      // Distinct keys: five DELIBERATE payments racing, so the booking lock (not the
+      // double-click replay, R5) is what has to stop the second collection.
+      Array.from({ length: 5 }, (_, i) =>
+        api('post', `/reservations/${id}/mark-paid`, propertyId).set('Idempotency-Key', `s1-race-${id}-${i}`).send({ method: 'CASH' })),
     );
     const ok = results.filter((r) => r.status === 200);
     const refused = results.filter((r) => r.status !== 200);

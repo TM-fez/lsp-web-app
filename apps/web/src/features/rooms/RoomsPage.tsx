@@ -130,15 +130,18 @@ export function RoomsPage() {
         <EmptyState title="No matches" description="No units match your search or filter. Try clearing them." />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
+          {/* (R5 retest) On a phone (~390 px) the six columns scrolled sideways and clipped their
+              headers. Below `sm` the table keeps Unit · Actions; type, capacity, status and
+              housekeeping fold under the unit name instead of needing their own columns. */}
+          <table className="w-full text-sm sm:min-w-[40rem] sm:whitespace-nowrap md:whitespace-normal">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-4 py-3 font-medium">Unit</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Cap.</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Housekeeping</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="w-full px-2.5 py-3 sm:px-4 font-medium sm:w-auto">Unit</th>
+                <th className="hidden px-2.5 py-3 sm:px-4 font-medium sm:table-cell">Type</th>
+                <th className="hidden px-2.5 py-3 sm:px-4 font-medium sm:table-cell">Cap.</th>
+                <th className="hidden px-2.5 py-3 sm:px-4 font-medium sm:table-cell">Status</th>
+                <th className="hidden px-2.5 py-3 sm:px-4 font-medium sm:table-cell">Housekeeping</th>
+                <th className="px-2.5 py-3 sm:px-4 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -146,25 +149,30 @@ export function RoomsPage() {
                 const pending = statusAction.isPending && statusAction.variables?.id === room.id;
                 return (
                   <tr key={room.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{room.code}</div>
+                    <td className="px-2.5 py-3 sm:px-4">
+                      <div className="whitespace-nowrap font-medium text-slate-900">{room.code}</div>
                       <div className="text-xs text-slate-500">{room.name}</div>
                       {room.ownership === 'LANDLORD' && (
                         <div className="mt-0.5 text-[11px] text-amber-700">
                           Landlord{room.landlord_name ? ` · ${room.landlord_name}` : ''}
                         </div>
                       )}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500 sm:hidden">
+                        <span className="whitespace-nowrap capitalize">{label(room.type)} · sleeps {room.capacity}</span>
+                        <Badge tone={roomTone[room.status]}>{label(room.status)}</Badge>
+                        <Badge tone={hkTone[room.housekeeping_status]}>{label(room.housekeeping_status)}</Badge>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 capitalize text-slate-600">{label(room.type)}</td>
-                    <td className="px-4 py-3 text-slate-600">{room.capacity}</td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-2.5 py-3 sm:px-4 capitalize text-slate-600 sm:table-cell">{label(room.type)}</td>
+                    <td className="hidden px-2.5 py-3 sm:px-4 text-slate-600 sm:table-cell">{room.capacity}</td>
+                    <td className="hidden px-2.5 py-3 sm:px-4 sm:table-cell">
                       <Badge tone={roomTone[room.status]}>{label(room.status)}</Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-2.5 py-3 sm:px-4 sm:table-cell">
                       <Badge tone={hkTone[room.housekeeping_status]}>{label(room.housekeeping_status)}</Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="px-2.5 py-3 sm:px-4">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         {canUpdate && pending && <Spinner />}
                         {canUpdate && room.status === 'AVAILABLE' && (
                           <>

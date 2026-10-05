@@ -11,7 +11,7 @@ import {
   type CreateGuestInput,
   type UpdateGuestInput,
 } from '@/lib/api/guests';
-import { errMessage } from '@/lib/api/errors';
+import { errMessage, isDuplicateEmail } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
 import type { Contact, Paginated } from '@/types';
 
@@ -49,7 +49,8 @@ export function useCreateGuest() {
       toast.success('Guest added');
       invalidate();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    // A duplicate email is a question the form asks inline ("Save anyway"), not an error toast.
+    onError: (e) => { if (!isDuplicateEmail(e)) toast.error(errMessage(e)); },
   });
 }
 
@@ -61,7 +62,7 @@ export function useUpdateGuest() {
       toast.success('Guest updated');
       invalidate();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    onError: (e) => { if (!isDuplicateEmail(e)) toast.error(errMessage(e)); },
   });
 }
 

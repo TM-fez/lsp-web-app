@@ -137,6 +137,16 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    the company-level cost. (e) **A website enquiry names its property** (`/enquire` asks when there's more
    than one; "Not sure" stays unassigned). (f) **Moving an in-house guest opens a cleaning task** for the
    vacated unit (`openTaskOnCheckout`, same transaction).
+   **R5 retest (2026-10-04).** (a) **No Idempotency-Key ≠ no protection**: `idempotent()` uses the
+   request's own fingerprint as an implicit key for 10 s, so a double click replays the first answer
+   (an explicit key still lasts 24 h). (b) **A second guest with an email already in use is a question**
+   (409 `error: 'Duplicate Email'`, never naming the other guest) answered by "Save anyway"
+   (`allow_duplicate_email`). (c) **Holds and bookings are checked both ways**: an edit can't move onto a
+   bare hold's nights; a bare hold can't sit on a booked or repair night. (d) **Every list uses
+   `parsePageQuery` / `parseLimit`** — no hand-rolled clamping. (e) **Audit rows carry their property**
+   (`audit_logs.property_id` / `scope_kind`, migration 088, set by trigger via `audit_property_of`); the
+   activity feed reads two index-ordered streams instead of resolving every row. Guests ('C') are still
+   resolved at read time.
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's
@@ -214,7 +224,7 @@ The `dbInstance = db` default exists so tests can inject a fake. Middleware orde
   `reservations.discount.approve`. Multi-tenancy via the `x-property-id` header → `req.activePropertyId`.
 - **Validation:** Zod v3. Schemas live in the module's `.types.ts` as `PascalCaseSchema`, with
   `export type XDTO = z.infer<typeof XSchema>` beside them. `UpdateXSchema = CreateXSchema.partial()`.
-- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 086). Open with a
+- **Migrations:** plain SQL in `src/db/migrations/`, strictly `NNN_snake_case.sql` (at 088). Open with a
   comment block explaining *why*. **Adding one means hand-updating `src/db/types.ts`** — the Kysely
   `Database` interface is hand-written, not generated.
 - **Process time zone is UTC (round 4):** `config/env.ts` pins `process.env.TZ = 'UTC'` first thing, so

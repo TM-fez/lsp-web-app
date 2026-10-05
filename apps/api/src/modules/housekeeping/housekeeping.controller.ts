@@ -9,6 +9,7 @@ import {
   ChecklistItemUpdateSchema,
   SetCheckSchema,
 } from './housekeeping.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class HousekeepingController {
   constructor(private readonly service: HousekeepingService) {}
@@ -27,8 +28,8 @@ export class HousekeepingController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
       const room_id = req.query.room_id as string | undefined;
       const assigned_to = req.query.assigned_to as string | undefined;
       const status = req.query.status ? HousekeepingTaskStatusEnum.parse(req.query.status) : undefined;

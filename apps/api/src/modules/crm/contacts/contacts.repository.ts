@@ -82,6 +82,17 @@ export class ContactsRepository {
     };
   }
 
+  /** Does another live contact already use this email (case-insensitive)? */
+  async emailInUse(email: string, excludeId?: string): Promise<boolean> {
+    let q = this.db
+      .selectFrom('contacts')
+      .select('id')
+      .where('deleted_at', 'is', null)
+      .where(sql<boolean>`lower(email) = lower(${email})`);
+    if (excludeId) q = q.where('id', '!=', excludeId);
+    return !!(await q.executeTakeFirst());
+  }
+
   async create(contact: NewContact, meta: CRMRequestMeta): Promise<ContactRow> {
     return this.db.transaction().execute(async (trx) => {
       const inserted = await trx

@@ -12,6 +12,9 @@ export const CreateContactSchema = z.object({
   address: z.string().max(1000).nullable().optional(),
   notes: z.string().nullable().optional(),
   avatar_file_id: z.string().uuid().nullable().optional(),
+  // (R5 retest) Saving an email another guest already uses needs a deliberate "save anyway"
+  // (families and company bookers do share one) — see ContactsService.assertEmailFree.
+  allow_duplicate_email: z.boolean().optional(),
 });
 
 export const UpdateContactSchema = CreateContactSchema.partial();

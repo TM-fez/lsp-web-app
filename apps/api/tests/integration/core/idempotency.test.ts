@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { sql } from 'kysely';
 import { db } from '../../../src/config/db.js';
 import { idempotent } from '../../../src/core/middleware/idempotency.middleware.js';
 import { AppError } from '../../../src/core/errors/AppError.js';
@@ -64,10 +65,31 @@ afterAll(async () => {
 });
 
 describe('Idempotency-Key middleware', () => {
-  it('does nothing without a key — behaviour is exactly as before', async () => {
-    const a = await request(app).post('/things').send({ x: 1 });
-    const b = await request(app).post('/things').send({ x: 1 });
+  // (R5 retest) No key used to mean no protection. Now the request's own fingerprint is
+  // the key for IMPLICIT_TTL_SECONDS: a double click replays, a different body is new work.
+  it('without a key, the same request twice in a row runs once and replays', async () => {
+    const body = { x: `implicit-${uniq}` };
+    const a = await request(app).post('/things').send(body);
+    const b = await request(app).post('/things').send(body);
     expect([a.status, b.status]).toEqual([201, 201]);
+    expect(b.body).toEqual(a.body);
+    expect(b.headers['idempotent-replayed']).toBe('true');
+    expect(runs).toBe(1);
+  });
+
+  it('without a key, a different request is new work', async () => {
+    await request(app).post('/things').send({ x: `implicit-a-${uniq}` });
+    await request(app).post('/things').send({ x: `implicit-b-${uniq}` });
+    expect(runs).toBe(2);
+  });
+
+  it('without a key, the same request after the short window is new work', async () => {
+    const body = { x: `implicit-later-${uniq}` };
+    await request(app).post('/things').send(body);
+    // Age the implicit claim past its window instead of waiting 10 s.
+    await db.updateTable('idempotency_keys').set({ expires_at: sql`now() - interval '1 second'` } as never)
+      .where('key', 'like', 'implicit:%').execute();
+    await request(app).post('/things').send(body);
     expect(runs).toBe(2);
   });
 

@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { useCreateGuest, useUpdateGuest, useDeleteGuest } from './hooks';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { isDuplicateEmail } from '@/lib/api/errors';
 import type { Contact, ContactType } from '@/types';
 
 const TYPES: ContactType[] = ['individual', 'company'];
@@ -35,6 +36,8 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // (R5) The server asked "another guest already uses this email" — offer Save anyway.
+  const [duplicateEmail, setDuplicateEmail] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -52,14 +55,16 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
   // replays the first "Add guest" instead of creating the guest twice.
   const idempotencyKey = useRef('');
   useEffect(() => {
+    if (open) setDuplicateEmail(false);
     if (open) idempotencyKey.current = newIdempotencyKey();
   }, [open]);
 
   const emailValid = email.trim() === '' || emailOk(email.trim());
   const valid = name.trim().length > 0 && emailValid;
 
-  async function submit() {
+  async function submit(allowDuplicateEmail = false) {
     if (!valid) return;
+    setDuplicateEmail(false);
     const payload = {
       type,
       name: name.trim(),
@@ -70,6 +75,7 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
       company: type === 'individual' ? company.trim() || null : null,
       address: address.trim() || null,
       notes: notes.trim() || null,
+      ...(allowDuplicateEmail ? { allow_duplicate_email: true } : {}),
     };
     try {
       if (guest) {
@@ -78,8 +84,9 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
         await create.mutateAsync({ input: payload, idempotencyKey: idempotencyKey.current });
       }
       onOpenChange(false);
-    } catch {
+    } catch (e) {
       /* hook surfaces the error toast; keep the drawer open */
+      if (isDuplicateEmail(e)) setDuplicateEmail(true);
     }
   }
 
@@ -191,11 +198,25 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
             />
           </div>
 
+          {duplicateEmail && (
+            <div role="alert" className="flex flex-col gap-2 rounded-md border border-terra/40 bg-cream p-3 text-sm text-char">
+              <p>
+                Another guest already uses this email. Search the guest list first so their stays stay in one
+                place — or save anyway if they really share it (a family, or a company’s travel desk).
+              </p>
+              <div>
+                <Button variant="outline" onClick={() => submit(true)} disabled={busy}>
+                  Save anyway
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={submit} disabled={busy || !valid}>
+            <Button variant="primary" onClick={() => submit()} disabled={busy || !valid}>
               {busy && <Spinner className="text-white" />} {isEdit ? 'Save changes' : 'Add guest'}
             </Button>
           </div>

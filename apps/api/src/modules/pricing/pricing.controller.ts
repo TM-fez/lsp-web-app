@@ -4,6 +4,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { UnitTypeEnum } from './pricing.types.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import type { CreateRatePlanDTO, UpdateRatePlanDTO } from './pricing.types.js';
+import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class PricingController {
   constructor(private readonly service: PricingService) {}
@@ -14,8 +15,8 @@ export class PricingController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit as string) || 20);
+      // (R5 retest) The one paging rule: limit 1–100, page ≥ 1, anything else is a 400.
+      const { page, limit } = parsePageQuery(req.query);
       const unit_type = req.query.unit_type ? UnitTypeEnum.parse(req.query.unit_type) : undefined;
       const active = req.query.active === undefined ? undefined : req.query.active === 'true';
       const result = await this.service.listRatePlans({ unit_type, active }, { page, limit });

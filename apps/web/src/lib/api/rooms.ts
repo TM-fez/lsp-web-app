@@ -30,7 +30,7 @@ function unwrap(data: unknown): Room[] {
 }
 
 export async function listRooms(params?: RoomListParams): Promise<Room[]> {
-  const { data } = await api.get('/rooms', { params: { limit: 200, ...params } });
+  const { data } = await api.get('/rooms', { params: { limit: 100, ...params } });
   return unwrap(data);
 }
 
