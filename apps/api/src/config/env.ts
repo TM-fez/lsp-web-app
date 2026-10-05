@@ -18,6 +18,9 @@ const schema = z.object({
   DATABASE_URL: z.string().url(),
   DATABASE_POOL_MIN: z.coerce.number().default(2),
   DATABASE_POOL_MAX: z.coerce.number().default(10),
+  // (R7 N7-1) How long a request waits for a free connection before it fails. Without it,
+  // a starved pool made every request — login included — hang forever while /health said ok.
+  DATABASE_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().min(0).default(15_000),
 
   // Keys can come from a file (local dev) OR inline PEM in an env var (serverless,
   // where there's no key file). jwt.ts prefers the inline value, then the path.
