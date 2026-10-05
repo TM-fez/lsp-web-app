@@ -15,9 +15,13 @@ export interface CreateWorkOrderInput {
   contractor_name?: string | null;
   contractor_phone?: string | null;
   cost_amount?: number | null; // thebe
+  blocks_from?: string | null; // YYYY-MM-DD, first night closed
+  blocks_to?: string | null; // YYYY-MM-DD, first night back in use
 }
 
-export type UpdateWorkOrderInput = Partial<Pick<CreateWorkOrderInput, 'title' | 'description' | 'priority'>>;
+export type UpdateWorkOrderInput = Partial<
+  Pick<CreateWorkOrderInput, 'title' | 'description' | 'priority' | 'blocks_from' | 'blocks_to'>
+>;
 
 export const WORK_ORDER_LIST_LIMIT = 100;
 

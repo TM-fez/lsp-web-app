@@ -6,7 +6,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../core/logger.js';
 import { sendEmail, isEmailConfigured } from '../../core/email/email.service.js';
-import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo, CreateEnquiryDTO, EnquiryConfirmation } from './public.types.js';
+import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo, CreateEnquiryDTO, EnquiryConfirmation, PublicPropertyOption } from './public.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 
 const unitLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -56,6 +56,22 @@ export class PublicService {
           )).id;
     }
 
+    // (R5 decision, 2026-10-04) A website enquiry used to land with no property, so staff
+    // limited to one property never saw it and only an all-property manager could route
+    // it. The form now asks which property; with only one active property there is
+    // nothing to ask, so it is filed there. "Not sure" (no id) stays unassigned on purpose
+    // — guessing would hide it from the property it is really for.
+    const properties = await this.repository.activeProperties();
+    let propertyId: string | null = null;
+    if (dto.property_id) {
+      if (!properties.some((p) => p.id === dto.property_id)) {
+        throw AppError.badRequest('Please choose one of our properties, or “Not sure”.');
+      }
+      propertyId = dto.property_id;
+    } else if (properties.length === 1) {
+      propertyId = properties[0]!.id;
+    }
+
     const summary = dto.message.length > 180 ? `${dto.message.slice(0, 179)}…` : dto.message;
     const who = [dto.name, dto.email, dto.phone].filter(Boolean).join(' · ');
 
@@ -67,6 +83,7 @@ export class PublicService {
         source: dto.source,
         phone: dto.phone ?? null,
         contact_id: contactId,
+        property_id: propertyId,
         created_by: actorId,
         updated_by: actorId,
       },
@@ -74,6 +91,11 @@ export class PublicService {
     );
 
     return { reference: `ENQ-${lead.id.replace(/-/g, '').slice(0, 6).toUpperCase()}` };
+  }
+
+  /** Properties the enquiry form offers (names only). */
+  async getEnquiryProperties(): Promise<{ properties: PublicPropertyOption[] }> {
+    return { properties: await this.repository.activeProperties() };
   }
 
   /** Bookable layouts + from-prices for the public site. No PII, no availability. */

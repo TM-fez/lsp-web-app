@@ -295,6 +295,10 @@ export interface MaintenanceWorkOrdersTable {
   cost_reconciled_at: Date | null;
   before_file_id: string | null;
   after_file_id: string | null;
+  // (085) Nights a HIGH/CRITICAL repair takes the unit out of use, half-open [from, to).
+  // Both null = no window: the unit is under MAINTENANCE for every date instead.
+  blocks_from: Date | string | null;
+  blocks_to: Date | string | null;
   opened_at: Generated<Date>;
   started_at: Date | null;
   completed_at: Date | null;
@@ -433,6 +437,9 @@ export interface HoldsTable {
   quote_id: string;
   reservation_id: string | null;
   room_id: string | null;
+  // (084) Copied from the quote by trigger — the exclusion constraint needs them on the row.
+  check_in_date: Generated<Date | null>;
+  check_out_date: Generated<Date | null>;
   status: Generated<'HELD' | 'CONFIRMED' | 'EXPIRED' | 'RELEASED'>;
   held_until: Date;
   retry_count: Generated<number>;
@@ -580,6 +587,8 @@ export interface StaffCompensationTable {
   start_date: Date | null;
   active: Generated<boolean>;
   notes: string | null;
+  // (086) The one property this person's pay is costed to. Null = company-level.
+  home_property_id: string | null;
   created_by: string;
   updated_by: string;
   created_at: Generated<Date>;

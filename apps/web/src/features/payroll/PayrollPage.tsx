@@ -21,7 +21,7 @@ const monthName = new Date().toLocaleString('en', { month: 'long' });
 interface FormState {
   gross: string; frequency: PayFrequency; job_title: string;
   payment_method: string; bank_name: string; bank_account: string;
-  start_date: string; active: boolean; notes: string;
+  start_date: string; active: boolean; notes: string; home_property_id: string;
 }
 const formFor = (e: EmployeePay): FormState => ({
   gross: e.gross_amount !== null ? thebeToPula(e.gross_amount) : '',
@@ -33,6 +33,7 @@ const formFor = (e: EmployeePay): FormState => ({
   start_date: e.start_date ?? '',
   active: e.active,
   notes: e.notes ?? '',
+  home_property_id: e.home_property_id ?? '',
 });
 
 export function PayrollPage() {
@@ -45,10 +46,12 @@ export function PayrollPage() {
   const post = usePostPayroll();
 
   const [editing, setEditing] = useState<EmployeePay | null>(null);
-  const [form, setForm] = useState<FormState>({ gross: '', frequency: 'MONTHLY', job_title: '', payment_method: '', bank_name: '', bank_account: '', start_date: '', active: true, notes: '' });
+  const [form, setForm] = useState<FormState>({ gross: '', frequency: 'MONTHLY', job_title: '', payment_method: '', bank_name: '', bank_account: '', start_date: '', active: true, notes: '', home_property_id: '' });
 
   const open = (e: EmployeePay) => { setForm(formFor(e)); setEditing(e); };
 
+  // (R5) Pay is costed to ONE home property, so a person who works in two isn't counted twice.
+  const homeChoices = editing?.member_properties ?? [];
   const thebe = pulaToThebe(form.gross);
   const valid = !Number.isNaN(thebe) && thebe >= 0;
 
@@ -66,6 +69,8 @@ export function PayrollPage() {
         start_date: form.start_date || null,
         active: form.active,
         notes: form.notes.trim() || null,
+        // Only someone who works in 2+ properties has a choice to make (R5).
+        ...(homeChoices.length > 1 && form.home_property_id ? { home_property_id: form.home_property_id } : {}),
       },
     }, { onSuccess: () => setEditing(null) });
   };
@@ -133,6 +138,9 @@ export function PayrollPage() {
                     <div className="mt-0.5 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-muted">
                       <Badge tone="slate">{e.role}</Badge>{e.is_lead && <span>lead</span>}
                       {e.job_title && <span className="normal-case tracking-normal">· {e.job_title}</span>}
+                      {(e.member_properties?.length ?? 0) > 1 && e.home_property_name && (
+                        <span className="normal-case tracking-normal">· costed to {e.home_property_name}</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3.5 text-ink">
@@ -198,6 +206,17 @@ export function PayrollPage() {
               <Label htmlFor="pay-acct">Account no.</Label>
               <Input id="pay-acct" value={form.bank_account} onChange={(e) => setForm({ ...form, bank_account: e.target.value })} />
             </div>
+            {homeChoices.length > 1 && (
+              <div className="col-span-2 flex flex-col gap-1.5">
+                <Label htmlFor="pay-home">Home property</Label>
+                <Select id="pay-home" value={form.home_property_id} onChange={(e) => setForm({ ...form, home_property_id: e.target.value })}>
+                  {homeChoices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+                <p className="text-xs text-muted">
+                  {editing?.name} works in more than one property. Their pay is costed to this one only, so it’s never counted twice.
+                </p>
+              </div>
+            )}
             <label className="col-span-2 flex items-center gap-2 text-sm text-char">
               <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
               On payroll (counts toward the monthly total)

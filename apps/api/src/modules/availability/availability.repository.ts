@@ -1,5 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { repairWindowCovers, repairWindowOverlaps } from '../../core/availability/repairWindows.js';
 import type {
   DateRange,
   AvailabilityFilters,
@@ -15,6 +16,8 @@ import type {
  *
  * Blocking model:
  *  - room.status MAINTENANCE / OUT_OF_SERVICE  -> structurally blocked
+ *  - a live HIGH/CRITICAL repair WITH a block window (R5, migration 085) -> blocked on
+ *    those nights only (`core/availability/repairWindows.ts`, shared with checkAvailability)
  *  - room.status OCCUPIED -> NOT a block. It is a "right now" flag that check-in sets
  *    and check-out clears, so treating it as structural blocked every future range too
  *    — the same D06 bug as the occupancy join, by a second route. Today is covered by
@@ -69,6 +72,7 @@ export class AvailabilityRepository {
       SELECT r.id, r.name, r.code, r.type, r.status, r.capacity,
         coalesce(res.cnt, 0)::int AS overlapping_reservations,
         coalesce(occ.cnt, 0)::int AS active_occupancy,
+        ${repairWindowOverlaps(sql`r.id`, range.checkIn, range.checkOut)} AS repair_window,
         count(*) OVER()::int AS total_count
       FROM rooms r
       LEFT JOIN (
@@ -92,7 +96,8 @@ export class AvailabilityRepository {
         AND (${roomType}::text IS NULL OR r.type = ${roomType}::room_type)
         AND r.capacity >= ${filters.minCapacity}
         AND (${propertyId}::uuid IS NULL OR r.building_id IN (SELECT id FROM buildings WHERE property_id = ${propertyId}::uuid))
-        AND (NOT ${availableOnly} OR (r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(res.cnt, 0) = 0 AND coalesce(occ.cnt, 0) = 0))
+        AND (NOT ${availableOnly} OR (r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(res.cnt, 0) = 0 AND coalesce(occ.cnt, 0) = 0
+             AND NOT ${repairWindowOverlaps(sql`r.id`, range.checkIn, range.checkOut)}))
       ORDER BY r.code
       LIMIT ${pagination.limit} OFFSET ${offset}
     `.execute(this.db);
@@ -108,13 +113,16 @@ export class AvailabilityRepository {
     const result = await sql<SummaryCountsRow>`
       SELECT
         count(*)::int AS total,
-        count(*) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(res.cnt, 0) = 0 AND coalesce(occ.cnt, 0) = 0)::int AS available,
-        count(*) FILTER (WHERE r.status = 'MAINTENANCE')::int AS maintenance,
+        count(*) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(res.cnt, 0) = 0 AND coalesce(occ.cnt, 0) = 0
+                           AND NOT ${repairWindowOverlaps(sql`r.id`, range.checkIn, range.checkOut)})::int AS available,
+        count(*) FILTER (WHERE r.status = 'MAINTENANCE'
+                           OR (r.status <> 'OUT_OF_SERVICE' AND ${repairWindowOverlaps(sql`r.id`, range.checkIn, range.checkOut)}))::int AS maintenance,
         count(*) FILTER (WHERE r.status = 'OUT_OF_SERVICE')::int AS out_of_service,
         -- Occupancy is a fact about TODAY, so it is counted from the (now bounded) occ
         -- leg, never from r.status — a unit occupied tonight is not occupied in March.
         count(*) FILTER (WHERE coalesce(occ.cnt, 0) > 0)::int AS occupied,
-        count(*) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(occ.cnt, 0) = 0 AND coalesce(res.cnt, 0) > 0)::int AS reserved
+        count(*) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND coalesce(occ.cnt, 0) = 0 AND coalesce(res.cnt, 0) > 0
+                           AND NOT ${repairWindowOverlaps(sql`r.id`, range.checkIn, range.checkOut)})::int AS reserved
       FROM rooms r
       LEFT JOIN (
         SELECT room_id, count(*) AS cnt
@@ -155,8 +163,10 @@ export class AvailabilityRepository {
       )
       SELECT d.day::text AS day,
         count(r.id)::int AS total_rooms,
-        count(r.id) FILTER (WHERE r.status IN ('MAINTENANCE', 'OUT_OF_SERVICE'))::int AS structural_blocked,
-        count(r.id) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND res.id IS NULL AND occ.id IS NULL)::int AS free_rooms
+        count(r.id) FILTER (WHERE r.status IN ('MAINTENANCE', 'OUT_OF_SERVICE')
+                             OR ${repairWindowCovers(sql`r.id`, sql`d.day`)})::int AS structural_blocked,
+        count(r.id) FILTER (WHERE r.status NOT IN ('MAINTENANCE', 'OUT_OF_SERVICE') AND res.id IS NULL AND occ.id IS NULL
+                             AND NOT ${repairWindowCovers(sql`r.id`, sql`d.day`)})::int AS free_rooms
       FROM days d
       CROSS JOIN rooms r
       LEFT JOIN LATERAL (

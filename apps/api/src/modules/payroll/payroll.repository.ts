@@ -23,6 +23,16 @@ function staffVisibleSql(scope: PropertyScope) {
 
 const MONTHLY_EQUIV = sql`CASE WHEN sc.frequency = 'WEEKLY' THEN round(sc.gross_amount * 52.0 / 12) ELSE sc.gross_amount END`;
 
+/**
+ * (R5, migration 086) The one property a staff member's pay is costed to: their chosen
+ * home, else the first property they work in (by name) — the rule the backfill wrote down
+ * — else none (a company-level cost). Every posting uses this, so a person who works in
+ * two properties is costed once, whoever posts.
+ */
+const HOME_PROPERTY = sql<string | null>`COALESCE(sc.home_property_id, (
+  SELECT up.property_id FROM user_properties up JOIN properties p ON p.id = up.property_id
+   WHERE up.user_id = sc.user_id ORDER BY p.name, p.id LIMIT 1))`;
+
 export class PayrollRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -38,6 +48,13 @@ export class PayrollRepository {
         'sc.bank_name', 'sc.bank_account',
         sql<string | null>`to_char(sc.start_date, 'YYYY-MM-DD')`.as('start_date'),
         'sc.notes', 'sc.active as comp_active',
+        sql<string | null>`${HOME_PROPERTY}`.as('home_property_id'),
+        sql<string | null>`(SELECT hp.name FROM properties hp WHERE hp.id = ${HOME_PROPERTY})`.as('home_property_name'),
+        // The properties they work in — the choices for their home property.
+        sql<Array<{ id: string; name: string }>>`COALESCE((
+          SELECT json_agg(json_build_object('id', mp.id, 'name', mp.name) ORDER BY mp.name)
+            FROM user_properties mup JOIN properties mp ON mp.id = mup.property_id
+           WHERE mup.user_id = u.id AND mp.active), '[]'::json)`.as('member_properties'),
       ])
       .where('u.active', '=', true)
       .where(staffVisibleSql(scope))
@@ -114,50 +131,53 @@ export class PayrollRepository {
   }
 
   /**
-   * Monthly pay per property for a limited user's post-to-costs. Each staff member is
-   * charged to exactly ONE of the caller's properties — the first by name among those they
-   * belong to — so a person who works in two properties is never counted twice inside one
-   * posting. (Across two different people's postings of the same month this can still
-   * overlap; the PR notes it.) Never returns a "no property" bucket.
+   * (R5) Monthly pay grouped by HOME property — the only allocation any posting uses.
+   * An all-property caller gets every bucket, including `null` (staff with no property,
+   * a company-level cost); a limited caller gets only the homes inside their properties.
+   * Because each person has exactly one home, the buckets never overlap: the sum over
+   * properties is the company total, whoever posts which part.
    */
-  async monthlyByCallerProperty(scope: PropertyScope) {
-    const ids = scope.ids ?? [];
-    if (ids.length === 0) return [];
-    const r = await sql<{ property_id: string; monthly: string }>`
-      SELECT alloc.property_id, SUM(${MONTHLY_EQUIV}) AS monthly
+  async monthlyByHomeProperty(scope: PropertyScope) {
+    const r = await sql<{ property_id: string | null; monthly: string }>`
+      SELECT home.property_id, SUM(${MONTHLY_EQUIV}) AS monthly
       FROM staff_compensation sc
       JOIN users u ON u.id = sc.user_id
-      JOIN LATERAL (
-        SELECT up.property_id FROM user_properties up
-          JOIN properties p ON p.id = up.property_id
-         WHERE up.user_id = u.id AND up.property_id IN (${sql.join(ids)})
-         ORDER BY p.name, p.id LIMIT 1
-      ) alloc ON true
+      CROSS JOIN LATERAL (SELECT ${HOME_PROPERTY} AS property_id) home
       WHERE sc.active
-      GROUP BY alloc.property_id`.execute(this.db);
-    return r.rows.map((x) => ({ property_id: x.property_id, monthly: Number(x.monthly) }));
+      GROUP BY home.property_id`.execute(this.db);
+    const rows = r.rows.map((x) => ({ property_id: x.property_id, monthly: Number(x.monthly) }));
+    if (scope.allProperties) return rows;
+    const mine = new Set(scope.ids ?? []);
+    return rows.filter((x) => x.property_id !== null && mine.has(x.property_id));
   }
 
   /**
-   * Has payroll for this YYYY-MM already been posted in a way that clashes with the caller?
-   * Markers: `payroll:YYYY-MM` = the company-level posting (all-property callers);
-   * `payroll:YYYY-MM:<propertyId>` = one property's share (limited callers).
-   * - an all-property post clashes with ANY posting for the month (it would double count);
-   * - a limited post clashes with the company-level posting and with its own properties' shares.
+   * The payroll markers already posted for a YYYY-MM: `payroll:YYYY-MM` = the company-level
+   * cost (staff with no property, or a whole-company posting from before R5), and
+   * `payroll:YYYY-MM:<propertyId>` = one property's share.
    */
-  async payrollPostedFor(month: string, scope: PropertyScope): Promise<boolean> {
-    let q = this.db
+  async postedMarkers(month: string): Promise<Set<string>> {
+    const rows = await this.db
       .selectFrom('operating_expenses')
-      .select('id')
+      .select('notes')
       .where('deleted_at', 'is', null)
-      .where('category', '=', 'PAYROLL');
-    if (scope.allProperties) {
-      q = q.where((eb) => eb.or([eb('notes', '=', `payroll:${month}`), eb('notes', 'like', `payroll:${month}:%`)]));
-    } else {
-      const markers = [`payroll:${month}`, ...(scope.ids ?? []).map((id) => `payroll:${month}:${id}`)];
-      q = q.where('notes', 'in', markers);
-    }
-    return !!(await q.executeTakeFirst());
+      .where('category', '=', 'PAYROLL')
+      .where((eb) => eb.or([eb('notes', '=', `payroll:${month}`), eb('notes', 'like', `payroll:${month}:%`)]))
+      .execute();
+    return new Set(rows.map((r) => r.notes ?? ''));
+  }
+
+  /** Is this an active property the staff member works in? (Their home must be one.) */
+  async isMemberOf(userId: string, propertyId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('user_properties as up')
+      .innerJoin('properties as p', 'p.id', 'up.property_id')
+      .select('up.property_id')
+      .where('up.user_id', '=', userId)
+      .where('up.property_id', '=', propertyId)
+      .where('p.active', '=', true)
+      .executeTakeFirst();
+    return !!row;
   }
 
   /**

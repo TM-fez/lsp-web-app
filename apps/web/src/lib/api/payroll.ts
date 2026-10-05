@@ -11,6 +11,7 @@ export interface CompensationInput {
   start_date?: string | null;
   active?: boolean;
   notes?: string | null;
+  home_property_id?: string | null;
 }
 
 export async function listEmployees(): Promise<EmployeePay[]> {

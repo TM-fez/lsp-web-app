@@ -81,4 +81,26 @@ describe('Public enquiry capture (live DB)', () => {
     expect(lead.contact_id).toBeNull();
     expect(lead.phone).toBe('+267 72 000 222');
   });
+
+  // (R5) The form asks which property, so a limited manager sees their own enquiries.
+  it('files the lead under the property the guest chose', async () => {
+    const { properties } = await service.getEnquiryProperties();
+    expect(properties.length).toBeGreaterThan(0);
+    const chosen = properties[0]!;
+    await service.createEnquiry(
+      { name: 'Delta', message: `Chosen property ${tag}`, source: 'WEBSITE', property_id: chosen.id },
+      { ip: '203.0.113.7' },
+    );
+    const [lead] = (await leadsByTag()).filter((l) => l.title.startsWith('Chosen property'));
+    expect(lead.property_id).toBe(chosen.id);
+  });
+
+  it('refuses a property that is not one of ours', async () => {
+    await expect(
+      service.createEnquiry(
+        { name: 'Echo', message: `Bogus property ${tag}`, source: 'WEBSITE', property_id: '00000000-0000-0000-0000-000000000000' },
+        { ip: '203.0.113.7' },
+      ),
+    ).rejects.toThrow(/choose one of our properties/);
+  });
 });

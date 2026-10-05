@@ -64,6 +64,8 @@ export class MaintenanceService {
         contractor_name: data.contractor_name ?? null,
         contractor_phone: data.contractor_phone ?? null,
         cost_amount: data.cost_amount ?? null,
+        blocks_from: data.blocks_from ?? null,
+        blocks_to: data.blocks_to ?? null,
       } as any, meta, trx);
 
       // Only a HIGH / CRITICAL job takes the unit out of use (see syncRoomForMaintenance).
@@ -247,24 +249,21 @@ export class MaintenanceService {
     // so a P500 approval could be quietly turned into P50,000 approved spend. A changed
     // cost needs approving again, exactly as setCost already enforces.
     const costChanged = data.cost_amount !== undefined && (data.cost_amount ?? null) !== (order.cost_amount ?? null);
-    if (costChanged) {
-      return this.repo.update(id, {
-        ...data,
-        cost_approved_by: null,
-        cost_approved_at: null,
-        cost_reconciled_by: null,
-        cost_reconciled_at: null,
-      }, meta);
-    }
-    // A priority change can start or end the unit's block.
-    if (data.priority !== undefined && data.priority !== order.priority) {
+    const changes = costChanged
+      ? { ...data, cost_approved_by: null, cost_approved_at: null, cost_reconciled_by: null, cost_reconciled_at: null }
+      : data;
+    // A priority change, or adding / removing a repair window (R5), can start or end the
+    // unit's all-dates block — so the unit's status is re-read in the same transaction.
+    const priorityChanged = data.priority !== undefined && data.priority !== order.priority;
+    const windowChanged = data.blocks_from !== undefined || data.blocks_to !== undefined;
+    if (priorityChanged || windowChanged) {
       return this.repo.transaction(async (trx) => {
-        const updated = await this.repo.update(id, data, meta, trx);
+        const updated = await this.repo.update(id, changes, meta, trx);
         await this.repo.syncRoomForMaintenance(order.room_id, meta, trx);
         return updated;
       });
     }
-    return this.repo.update(id, data, meta);
+    return this.repo.update(id, changes, meta);
   }
 
   /**

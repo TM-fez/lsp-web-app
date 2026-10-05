@@ -215,6 +215,10 @@ export class MaintenanceRepository {
    * Now: a unit is under MAINTENANCE while it has an open HIGH or CRITICAL order; LOW /
    * MEDIUM jobs are done around the guests. An OCCUPIED or OUT_OF_SERVICE unit is never
    * touched here — check-out and the out-of-service switch own those states.
+   *
+   * (R5, migration 085) Only an order WITHOUT a block window does this. One with dates
+   * blocks just those nights (core/availability/repairWindows.ts) and leaves the status
+   * alone — MAINTENANCE has no end date, so it would block every night again.
    */
   async syncRoomForMaintenance(roomId: string, meta: { userId: string; requestId?: string }, trx: DB = this.db) {
     const room = await trx.selectFrom('rooms').select('status').where('id', '=', roomId)
@@ -225,6 +229,7 @@ export class MaintenanceRepository {
       .where('deleted_at', 'is', null)
       .where('status', 'not in', ['COMPLETED', 'CANCELLED'])
       .where('priority', 'in', ['HIGH', 'CRITICAL'])
+      .where('blocks_from', 'is', null)
       .limit(1).executeTakeFirst();
     const want = blocking ? 'MAINTENANCE' : 'AVAILABLE';
     if (room.status !== want) await this.updateRoomStatus(roomId, want, meta, trx);

@@ -285,6 +285,9 @@ export interface WorkOrder {
   cost_amount: number | null;
   cost_approved_at: string | null;
   cost_reconciled_at: string | null;
+  // (R5) Nights a HIGH/CRITICAL repair closes the unit, [from, to). Null = every date.
+  blocks_from?: string | null;
+  blocks_to?: string | null;
   opened_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -617,6 +620,10 @@ export interface EmployeePay {
   start_date: string | null;
   active: boolean;
   notes: string | null;
+  // (R5) The one property this person's pay is costed to, and the ones they work in.
+  home_property_id?: string | null;
+  home_property_name?: string | null;
+  member_properties?: Array<{ id: string; name: string }>;
 }
 export interface PayrollSummary {
   headcount: number;

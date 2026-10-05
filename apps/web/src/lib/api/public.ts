@@ -108,6 +108,18 @@ export interface EnquiryInput {
   phone?: string;
   message: string;
   source?: EnquirySource;
+  property_id?: string;
+}
+
+export interface PublicPropertyOption {
+  id: string;
+  name: string;
+}
+
+/** Active properties the enquiry form offers (names only). */
+export async function getEnquiryProperties(): Promise<PublicPropertyOption[]> {
+  const { data } = await api.get<{ properties: PublicPropertyOption[] }>('/public/enquiries/properties');
+  return data.properties;
 }
 
 /** File a public enquiry — becomes a NEW lead (and a CRM contact when emailed). */

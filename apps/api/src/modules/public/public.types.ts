@@ -59,8 +59,17 @@ export const CreateEnquirySchema = z.object({
   phone: z.string().trim().min(3).max(40).optional(),
   message: z.string().trim().min(1).max(500),
   source: PublicEnquirySourceEnum.default('WEBSITE'),
+  // (R5) Which property the enquiry is about. Optional — "not sure" stays unassigned
+  // for an all-property manager to route. Validated against the active list.
+  property_id: z.string().uuid().optional(),
 });
 export type CreateEnquiryDTO = z.infer<typeof CreateEnquirySchema>;
+
+/** An active property, as the public enquiry form offers it (name only, no PII). */
+export interface PublicPropertyOption {
+  id: string;
+  name: string;
+}
 
 export interface EnquiryConfirmation {
   reference: string; // a short code the guest can quote when we follow up

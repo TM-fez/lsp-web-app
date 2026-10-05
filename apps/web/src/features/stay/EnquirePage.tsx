@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { LifestyleMark } from '@/components/brand/LifestyleMark';
 import { errMessage } from '@/lib/api/errors';
-import { submitEnquiry, type EnquirySource } from '@/lib/api/public';
+import { getEnquiryProperties, submitEnquiry, type EnquirySource, type PublicPropertyOption } from '@/lib/api/public';
 import { isValidEmail } from '@/lib/utils/validation';
 
 /**
@@ -22,9 +22,19 @@ export function EnquirePage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
+  // (R5) Which property the enquiry is about, so it reaches that property's team. With
+  // one property (or if the list fails to load) the box is hidden and the server decides.
+  const [properties, setProperties] = useState<PublicPropertyOption[]>([]);
+  const [propertyId, setPropertyId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
+
+  useEffect(() => {
+    getEnquiryProperties()
+      .then(setProperties)
+      .catch(() => setProperties([]));
+  }, []);
 
   const valid =
     name.trim().length > 0 &&
@@ -42,6 +52,7 @@ export function EnquirePage() {
         phone: phone.trim() || undefined,
         message: message.trim(),
         source,
+        property_id: propertyId || undefined,
       });
       setReference(ref);
     } catch (err) {
@@ -83,6 +94,23 @@ export function EnquirePage() {
                 <Input id="eq-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+267 …" disabled={submitting} />
               </div>
             </div>
+            {properties.length > 1 && (
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="eq-property">Which property?</Label>
+                <select
+                  id="eq-property"
+                  value={propertyId}
+                  onChange={(e) => setPropertyId(e.target.value)}
+                  disabled={submitting}
+                  className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                >
+                  <option value="">Not sure — help me choose</option>
+                  {properties.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="eq-msg">What do you need?</Label>
               <textarea

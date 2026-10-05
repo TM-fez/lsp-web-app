@@ -70,7 +70,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.deleteFrom('operating_expenses').where('created_by', '=', clerk).execute();
+  await db.deleteFrom('operating_expenses').where('created_by', 'in', users).execute();
   await db.deleteFrom('audit_logs').where('user_id', 'in', users).execute();
   await db.deleteFrom('staff_compensation').where('user_id', 'in', users).execute();
   await db.deleteFrom('user_properties').where('user_id', 'in', users).execute();
@@ -146,24 +146,89 @@ describe('post to operating costs', () => {
     expect((await call('post', '/payroll/post-to-costs', { month: MONTH_LIMITED })).status).toBe(409);
   });
 
-  it('an all-property post is refused while a property share for that month exists (no double count)', async () => {
+  // (R5, migration 086) Each person is costed once, at their home property, whoever posts.
+  it('an all-property post after a property’s share posts only the rest — nobody twice', async () => {
     asAdmin();
+    const res = await call('post', '/payroll/post-to-costs', { month: MONTH_LIMITED });
+    expect(res.status).toBe(201);
+    const rows = await db.selectFrom('operating_expenses').select(['property_id', 'amount', 'notes'])
+      .where('notes', 'like', `payroll:${MONTH_LIMITED}%`).where('deleted_at', 'is', null).execute();
+    expect(rows.filter((r) => r.property_id === propCbd)).toEqual([
+      { property_id: propCbd, amount: 1_000_00, notes: `payroll:${MONTH_LIMITED}:${propCbd}` },
+    ]);
+    expect(rows.find((r) => r.property_id === propVillage)?.amount).toBe(2_000_00);
+    // Staff with no property (the floating 4,000) are the company-level cost.
+    expect(rows.find((r) => r.property_id === null)!.amount).toBeGreaterThanOrEqual(4_000_00);
+    // And the month is now closed for everyone.
     expect((await call('post', '/payroll/post-to-costs', { month: MONTH_LIMITED })).status).toBe(409);
   });
 
-  it('an all-property user still posts the single company-level cost for everyone', async () => {
+  it('an all-property user posts one cost per home property plus a company-level cost', async () => {
     asAdmin();
     const res = await call('post', '/payroll/post-to-costs', { month: MONTH_ADMIN });
     expect(res.status).toBe(201);
-    const row = await db.selectFrom('operating_expenses').select(['property_id', 'notes'])
-      .where('id', '=', res.body.operating_expense_id).executeTakeFirstOrThrow();
-    expect(row).toEqual({ property_id: null, notes: `payroll:${MONTH_ADMIN}` });
-    // Includes at least the three staff made above (1,000 + 2,000 + 4,000).
+    const rows = await db.selectFrom('operating_expenses').select(['property_id', 'amount', 'notes'])
+      .where('id', 'in', res.body.operating_expense_ids).execute();
+    expect(rows.find((r) => r.property_id === propCbd)).toEqual({ property_id: propCbd, amount: 1_000_00, notes: `payroll:${MONTH_ADMIN}:${propCbd}` });
+    expect(rows.find((r) => r.property_id === propVillage)?.amount).toBe(2_000_00);
+    expect(rows.find((r) => r.property_id === null)?.notes).toBe(`payroll:${MONTH_ADMIN}`);
+    // The parts add up to the whole (at least the three staff made above).
+    expect(res.body.amount).toBe(rows.reduce((t, r) => t + r.amount, 0));
     expect(res.body.amount).toBeGreaterThanOrEqual(7_000_00);
   });
 
   it('a limited user is refused once the company-level cost exists for that month', async () => {
     asClerk();
     expect((await call('post', '/payroll/post-to-costs', { month: MONTH_ADMIN })).status).toBe(409);
+  });
+});
+
+describe('R5 — a person who works in two properties is costed once', () => {
+  const MONTH_A = '2031-05';
+  const MONTH_B = '2031-06';
+  let villageClerk: string, dual: string;
+  const asVillageClerk = () => { mockState.user = { sub: villageClerk, role: 'accounts', permissions: PERMS }; };
+
+  it('two accountants posting their own property never both charge the shared person', async () => {
+    villageClerk = await makeUser('vclerk', 'accounts', propVillage);
+    dual = await makeUser('dual', 'housekeeping', propCbd, 500_00);
+    await db.insertInto('user_properties').values({ user_id: dual, property_id: propVillage }).execute();
+
+    asClerk();
+    const cbd = await call('post', '/payroll/post-to-costs', { month: MONTH_A });
+    asVillageClerk();
+    const vil = await call('post', '/payroll/post-to-costs', { month: MONTH_A });
+    expect(cbd.status).toBe(201);
+    expect(vil.status).toBe(201);
+    // Home defaults to the first property by name (CBD), so CBD carries the shared person.
+    expect(cbd.body.amount).toBe(1_000_00 + 500_00);
+    expect(vil.body.amount).toBe(2_000_00);
+    expect(cbd.body.amount + vil.body.amount).toBe(1_000_00 + 2_000_00 + 500_00);
+  });
+
+  it('moving their home moves their cost, and only to a property they work in', async () => {
+    asAdmin();
+    const bad = await call('put', `/payroll/employees/${dual}`, {
+      gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: '00000000-0000-0000-0000-000000000000',
+    });
+    expect(bad.status).toBe(400);
+    const ok = await call('put', `/payroll/employees/${dual}`, {
+      gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: propVillage,
+    });
+    expect(ok.status).toBe(200);
+    const listed = ((await call('get', '/payroll/employees')).body.data as Array<{ user_id: string; home_property_id: string | null }>)
+      .find((e) => e.user_id === dual)!;
+    expect(listed.home_property_id).toBe(propVillage);
+
+    asClerk();
+    expect((await call('post', '/payroll/post-to-costs', { month: MONTH_B })).body.amount).toBe(1_000_00);
+    asVillageClerk();
+    expect((await call('post', '/payroll/post-to-costs', { month: MONTH_B })).body.amount).toBe(2_000_00 + 500_00);
+  });
+
+  it('a limited user cannot make a salary company-level', async () => {
+    asClerk();
+    const res = await call('put', `/payroll/employees/${cbdStaff}`, { gross_amount: 1_000_00, frequency: 'MONTHLY', home_property_id: null });
+    expect(res.status).toBe(400);
   });
 });

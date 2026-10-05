@@ -152,7 +152,7 @@ export class HousekeepingRepository {
    */
   async openTaskOnCheckout(
     roomId: string,
-    occupancyId: string,
+    occupancyId: string | null,
     meta: HousekeepingRequestMeta,
     trx: DB
   ): Promise<void> {

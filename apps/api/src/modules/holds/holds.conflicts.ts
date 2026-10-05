@@ -5,7 +5,7 @@ import type { Database } from '../../db/types.js';
 
 /**
  * (Round 4) A hold with a unit but no booking behind it is the one kind of hold that
- * reserves a unit on its own (`holds_active_room_unique`). Two things were missing:
+ * reserves a unit on its own (`holds_active_room_no_overlap`, migration 084 — its dates only). Two things were missing:
  * a booking on the same nights was not refused, and the message when the index says no
  * blamed the quote even when the real reason was another quote holding the unit.
  */
@@ -33,11 +33,17 @@ export async function assertNoCompetingHold(
   }
 }
 
-/** Which unique rule said no? The two indexes mean very different things to the person reading. */
+/** Postgres said no to a new hold: a unique index (23505) or the dates rule (23P01, migration 084). */
+export function isHoldConflict(err: unknown): boolean {
+  const code = typeof err === 'object' && err !== null ? (err as { code?: string }).code : undefined;
+  return code === '23505' || code === '23P01';
+}
+
+/** Which rule said no? They mean very different things to the person reading. */
 export function holdConflictMessage(err: unknown): string {
   const constraint = (err as { constraint?: string } | null)?.constraint ?? '';
-  return constraint === 'holds_active_room_unique'
-    ? 'That unit is already being held for another quote that has no booking attached. Release that hold first, or attach the hold to a booking.'
+  return constraint === 'holds_active_room_no_overlap'
+    ? 'That unit is already being held for another quote on some of those dates. Release that hold, choose other dates or another unit, or attach the hold to a booking.'
     : 'This quote already has a live hold. Use it, or release it first.';
 }
 

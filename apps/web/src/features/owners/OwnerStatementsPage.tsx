@@ -174,7 +174,7 @@ export function OwnerStatementsPage() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Metric label="Landlords" value={String(t.landlords)} sub={`${t.units} unit${t.units === 1 ? '' : 's'}`} />
-            <Metric label="Revenue" value={compactPula(t.revenue)} sub={fullPula(t.revenue)} />
+            <Metric label="Revenue" value={compactPula(t.revenue)} sub={`${fullPula(t.revenue)} before VAT`} />
             <Metric label="Owner-charged costs" value={compactPula(t.maintenance_cost)} sub="approved repairs" />
             <Metric label="Net payout" value={compactPula(t.net)} sub={`${monthTitle(month)}`} tone={t.net >= 0 ? 'pos' : 'neg'} />
           </div>

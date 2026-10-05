@@ -2,10 +2,20 @@ import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow } from '../../db/types.js';
 import { propertyToday } from '../../core/time.js';
 import type { UnitType } from '../pricing/pricing.types.js';
-import type { StayUnitOption } from './public.types.js';
+import type { PublicPropertyOption, StayUnitOption } from './public.types.js';
 
 export class PublicRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** Active properties for the public enquiry form — names only. */
+  async activeProperties(): Promise<PublicPropertyOption[]> {
+    return this.db
+      .selectFrom('properties')
+      .select(['id', 'name'])
+      .where('active', '=', true)
+      .orderBy('name', 'asc')
+      .execute();
+  }
 
   /**
    * The actor a website booking is attributed to (created_by / audit). Web

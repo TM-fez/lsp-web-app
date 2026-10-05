@@ -14,6 +14,9 @@ export const UpsertCompensationSchema = z.object({
   start_date: z.coerce.date().nullable().optional(),
   active: z.boolean().optional(),
   notes: z.string().max(2000).nullable().optional(),
+  // (R5) Where this person's pay is costed. Must be one of the properties they work in;
+  // null = company-level (all-property users only). Omitted = keep / default.
+  home_property_id: z.string().uuid().nullable().optional(),
 });
 export type UpsertCompensationDTO = z.infer<typeof UpsertCompensationSchema>;
 
@@ -44,4 +47,7 @@ export interface EmployeePay {
   start_date: string | null;
   active: boolean;                 // compensation active (false when not set yet)
   notes: string | null;
+  home_property_id: string | null;   // (R5) where their pay is costed; null = company-level
+  home_property_name: string | null;
+  member_properties: Array<{ id: string; name: string }>; // choices for the home property
 }

@@ -31,10 +31,10 @@ describe('HoldsService', () => {
     await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('This quote already has a live hold');
   });
 
-  it('maps a duplicate hold on a unit to a 409 that blames the unit, not the quote', async () => {
+  it('maps an overlapping hold on a unit (084) to a 409 that blames the dates, not the quote', async () => {
     const { svc, repo } = setup();
-    repo.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505', constraint: 'holds_active_room_unique' }));
-    await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('That unit is already being held');
+    repo.create.mockRejectedValueOnce(Object.assign(new Error('overlap'), { code: '23P01', constraint: 'holds_active_room_no_overlap' }));
+    await expect(svc.createHold({ quote_id: 'q1' } as any, { userId: 'u1' })).rejects.toThrow('on some of those dates');
   });
 
   it('confirms only a HELD hold', async () => {

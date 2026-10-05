@@ -56,6 +56,7 @@ export function createPublicRouter(dbInstance = db): Router {
   router.post('/checkin', bookingLimiter, controller.submitCheckin);
 
   // Public enquiry form → auto-filed lead (rate-limited like bookings).
+  router.get('/enquiries/properties', controller.getEnquiryProperties);
   router.post('/enquiries', bookingLimiter, controller.createEnquiry);
 
   return router;

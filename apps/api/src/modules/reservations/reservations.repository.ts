@@ -7,6 +7,8 @@ import type { ReservationPricing, NotPriceable } from './reservations.pricing.js
 import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { inTransaction } from '../../core/db/transaction.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
+import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
+import { repairWindowOverlaps } from '../../core/availability/repairWindows.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 /**
@@ -102,6 +104,12 @@ export class ReservationsRepository {
     if (!room || room.status === 'MAINTENANCE' || room.status === 'OUT_OF_SERVICE') {
       return false;
     }
+
+    // (R5, migration 085) A serious repair booked on some of these nights blocks them,
+    // exactly as availability search reads it (core/availability/repairWindows.ts).
+    const repair = await sql<{ blocked: boolean }>`
+      SELECT ${repairWindowOverlaps(sql`${roomId}::uuid`, checkIn, checkOut)} AS blocked`.execute(this.db);
+    if (repair.rows[0]?.blocked) return false;
 
     // Check for overlaps: NewCheckIn < ExistCheckOut AND NewCheckOut > ExistCheckIn
     let query = this.db
@@ -298,9 +306,12 @@ export class ReservationsRepository {
    *
    * The vacated unit is marked DIRTY as well as AVAILABLE. A unit someone has just
    * moved out of is not ready for the next guest, and leaving housekeeping_status
-   * READY would let it be handed over uncleaned. Whether the move should also RAISE a
-   * housekeeping task (as check-out does via openTaskOnCheckout) is a real question and
-   * deliberately not answered here — see the PR.
+   * READY would let it be handed over uncleaned.
+   *
+   * (R5 decision, 2026-10-04 — issue #110) The move also RAISES a housekeeping task for the
+   * vacated unit, exactly as check-out does (openTaskOnCheckout, same transaction). A unit
+   * marked DIRTY with no task on the board was a clean nobody was asked to do; the tablet
+   * board works from tasks, not from the flag.
    */
   async update(
     id: string,
@@ -389,6 +400,12 @@ export class ReservationsRepository {
           })
           .where('id', '=', roomMove.fromRoomId)
           .execute();
+        await new HousekeepingRepository(this.db).openTaskOnCheckout(
+          roomMove.fromRoomId,
+          occupancy?.id ?? null,
+          meta,
+          trx
+        );
 
         await trx.updateTable('rooms')
           .set({ status: 'OCCUPIED', updated_by: meta.userId, updated_at: sql`now()` })
