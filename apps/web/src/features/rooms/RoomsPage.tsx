@@ -27,6 +27,9 @@ const hkTone: Record<HousekeepingStatus, Tone> = {
 };
 const label = (s: string) => s.replace(/_/g, ' ').toLowerCase();
 
+/** Row actions: never wrap; a comfortable tap target on a phone, the usual size from `sm` up. */
+const ACTION = 'min-h-10 whitespace-nowrap sm:min-h-0';
+
 export function RoomsPage() {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const canCreate = hasPerm('rooms.create');
@@ -172,13 +175,17 @@ export function RoomsPage() {
                       <Badge tone={hkTone[room.housekeeping_status]}>{label(room.housekeeping_status)}</Badge>
                     </td>
                     <td className="px-2.5 py-3 sm:px-4">
-                      <div className="flex flex-wrap items-center justify-end gap-1">
+                      {/* (R6 #13) On a phone the status actions looked like plain text, wrapped
+                          and were small to tap: outlined, never wrapped, ≥ 40 px tall and
+                          stacked one per line below `sm`; a single row from `sm` up. */}
+                      <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-1">
                         {canUpdate && pending && <Spinner />}
                         {canUpdate && room.status === 'AVAILABLE' && (
                           <>
                             <Button
                               size="sm"
-                              variant="ghost"
+                              variant="outline"
+                              className={ACTION}
                               disabled={pending}
                               onClick={() => statusAction.mutate({ id: room.id, action: 'maintenance' })}
                             >
@@ -186,7 +193,8 @@ export function RoomsPage() {
                             </Button>
                             <Button
                               size="sm"
-                              variant="ghost"
+                              variant="outline"
+                              className={ACTION}
                               disabled={pending}
                               onClick={() => statusAction.mutate({ id: room.id, action: 'out-of-service' })}
                             >
@@ -197,7 +205,8 @@ export function RoomsPage() {
                         {canUpdate && (room.status === 'MAINTENANCE' || room.status === 'OUT_OF_SERVICE') && (
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
+                            className={ACTION}
                             disabled={pending}
                             onClick={() => statusAction.mutate({ id: room.id, action: 'restore' })}
                           >
@@ -205,7 +214,7 @@ export function RoomsPage() {
                           </Button>
                         )}
                         {canUpdate && (
-                          <Button size="sm" variant="outline" onClick={() => openEdit(room)}>
+                          <Button size="sm" variant="outline" className={ACTION} onClick={() => openEdit(room)}>
                             Edit
                           </Button>
                         )}

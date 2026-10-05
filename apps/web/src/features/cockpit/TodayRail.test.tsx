@@ -85,4 +85,18 @@ describe('TodayRail', () => {
     expect(screen.getByText(/B2 · 08-21 → 09-06/)).toBeInTheDocument();
     expect(screen.queryByText(/T00:00:00/)).not.toBeInTheDocument();
   });
+
+  // (R6 #11) On a phone the arrival's name was cut to "Kab…" and the unit/date line wrapped
+  // into 3–4 cramped lines beside the badges. The name now wraps in full, the unit/date line
+  // never breaks, and the badges + action sit on their own line under the guest.
+  it('never cuts a guest’s name, and keeps the unit/date line whole', () => {
+    render(
+      <TodayRail today={TODAY} arrivals={[card({ guest_name: 'Kabelo Kgosiemang-Moremi' })]} inHouse={[]} departures={[]} />
+    );
+    const name = screen.getByText('Kabelo Kgosiemang-Moremi');
+    expect(name.className).not.toMatch(/(^|\s)truncate(\s|$)/);
+    const line = screen.getByText(/B2 ·/);
+    expect(line.className).toMatch(/whitespace-nowrap/);
+    expect(screen.getByTestId('guest-row-actions').className).toMatch(/w-full/);
+  });
 });

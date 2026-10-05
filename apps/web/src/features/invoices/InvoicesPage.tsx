@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSmallScreen } from '@/lib/utils/useSmallScreen';
 import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -137,6 +138,27 @@ export function InvoicesPage() {
   };
 
   const invoices = data?.data ?? [];
+  // (R6 #10) Below 640 px the table becomes one card per invoice — see useSmallScreen.
+  const small = useSmallScreen();
+
+  // The same three actions on the table row and on the phone card.
+  const actionsFor = (inv: Invoice) => (
+    <>
+      <Button size="sm" variant="outline" onClick={() => window.open(`/invoices/${inv.id}/print`, '_blank')}>
+        <FileText className="mr-1 h-3.5 w-3.5" />View
+      </Button>
+      {(inv.status === 'ISSUED' || inv.status === 'PARTIALLY_PAID') && canSettle && (
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => settle.mutate(inv.id)}>
+          Mark paid
+        </Button>
+      )}
+      {inv.status === 'PAID' && inv.kind !== 'REFUND' && canRefund && (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => openRefund(inv)}>
+          Refund
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -239,6 +261,47 @@ export function InvoicesPage() {
           title="No invoices yet"
           description="Recording a payment on a booking raises a paid receipt here automatically. You can also raise one by hand against a quote when a deposit or balance is due, then settle it here once the guest pays."
         />
+      ) : small ? (
+        <ul className="flex flex-col gap-3">
+          {invoices.map((inv) => (
+            <li key={inv.id} data-testid={`invoice-card-${inv.id}`} className="rounded-lg border border-line bg-paper p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-display text-base text-ink">{inv.number}</div>
+                  <div className="text-sm text-char">{inv.bill_to_name ?? '—'}</div>
+                  {inv.guest_name && inv.guest_name !== inv.bill_to_name && (
+                    <div className="text-xs text-muted">for {inv.guest_name}</div>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="tabnum font-display text-lg text-ink">{formatMoney(inv.total_amount, inv.currency)}</div>
+                  <Badge tone={kindTone[inv.kind]}>{inv.kind}</Badge>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Badge tone={statusTone[inv.status]}>{statusLabel[inv.status]}</Badge>
+                {inv.is_overdue && <Badge tone="rose">OVERDUE</Badge>}
+                {inv.status === 'PAID' && inv.refunded_amount > 0 && (
+                  <span className="text-xs text-muted">{formatMoney(inv.refunded_amount, inv.currency)} refunded</span>
+                )}
+              </div>
+              <div className="mt-2 text-xs text-muted">
+                {inv.unit_code && (
+                  <span>
+                    {inv.unit_code}
+                    {inv.check_in_date && inv.check_out_date && ` · ${fmtDate(inv.check_in_date)} → ${fmtDate(inv.check_out_date)}`}
+                    {' · '}
+                  </span>
+                )}
+                <span>Issued {fmtDate(inv.created_at)}</span>
+                {inv.due_date && inv.kind !== 'REFUND' && (
+                  <span className={cn(inv.is_overdue && 'text-terra')}> · Due {fmtDay(inv.due_date)}</span>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">{actionsFor(inv)}</div>
+            </li>
+          ))}
+        </ul>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line bg-paper">
           <table className="min-w-[40rem] whitespace-nowrap md:whitespace-normal w-full text-sm">
@@ -305,21 +368,7 @@ export function InvoicesPage() {
                     {inv.due_date && inv.kind !== 'REFUND' ? fmtDay(inv.due_date) : '—'}
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => window.open(`/invoices/${inv.id}/print`, '_blank')}>
-                        <FileText className="mr-1 h-3.5 w-3.5" />View
-                      </Button>
-                      {(inv.status === 'ISSUED' || inv.status === 'PARTIALLY_PAID') && canSettle && (
-                        <Button size="sm" variant="primary" disabled={busy} onClick={() => settle.mutate(inv.id)}>
-                          Mark paid
-                        </Button>
-                      )}
-                      {inv.status === 'PAID' && inv.kind !== 'REFUND' && canRefund && (
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => openRefund(inv)}>
-                          Refund
-                        </Button>
-                      )}
-                    </div>
+                    <div className="flex justify-end gap-2">{actionsFor(inv)}</div>
                   </td>
                 </tr>
               ))}

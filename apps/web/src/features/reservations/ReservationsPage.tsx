@@ -172,10 +172,18 @@ export function ReservationsPage() {
                     <div className="truncate font-display text-xl text-ink transition-colors duration-500 group-hover:text-cream">
                       {r.guest_name || 'Unnamed guest'}
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream">
-                      {r.room_code ? `${r.room_code}${r.room_name ? ` · ${r.room_name}` : ''}` : 'No unit'} ·{' '}
-                      {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'} ·{' '}
-                      {sourceLabel(r.source)}
+                    {/* (R6 #12) On a phone this one line was cut with "…" before the dates —
+                        the one thing you open the list for. Below `sm` it is two lines (unit,
+                        then dates), neither cut; from `sm` up it is the one line it always was. */}
+                    <div className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-muted transition-colors duration-500 group-hover:text-oncream sm:truncate">
+                      <span className="block truncate sm:inline">
+                        {r.room_code ? `${r.room_code}${r.room_name ? ` · ${r.room_name}` : ''}` : 'No unit'}
+                        <span className="hidden sm:inline"> · </span>
+                      </span>
+                      <span data-testid="reservation-dates" className="block whitespace-nowrap sm:inline">
+                        {fmtDate(r.check_in_date)} → {fmtDate(r.check_out_date)} · {n} night{n === 1 ? '' : 's'}
+                      </span>
+                      <span className="hidden sm:inline"> · {sourceLabel(r.source)}</span>
                     </div>
                   </div>
                   <Badge tone={statusTone[r.status]} className="relative shrink-0">
