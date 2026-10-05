@@ -298,18 +298,25 @@ export class ReportsRepository {
       SELECT
         p.id AS property_id,
         p.name AS property_name,
-        coalesce(sum(GREATEST(0, LEAST(res.check_out_date, w.s + 7)  - GREATEST(res.check_in_date, w.s))), 0)::int AS booked_nights_7,
-        coalesce(sum(GREATEST(0, LEAST(res.check_out_date, w.s + 30) - GREATEST(res.check_in_date, w.s))), 0)::int AS booked_nights_30,
+        -- (R6) Only a real booking contributes nights. LEAST/GREATEST IGNORE NULLs, so on the
+        -- LEFT JOIN a unit with NO booking used to count as booked for the whole window —
+        -- CBD with 0 bookings read "150% booked".
+        coalesce(sum(CASE WHEN res.id IS NOT NULL THEN GREATEST(0, LEAST(res.check_out_date, w.s + 7)  - GREATEST(res.check_in_date, w.s)) END), 0)::int AS booked_nights_7,
+        coalesce(sum(CASE WHEN res.id IS NOT NULL THEN GREATEST(0, LEAST(res.check_out_date, w.s + 30) - GREATEST(res.check_in_date, w.s)) END), 0)::int AS booked_nights_30,
         (SELECT count(*) FROM rooms r2
            JOIN buildings b2 ON b2.id = r2.building_id
          WHERE b2.property_id = p.id AND r2.deleted_at IS NULL AND r2.status != 'OUT_OF_SERVICE')::int AS room_count
       FROM properties p
       CROSS JOIN win w
       LEFT JOIN buildings b ON b.property_id = p.id
-      LEFT JOIN rooms r ON r.building_id = b.id AND r.deleted_at IS NULL
+      -- Same units as room_count (an out-of-service unit is not in the denominator, so its
+      -- nights can't be in the numerator either — that could read over 100%).
+      LEFT JOIN rooms r ON r.building_id = b.id AND r.deleted_at IS NULL AND r.status != 'OUT_OF_SERVICE'
+      -- (D02, 2026-09-07) A held PENDING night is unsellable, so it is demand. The decision
+      -- was recorded but PENDING never made it into this list until R6.
       LEFT JOIN reservations res ON res.room_id = r.id
         AND res.deleted_at IS NULL
-        AND res.status IN ('CONFIRMED', 'CHECKED_IN', 'BLOCKED')
+        AND res.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN', 'BLOCKED')
         AND res.check_in_date < w.s + 30 AND res.check_out_date > w.s
       WHERE p.active
       GROUP BY p.id, p.name
