@@ -72,6 +72,35 @@ describe('Public enquiry capture (live DB)', () => {
     expect(lead.source).toBe('WHATSAPP');
   });
 
+  // (Small improvements, from R7) An enquiry typed with someone else's email was filed under
+  // THAT guest — staff then saw the enquiry on the wrong person. Like a website booking (R6),
+  // it now stays with the existing guest only when it is plainly the same person: same email
+  // and the same phone, or the same name when no phone was given. Otherwise a new record,
+  // noted as a possible duplicate.
+  it('files an enquiry from a different person with the same email under a new, flagged guest', async () => {
+    const owner = (await contactsByEmail())[0]!.id;
+    await service.createEnquiry(
+      { name: 'Somebody Else', email, phone: '+267 75 999 999', message: `Other person ${tag}`, source: 'WEBSITE' },
+      { ip: '203.0.113.7' },
+    );
+    const [lead] = (await leadsByTag()).filter((l) => l.title.startsWith('Other person'));
+    expect(lead.contact_id).not.toBe(owner);
+    const created = await db.selectFrom('contacts').selectAll().where('id', '=', lead.contact_id!).executeTakeFirstOrThrow();
+    expect(created.name).toBe('Somebody Else');
+    expect(created.email_shared).toBe(true);
+    expect(created.notes).toMatch(/possible duplicate/i);
+  });
+
+  it('keeps an enquiry with the same email and the same number (written another way) with that guest', async () => {
+    const owner = (await contactsByEmail()).find((c) => c.name === 'Alpha')!.id;
+    await service.createEnquiry(
+      { name: 'A. Lpha', email, phone: '71 000 111', message: `Same number ${tag}`, source: 'WEBSITE' },
+      { ip: '203.0.113.7' },
+    );
+    const [lead] = (await leadsByTag()).filter((l) => l.title.startsWith('Same number'));
+    expect(lead.contact_id).toBe(owner);
+  });
+
   it('files a lead only (no contact) when there is no email', async () => {
     await service.createEnquiry(
       { name: 'Charlie', phone: '+267 72 000 222', message: `Walk-in ask ${tag}`, source: 'WEBSITE' },

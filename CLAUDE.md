@@ -220,6 +220,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    total; it refunds the latest receipt with something left (`folioInvoices` now returns
    `refunded_amount`). (d) Cockpit guest rows stay stacked up to `2xl`, since from `lg` the rail is three
    narrow columns.
+   **Small improvements (2026-10-05).** (a) Public phone matching compares international digits
+   (`digitsOf` in `public.service.ts`: +267 assumed for a locally written number), so "071 234 567" is
+   the same person as "+267 71 234 567". (b) **A website enquiry with an email already on file stays with
+   that guest only when plainly the same person** (same phone, or same name when no phone was given);
+   otherwise a new `email_shared` record noted as a possible duplicate. (c) Marketing segments count and
+   list **one entry per email** (`onePerEmail`, the record with the most stays stands for it).
+   (d) `CallButton` (tel:) sits beside every `WhatsAppButton`.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

@@ -40,16 +40,26 @@ export class PublicService {
     // near-duplicate contacts from anonymous enquiries).
     let contactId: string | null = null;
     if (dto.email) {
+      // (Small improvements, from R7) Typing someone else's email filed the enquiry under
+      // THEM. As for a booking (R6), the existing guest is used only when it is plainly the
+      // same person — the same phone, or the same name when no phone was given. Otherwise a
+      // new record, noted for staff as a possible duplicate (it shares the email).
       const existing = await this.repository.findContactByEmail(dto.email);
-      contactId = existing
-        ? existing.id
+      const samePerson = !!existing && (dto.phone
+        ? digitsOf(existing.phone) !== '' && digitsOf(existing.phone) === digitsOf(dto.phone)
+        : existing.name.trim().toLowerCase() === dto.name.trim().toLowerCase());
+      contactId = samePerson
+        ? existing!.id
         : (await this.contacts.create(
             {
               type: 'individual',
               name: dto.name,
               email: dto.email,
               phone: dto.phone ?? null,
-              notes: 'Created from a website enquiry',
+              notes: existing
+                ? 'Created from a website enquiry — possible duplicate: another guest already uses this email. Check before merging.'
+                : 'Created from a website enquiry',
+              ...(existing ? { email_shared: true } : {}),
               created_by: actorId,
               updated_by: actorId,
             },
@@ -343,6 +353,19 @@ function isEmailTaken(err: unknown): boolean {
   return e?.code === '23505' && e?.constraint === 'contacts_email_unique';
 }
 
+/**
+ * The number as international digits, for "is this the same phone?" — the same rule the
+ * web's WhatsApp/Call buttons use. A guest typing "071 234 567" on the website is the same
+ * person as "+267 71 234 567" on file; comparing bare digits missed that and made a
+ * second, flagged record. Botswana (+267) is assumed for a number written locally; a
+ * "+"/"00" number is already international. Empty when there is no number.
+ */
 function digitsOf(phone: string | null | undefined): string {
-  return (phone ?? '').replace(/\D/g, '');
+  const raw = (phone ?? '').trim();
+  let digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  if (raw.startsWith('+')) return digits;
+  if (digits.startsWith('00')) return digits.slice(2);
+  if (digits.startsWith('267') && digits.length > 9) return digits;
+  return '267' + digits.replace(/^0+/, '');
 }

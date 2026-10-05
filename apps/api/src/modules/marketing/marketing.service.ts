@@ -59,6 +59,28 @@ function classify(s: {
   return 'recent';
 }
 
+/**
+ * (Small improvements, from R7) One entry per inbox. Two guest records may share an email
+ * ("Save anyway" — a family, a company's travel desk); listed separately, a campaign reached
+ * that inbox twice and the segment counted one inbox as two customers. The record with the
+ * most stays (then spend) stands for the email; guests with no email are each their own entry.
+ */
+function onePerEmail<T extends { email: string | null; stays: string | number | null; previous_stays: string | number | null; spend: string | number | null }>(rows: T[]): T[] {
+  const best = new Map<string, T>();
+  const out: T[] = [];
+  const weight = (r: T) => [num(r.stays) + num(r.previous_stays), num(r.spend)] as const;
+  for (const row of rows) {
+    const key = row.email?.trim().toLowerCase();
+    if (!key) { out.push(row); continue; }
+    const held = best.get(key);
+    if (!held) { best.set(key, row); continue; }
+    const [hs, hp] = weight(held);
+    const [rs, rp] = weight(row);
+    if (rs > hs || (rs === hs && rp > hp)) best.set(key, row);
+  }
+  return [...out, ...best.values()];
+}
+
 const BRAND_SYSTEM = [
   'You are the marketing and revenue strategist for Lifestyle, a serviced-apartments operator in Gaborone, Botswana.',
   'Write in warm, clear, professional British English. The currency is the Botswana Pula, written like P1,200.',
@@ -111,7 +133,7 @@ export class MarketingService {
 
   /** Deterministic guest segmentation — always works, even with the LLM dark. */
   async getSegments(viewer?: ContactViewer): Promise<SegmentsResponse> {
-    const rows = await this.repo.customerStats(viewer);
+    const rows = onePerEmail(await this.repo.customerStats(viewer));
 
     const buckets = new Map<SegmentKey, { count: number; spend: number; members: Array<{ name: string; spend: number; stays: number }> }>();
     for (const key of SEGMENT_KEYS) buckets.set(key, { count: 0, spend: 0, members: [] });
@@ -171,7 +193,7 @@ export class MarketingService {
     const limit = Math.min(Math.max(opts.limit ?? 500, 1), 2000);
     const needle = (opts.search ?? '').trim().toLowerCase();
 
-    const rows = await this.repo.customerStats(viewer);
+    const rows = onePerEmail(await this.repo.customerStats(viewer));
     const all: SegmentMember[] = [];
 
     for (const row of rows) {

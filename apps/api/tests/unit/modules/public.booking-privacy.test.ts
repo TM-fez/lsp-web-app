@@ -60,6 +60,25 @@ describe('PublicService.createBooking — never reveals who owns an email', () =
     expect(res.guest_name).toBe('Thato M');
   });
 
+  // (Small improvements, from R7) Matching compared bare digits, so the same person typing
+  // their number the local way ("071 234 567") was not recognised against "+267 71 234 567"
+  // and got a second, flagged record.
+  it.each(['071 234 567', '71234567', '0026771234567'])(
+    'recognises the same number written the local way (%s)',
+    async (phone) => {
+      const { service, contacts, reservations } = serviceFor(existing);
+      await service.createBooking(booking({ name: 'Thato M', phone }), { ip: '1.1.1.1' });
+      expect(contacts.create).not.toHaveBeenCalled();
+      expect(reservations.createReservation.mock.calls[0]![0]).toMatchObject({ contact_id: 'c-thato' });
+    }
+  );
+
+  it('still treats a genuinely different number as a different person', async () => {
+    const { service, contacts } = serviceFor(existing);
+    await service.createBooking(booking({ phone: '71 234 568' }), { ip: '1.1.1.1' });
+    expect(contacts.create).toHaveBeenCalledTimes(1);
+  });
+
   it('a brand-new email: an ordinary new contact, no duplicate flag', async () => {
     const { service, contacts } = serviceFor(undefined);
     const res = await service.createBooking(booking({ email: 'new@example.com' }), { ip: '1.1.1.1' });

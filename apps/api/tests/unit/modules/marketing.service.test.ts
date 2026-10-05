@@ -121,6 +121,34 @@ describe('MarketingService — segment members', () => {
   });
 });
 
+// (Small improvements, from R7) Two guest records may share an email ("Save anyway" — a
+// family, a company's travel desk). A campaign to that list reached the inbox twice, and
+// the segment counted one inbox as two customers. One email = one entry, the record with
+// the most stays standing for it.
+describe('MarketingService — one entry per email', () => {
+  const SHARED: CustomerStat[] = [
+    { id: 'a', name: 'Travel Desk (Mpho)', email: 'Desk@Acme.co.bw', phone: null, company: 'Acme', stays: 4, previous_stays: 0, spend: 400_000, last_stay_days: 10 },
+    { id: 'b', name: 'Travel Desk (Neo)', email: 'desk@acme.co.bw', phone: null, company: 'Acme', stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 12 },
+    { id: 'c', name: 'No Email Guest', email: null, phone: '71000000', company: null, stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 5 },
+    { id: 'd', name: 'Another No Email', email: null, phone: '72000000', company: null, stays: 1, previous_stays: 0, spend: 100_000, last_stay_days: 6 },
+  ];
+
+  it('lists a shared email once, under the record with the most stays', async () => {
+    const svc = new MarketingService(repoWith(SHARED), darkLlm);
+    const frequent = await svc.getSegmentMembers('frequent');
+    const recent = await svc.getSegmentMembers('recent');
+    const emails = [...frequent.members, ...recent.members].map((m) => m.email?.toLowerCase()).filter(Boolean);
+    expect(emails).toEqual(['desk@acme.co.bw']);
+    expect(frequent.members.map((m) => m.id)).toEqual(['a']);
+  });
+
+  it('keeps guests with no email apart, and counts each inbox once in the summary', async () => {
+    const res = await new MarketingService(repoWith(SHARED), darkLlm).getSegments();
+    expect(res.total_customers).toBe(3);
+    expect(res.segments.find((s) => s.key === 'recent')!.count).toBe(2);
+  });
+});
+
 describe('MarketingService — campaign (LLM-gated)', () => {
   it('returns null copy and never calls the API when the LLM is dark', async () => {
     const res = await new MarketingService(repoWith(ROWS), darkLlm).generateCampaign({ segment: 'vip', channel: 'email' });

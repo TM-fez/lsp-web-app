@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
+import { CallButton } from '@/components/CallButton';
 import { useCreateLead, useUpdateLead, useDeleteLead } from './hooks';
 import { ConvertLeadDialog } from './ConvertLeadDialog';
 import { USER_LEAD_STATUSES, LEAD_SOURCES, statusLabel, sourceLabel } from './util';
@@ -151,11 +152,10 @@ export function LeadFormDrawer({ open, onOpenChange, lead, canDelete }: Props) {
               disabled={busy}
             />
             {isEdit && (
-              <WhatsAppButton
-                phone={phone}
-                message="Hi, following up on your enquiry with Lifestyle —"
-                className="mt-1 self-start"
-              />
+              <div className="mt-1 flex flex-wrap gap-2">
+                <CallButton phone={phone} />
+                <WhatsAppButton phone={phone} message="Hi, following up on your enquiry with Lifestyle —" />
+              </div>
             )}
           </div>
 
