@@ -23,6 +23,15 @@ export interface StayPricer {
 /** The system user for sweeps: nobody typed this, the scheduler did. */
 const SWEEP_ACTOR = null;
 
+/** (R7 N7-1) How many times one booking is re-priced when it keeps changing underneath us. */
+const MAX_RECONCILE_ATTEMPTS = 3;
+const DONE = Symbol('done');
+
+/** The same booking, as far as what it earns goes — every column the ledger is built from. */
+function sameInputs(a: RecognisableReservation, b: RecognisableReservation): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export class RevenueService {
   constructor(
     private readonly repository: RevenueRepository,
@@ -68,83 +77,97 @@ export class RevenueService {
     result.reservations_examined = earning.length;
 
     for (const listed of earning) {
-      // (R6 NEW-9) One booking at a time, re-read once we hold its lock: the row listed
-      // above may already be stale if another edit committed while we waited.
-      await this.repository.withReservationLock(listed.id, async () => {
-        const [reservation] = await this.repository.findRecognisable({ reservationIds: [listed.id] });
-        if (!reservation) return; // stopped earning meanwhile — the loop below handles that
+      // (R6 NEW-9, R7 N7-1) Work out what the booking SHOULD say first — that may price it,
+      // which needs the pool — then take its lock and, inside it, only check and write.
+      // If the booking changed while we were pricing it (another edit committed), price
+      // the fresh version and try again; a newer edit's own reconcile also runs, so giving
+      // up after a few rounds still converges.
+      let reservation = listed;
+      for (let attempt = 0; attempt < MAX_RECONCILE_ATTEMPTS; attempt += 1) {
         const desired = await this.desiredNights(reservation);
+        const current = reservation;
+        const outcome = await this.repository.lockedFor(current.id, async (locked) => {
+          const [fresh] = await locked.findRecognisable({ reservationIds: [current.id] });
+          if (!fresh) return DONE; // stopped earning meanwhile — the loop below handles that
+          if (!sameInputs(fresh, current)) return fresh;
 
-        // No agreed total and nothing to reconstruct one from: leave the booking
-        // completely alone, rather than treating "we cannot price it" as "it earns
-        // nothing". The difference matters — falling through would supersede real
-        // recognised nights the moment a pricer went missing, destroying a month of
-        // ledger because of a wiring change.
-        if (desired.unpriced) {
-          result.unpriced += 1;
-          return;
-        }
-        if (desired.totalSource === 'PRICED') result.reconstructed += 1;
+          // No agreed total and nothing to reconstruct one from: leave the booking
+          // completely alone, rather than treating "we cannot price it" as "it earns
+          // nothing". The difference matters — falling through would supersede real
+          // recognised nights the moment a pricer went missing, destroying a month of
+          // ledger because of a wiring change.
+          if (desired.unpriced) {
+            result.unpriced += 1;
+            return DONE;
+          }
+          if (desired.totalSource === 'PRICED') result.reconstructed += 1;
 
-        const live = await this.repository.liveNights(reservation.id);
-        const reason = supersedeReason(live, desired.slices, reservation.room_id);
-        if (reason === null) return; // already agrees — leave it entirely alone
+          const live = await locked.liveNights(current.id);
+          const reason = supersedeReason(live, desired.slices, current.room_id);
+          if (reason === null) return DONE; // already agrees — leave it entirely alone
 
-        const amount = desired.slices.reduce((sum, slice) => sum + slice.amount, 0);
+          const amount = desired.slices.reduce((sum, slice) => sum + slice.amount, 0);
 
-        // A dry run counts exactly what an apply would write, and writes nothing. Each
-        // booking is measured against the live ledger independently, so skipping the
-        // write cannot skew the ones that follow.
-        const written = options.dryRun
-          ? { written: desired.slices.length, superseded: live.length }
-          : await this.repository.replaceNights(
-              {
-                reservationId: reservation.id,
-                roomId: reservation.room_id,
-                currency: reservation.folio_currency,
-                taxRateBps: reservation.tax_rate_bps,
-                totalSource: desired.totalSource,
-                slices: desired.slices,
-                reason,
-              },
-              meta
-            );
+          // A dry run counts exactly what an apply would write, and writes nothing. Each
+          // booking is measured against the live ledger independently, so skipping the
+          // write cannot skew the ones that follow.
+          const written = options.dryRun
+            ? { written: desired.slices.length, superseded: live.length }
+            : await locked.replaceNights(
+                {
+                  reservationId: current.id,
+                  roomId: current.room_id,
+                  currency: current.folio_currency,
+                  taxRateBps: current.tax_rate_bps,
+                  totalSource: desired.totalSource,
+                  slices: desired.slices,
+                  reason,
+                },
+                meta
+              );
 
-        result.reservations_changed += 1;
-        result.nights_written += written.written;
-        result.nights_superseded += written.superseded;
-        result.amount_written += amount;
-        if (desired.totalSource === 'PRICED') {
-          result.nights_reconstructed += written.written;
-          result.amount_reconstructed += amount;
-        }
-      });
+          result.reservations_changed += 1;
+          result.nights_written += written.written;
+          result.nights_superseded += written.superseded;
+          result.amount_written += amount;
+          if (desired.totalSource === 'PRICED') {
+            result.nights_reconstructed += written.written;
+            result.amount_reconstructed += amount;
+          }
+          return DONE;
+        });
+        if (outcome === DONE) break;
+        reservation = outcome;
+      }
     }
 
     // The other half of agreement: bookings that still have live nights but have
     // stopped earning them. Cancelled after the sweep last ran, no-showed, soft
     // deleted, or pushed back to PENDING.
     for (const reservationId of await this.repository.findNoLongerEarning(window?.reservationIds)) {
-      const live = await this.repository.liveNights(reservationId);
-      if (!live.length) continue;
+      // Same lock as above, so this can't interleave with a reconcile of the same booking.
+      await this.repository.lockedFor(reservationId, async (locked) => {
+        const live = await locked.liveNights(reservationId);
+        if (!live.length) return;
 
-      const written = options.dryRun
-        ? { written: 0, superseded: live.length }
-        : await this.repository.replaceNights(
-            {
-              reservationId,
-              roomId: live[0]!.room_id,
-              currency: live[0]!.currency,
-              taxRateBps: live[0]!.tax_rate_bps,
-              totalSource: live[0]!.total_source,
-              slices: [],
-              reason: 'NO_LONGER_EARNING',
-            },
-            meta
-          );
+        const written = options.dryRun
+          ? { written: 0, superseded: live.length }
+          : await locked.replaceNights(
+              {
+                reservationId,
+                roomId: live[0]!.room_id,
+                currency: live[0]!.currency,
+                taxRateBps: live[0]!.tax_rate_bps,
+                totalSource: live[0]!.total_source,
+                slices: [],
+                reason: 'NO_LONGER_EARNING',
+              },
+              meta
+            );
 
-      result.reservations_changed += 1;
-      result.nights_superseded += written.superseded;
+        result.reservations_changed += 1;
+        result.nights_superseded += written.superseded;
+      });
     }
 
     return result;

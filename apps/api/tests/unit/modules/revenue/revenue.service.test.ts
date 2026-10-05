@@ -27,16 +27,17 @@ function setup(bookings = [BOOKING], live: unknown[] = []) {
     written: input.slices.length,
     superseded: live.length,
   }));
-  const repository = {
-    // The service re-reads each booking by id once it holds that booking's lock (R6).
+  const repository: Record<string, unknown> = {
+    // The service re-reads each booking by id once it holds that booking's lock (R6), and
+    // does its writes through the repository the lock hands it (R7) — here, the same fake.
     findRecognisable: vi.fn(async (w?: { reservationIds?: string[] }) =>
       w?.reservationIds ? bookings.filter((b: { id: string }) => w.reservationIds!.includes(b.id)) : bookings),
-    withReservationLock: vi.fn(async (_id: string, fn: () => Promise<unknown>) => fn()),
+    lockedFor: vi.fn(async (_id: string, fn: (locked: unknown) => Promise<unknown>) => fn(repository)),
     findNoLongerEarning: vi.fn(async () => [] as string[]),
     liveNights: vi.fn(async () => live),
     replaceNights,
-  } as unknown as RevenueRepository;
-  return { repository, replaceNights };
+  };
+  return { repository: repository as unknown as RevenueRepository, replaceNights };
 }
 
 const pricerReturning = (value: Record<string, unknown>): StayPricer => ({

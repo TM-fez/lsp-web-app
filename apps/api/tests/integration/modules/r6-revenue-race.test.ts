@@ -6,8 +6,7 @@
  * ledger disagreeing with the folio until the next sweep. Reconciles of one booking now
  * queue behind each other, and each re-reads the booking once it holds the queue.
  *
- * Deterministic: the first reconcile is paused (inside its work) right after it has read the
- * old price; while it waits, the price changes and a second reconcile is started. Unlocked,
+ * Deterministic: the first reconcile is paused right after it has read the old price; while it waits, the price changes and a second reconcile is started. Unlocked,
  * the second finishes first and the stale first one overwrites it.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -49,19 +48,22 @@ afterAll(async () => {
 describe('immediate revenue reconcile under concurrent edits', () => {
   it('ends agreeing with the latest price, whichever reconcile finishes first', async () => {
     const slowRepo = new RevenueRepository(db);
-    const realLive = slowRepo.liveNights.bind(slowRepo);
+    const realFind = slowRepo.findRecognisable.bind(slowRepo);
     let second: Promise<unknown> | undefined;
     let paused = false;
-    slowRepo.liveNights = async (id: string) => {
+    // (R7) The first reconcile prices the booking BEFORE taking its lock, so pause it right
+    // after that first read — it now holds the P2,000 price.
+    slowRepo.findRecognisable = async (w) => {
+      const rows = await realFind(w);
       if (!paused) {
         paused = true;
-        // This reconcile has already read the P2,000 price. Now the booking is re-priced
-        // (another edit commits) and that edit's own reconcile starts.
+        // Now the booking is re-priced (another edit commits) and that edit's own
+        // reconcile starts.
         await db.updateTable('reservations').set({ folio_total_amount: 300_000 } as never).where('id', '=', bookingId).execute();
         second = new RevenueService(new RevenueRepository(db)).reconcileFor([bookingId], { userId });
         await new Promise((r) => setTimeout(r, 300));
       }
-      return realLive(id);
+      return rows;
     };
 
     await new RevenueService(slowRepo).reconcileFor([bookingId], { userId });
