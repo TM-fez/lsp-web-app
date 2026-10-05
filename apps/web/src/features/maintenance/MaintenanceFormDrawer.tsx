@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
+import { CallButton } from '@/components/CallButton';
 import { useAuthStore } from '@/store/auth';
 import {
   useCreateWorkOrder,
@@ -337,7 +338,12 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
                 Landlord unit{order.landlord_name ? ` — ${order.landlord_name}` : ''}. Repair costs are
                 attributed to the landlord in Expenses.
               </span>
-              {order.landlord_phone && <WhatsAppButton phone={order.landlord_phone} className="shrink-0" />}
+              {order.landlord_phone && (
+                <div className="flex shrink-0 gap-2">
+                  <CallButton phone={order.landlord_phone} />
+                  <WhatsAppButton phone={order.landlord_phone} />
+                </div>
+              )}
             </div>
           )}
 
@@ -371,6 +377,7 @@ export function MaintenanceFormDrawer({ open, onOpenChange, order, rooms, canUpd
                 onChange={(e) => setContractorPhone(e.target.value)}
                 disabled={busy}
               />
+              <CallButton phone={contractorPhone} className="shrink-0" />
               <WhatsAppButton phone={contractorPhone} className="shrink-0" />
             </div>
             {isEdit && order ? (

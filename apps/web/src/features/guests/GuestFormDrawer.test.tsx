@@ -82,3 +82,18 @@ describe('GuestFormDrawer — add guest', () => {
     expect(createMutate.mock.calls[1]![0].input.allow_duplicate_email).toBe(true);
   });
 });
+
+describe('GuestFormDrawer — contacting a saved guest', () => {
+  it('offers Call and WhatsApp beside the phone number', () => {
+    render(
+      <GuestFormDrawer
+        open
+        onOpenChange={() => {}}
+        guest={{ id: 'c1', type: 'individual', name: 'Neo Kgosi', email: null, phone: '71 234 567', company: null, address: null, notes: null } as never}
+      />
+    );
+    expect(screen.getByRole('link', { name: /Call/ })).toHaveAttribute('href', 'tel:+26771234567');
+    expect(screen.getByRole('link', { name: /WhatsApp/ })).toBeInTheDocument();
+  });
+});
+

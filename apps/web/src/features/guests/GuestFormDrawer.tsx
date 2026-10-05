@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
+import { CallButton } from '@/components/CallButton';
 import { useCreateGuest, useUpdateGuest, useDeleteGuest } from './hooks';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
 import { isDuplicateEmail } from '@/lib/api/errors';
@@ -140,11 +141,10 @@ export function GuestFormDrawer({ open, onOpenChange, guest, canDelete }: Props)
                 onChange={(e) => setPhone(e.target.value)}
               />
               {isEdit && (
-                <WhatsAppButton
-                  phone={phone}
-                  message={`Hi ${name.trim().split(' ')[0] || 'there'},`}
-                  className="mt-1 self-start"
-                />
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <CallButton phone={phone} />
+                  <WhatsAppButton phone={phone} message={`Hi ${name.trim().split(' ')[0] || 'there'},`} />
+                </div>
               )}
             </div>
           </div>

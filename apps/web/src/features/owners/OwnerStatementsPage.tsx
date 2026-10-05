@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { WhatsAppButton } from '@/components/WhatsAppButton';
+import { CallButton } from '@/components/CallButton';
 import { cn } from '@/lib/utils/cn';
 import { useOwners } from './hooks';
 import type { OwnerStatement } from '@/types';
@@ -96,7 +97,8 @@ function OwnerCard({ owner, from, to }: { owner: OwnerStatement; from: string; t
       {open && (
         <div className="border-t border-line bg-cream-2/40 px-4 py-3">
           {owner.landlord_phone && (
-            <div className="mb-3">
+            <div className="mb-3 flex flex-wrap gap-2">
+              <CallButton phone={owner.landlord_phone} label={`Call ${owner.landlord_phone}`} />
               <WhatsAppButton phone={owner.landlord_phone} label={`WhatsApp ${owner.landlord_phone}`} />
             </div>
           )}

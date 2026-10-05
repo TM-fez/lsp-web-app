@@ -151,7 +151,7 @@ parallel track and slot in whenever the client unblocks them.
 Small, independent, no dependency on the keystone. Ships momentum.
 - ✅ `reservations.source` column (enum + backfill) + surfaced in form/list/cockpit — migration 045
 - ✅ wa.me WhatsApp button — built reusable (`WhatsAppButton` + `whatsapp.ts`), wired into the **guest** drawer.
-  - ⏳ Follow-up: leads + maintenance have no phone to dial yet (leads UI doesn't surface the contact phone; maintenance has no contractor phone field). Add those phone fields, then drop the same button in.
+  - ✅ Follow-up done: enquiries and repairs (contractor + landlord) carry a phone with the WhatsApp button, and every WhatsApp button now has a **Call** (tel:) button beside it (2026-10-05).
 - ✅ `DEPLOY.md` rewrite (Vercel-web + Render-API + Render-Postgres; in-process sweep)
 - ⏸️ Parked: go-live data wipe (needs a deliberate DB target + owner eyeball before firing) + deactivate empty "Main" building
 
