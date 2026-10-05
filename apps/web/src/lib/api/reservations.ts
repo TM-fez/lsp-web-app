@@ -92,6 +92,12 @@ export async function markReservationPaid(
 
 // The booking's money: total / paid / outstanding, derived from its invoices. Gated on
 // reservations.read, not a payments permission — this reports money, it never moves any.
+/** One booking by id (R9 — so a finance list can open it in place). */
+export async function getReservation(id: string): Promise<Reservation> {
+  const { data } = await api.get<Reservation>(`/reservations/${id}`);
+  return data;
+}
+
 export async function getReservationFolio(id: string): Promise<ReservationFolio> {
   const { data } = await api.get<ReservationFolio>(`/reservations/${id}/folio`);
   return data;

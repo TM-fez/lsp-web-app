@@ -188,7 +188,8 @@ export interface RatePlan {
 }
 
 /** Where a booking stands on money — derived from its invoices, never stored. */
-export type PaymentState = 'UNPAID' | 'PART_PAID' | 'PAID';
+/** REFUNDED (R9): the agreed total was brought to P0 by a full refund — nothing paid, nothing owed. */
+export type PaymentState = 'UNPAID' | 'PART_PAID' | 'PAID' | 'REFUNDED';
 
 export interface FolioInvoiceLine {
   id: string;

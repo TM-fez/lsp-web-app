@@ -181,9 +181,12 @@ export class ReservationsService {
       credit_amount: credit,
       // A complimentary stay (agreed at P0 — e.g. a 100% discount) owes nothing and was
       // never going to be paid; calling it UNPAID sent staff looking for a missing invoice.
+      // (R9 N9-1) …but a stay that reached P0 because everything paid went back (a full
+      // refund lowers the agreed total, 2026-10-02) is REFUNDED, not PAID: the screen already
+      // said "fully refunded" while the API still said paid.
       payment_state:
         total === 0 && source === 'FOLIO' && outstanding === 0
-          ? 'PAID'
+          ? invoices.some((i) => i.kind === 'REFUND' || i.status === 'REFUNDED') ? 'REFUNDED' : 'PAID'
           : paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
       total_source: source,
       invoices,

@@ -199,12 +199,52 @@ describe('ReservationFormDrawer — the money on a booking', () => {
       expect(screen.queryByLabelText('Refund amount (Pula)')).not.toBeInTheDocument();
     });
 
-    it('is not offered on a live booking that is simply paid', () => {
+    // (R9 #4) A normal confirmed, paid stay could only be refunded from Finance → Invoices.
+    // It is offered here too — empty, so nobody refunds the whole stay by accident.
+    it('is offered on a live, paid booking too, starting empty', async () => {
       perms = ['invoices.refund'];
       cancelledWithMoney();
       open({ status: 'CONFIRMED' });
+      const amount = screen.getByLabelText('Refund amount (Pula)') as HTMLInputElement;
+      expect(amount.value).toBe('');
+      expect(screen.getByText(/Up to BWP 400.00 can go back from here/)).toBeInTheDocument();
+      fireEvent.change(amount, { target: { value: '50' } });
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Goodwill' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 50.00' }));
+      await waitFor(() => expect(refundMutate).toHaveBeenCalledWith(expect.objectContaining({ id: 'rcpt-1', amount: 5_000 })));
+    });
+
+    it('is not offered when nothing has been paid', () => {
+      perms = ['invoices.refund'];
+      folioData = { ...folioData!, paid_amount: 0, invoices: [] };
+      open({ status: 'CONFIRMED' });
       expect(screen.queryByLabelText('Refund amount (Pula)')).not.toBeInTheDocument();
     });
+  });
+
+  // (R9 #5) "Fully refunded · P0 of P0 paid" sat beside a price box still calling today's
+  // price for the stay "Total due". Once a total is agreed, the box shows that agreed total
+  // (P0 after a full refund) and labels today's price as what it is.
+  it('does not call today’s price "Total due" once a total is agreed — a full refund reads P0', () => {
+    perms = ['payments.create', 'payments.update', 'reservations.discount.request'];
+    folioData = {
+      ...folioData!, total_amount: 0, paid_amount: 0, outstanding_amount: 0, payment_state: 'REFUNDED',
+      invoices: [
+        { id: 'i1', number: 'INV-1', kind: 'BALANCE', status: 'REFUNDED', total_amount: 100_800, created_at: '2026-08-24T10:00:00Z' },
+        { id: 'i2', number: 'CN-1', kind: 'REFUND', status: 'PAID', total_amount: 100_800, created_at: '2026-08-25T10:00:00Z' },
+      ],
+    };
+    open({ status: 'CONFIRMED' });
+    expect(screen.queryByText('Total due')).not.toBeInTheDocument();
+    expect(screen.getByText('Agreed total (after refunds)').parentElement).toHaveTextContent('BWP 0.00');
+    expect(screen.getByText('Price at today’s rates').parentElement).toHaveTextContent('BWP 1,008.00');
+  });
+
+  it('still says "Total due" while no total has been agreed yet', () => {
+    perms = ['payments.create', 'payments.update', 'reservations.discount.request'];
+    folioData = { ...folioData!, total_source: 'PRICED' };
+    open();
+    expect(screen.getByText('Total due').parentElement).toHaveTextContent('BWP 1,008.00');
   });
 
   it('keeps "Complimentary" for a stay that was agreed at P0 and never invoiced', () => {

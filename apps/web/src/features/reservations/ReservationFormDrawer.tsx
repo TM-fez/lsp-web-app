@@ -805,10 +805,28 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       <span className="text-ink">{formatMoney(pricing.data.tax_amount)}</span>
                     </div>
                   )}
-                  <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5 font-medium text-ink">
-                    <span>Total due</span>
-                    <span className="font-display">{formatMoney(pricing.data.total_amount)}</span>
-                  </div>
+                  {/* (R9 #5) Once a total is agreed (frozen on the folio), THAT is what is due —
+                      a full refund brings it to P0 — and the figure above is only today's price
+                      for the stay. Calling today's price "Total due" contradicted "P0 of P0 paid". */}
+                  {folio.data?.total_source === 'FOLIO' ? (
+                    <>
+                      <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5 text-muted">
+                        <span>Price at today’s rates</span>
+                        <span className="text-ink">{formatMoney(pricing.data.total_amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-medium text-ink">
+                        <span>
+                          {folio.data.invoices.some((i) => i.kind === 'REFUND') ? 'Agreed total (after refunds)' : 'Agreed total'}
+                        </span>
+                        <span className="font-display">{formatMoney(folio.data.total_amount)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5 font-medium text-ink">
+                      <span>Total due</span>
+                      <span className="font-display">{formatMoney(pricing.data.total_amount)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>Deposit to confirm ({pricing.data.deposit_pct}%)</span>
                     <span>{formatMoney(pricing.data.deposit_amount)}</span>
@@ -1032,32 +1050,36 @@ function fullyRefunded(f: ReservationFolio): boolean {
 }
 
 /**
- * (R8 #3) Refund straight from the booking. A cancelled booking still holding money can't be
- * removed ("refund it from the booking first"), but the booking had no refund button — staff
- * had to find the receipt on the Invoices page. Offered when money is due back or may be:
- * a cancelled / no-show booking that still holds payment, or a live one paid beyond its
- * agreed total. It refunds the latest receipt with something left on it, capped at what is
- * left there and at what the booking holds; the server re-checks both under its locks.
+ * (R8 #3, R9 #4) Refund straight from the booking. A cancelled booking still holding money
+ * can't be removed ("refund it from the booking first"), but the booking had no refund button —
+ * staff had to find the receipt on the Invoices page. Offered on any booking holding money.
+ * It refunds the latest receipt with something left on it, capped at what is left there and
+ * at what the booking holds; the server re-checks both under its locks.
  */
 function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status: Reservation['status'] }) {
   const hasPerm = useAuthStore((s) => s.hasPerm);
   const refund = useRefundInvoice();
   const closed = status === 'CANCELLED' || status === 'NO_SHOW';
-  const held = closed ? folio.paid_amount : folio.credit_amount;
+  // (R9 #4) Any booking holding money can refund from here, up to what it holds — a refund
+  // lowers the agreed total by the same amount, so it never puts the guest in debt
+  // (2026-10-02). Prefilled only where the whole amount is plainly due back (a closed
+  // booking, or what was paid beyond the total); a live paid stay starts empty, so nobody
+  // refunds a whole stay by accident.
   const receipt = [...folio.invoices]
     .reverse()
     .find((i) => i.kind !== 'REFUND' && i.status === 'PAID' && i.total_amount - (i.refunded_amount ?? 0) > 0);
-  const cap = receipt ? Math.min(held, receipt.total_amount - (receipt.refunded_amount ?? 0)) : 0;
+  const cap = receipt ? Math.min(folio.paid_amount, receipt.total_amount - (receipt.refunded_amount ?? 0)) : 0;
+  const suggested = closed ? cap : Math.min(folio.credit_amount, cap);
 
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const key = useRef('');
   const inFlight = useRef(false);
   useEffect(() => {
-    setAmount(cap > 0 ? (cap / 100).toFixed(2) : '');
+    setAmount(suggested > 0 ? (suggested / 100).toFixed(2) : '');
     setReason('');
     key.current = newIdempotencyKey();
-  }, [receipt?.id, cap]);
+  }, [receipt?.id, cap, suggested]);
 
   if (!hasPerm('invoices.refund') || !receipt || cap <= 0) return null;
 

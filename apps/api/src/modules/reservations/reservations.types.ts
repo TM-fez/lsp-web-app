@@ -167,7 +167,8 @@ export interface ReservationFolio {
   outstanding_amount: number;
   /** Paid beyond the agreed total — a refund due (e.g. a stay shortened after payment). */
   credit_amount: number;
-  payment_state: 'UNPAID' | 'PART_PAID' | 'PAID';
+  /** REFUNDED (R9): agreed total brought to P0 by a full refund — nothing paid, nothing owed. */
+  payment_state: 'UNPAID' | 'PART_PAID' | 'PAID' | 'REFUNDED';
   total_source: 'FOLIO' | 'PRICED';
   invoices: FolioInvoiceLine[];
 }
