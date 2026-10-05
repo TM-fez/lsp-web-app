@@ -13,7 +13,10 @@ const question = {
 vi.mock('./RoomFormDrawer', () => ({ RoomFormDrawer: () => null }));
 vi.mock('./hooks', () => ({
   useRooms: () => ({
-    data: [{ id: 'r1', code: 'DEMO-D3', name: 'D3', type: 'DELUXE', capacity: 3, status: 'AVAILABLE', housekeeping_status: 'READY', ownership: 'COMPANY' }],
+    data: [
+      { id: 'r0', code: 'DEMO-A1', name: 'A1', type: 'DELUXE', capacity: 3, status: 'MAINTENANCE', housekeeping_status: 'READY', ownership: 'COMPANY' },
+      { id: 'r1', code: 'DEMO-D3', name: 'D3', type: 'DELUXE', capacity: 3, status: 'AVAILABLE', housekeeping_status: 'READY', ownership: 'COMPANY' },
+    ],
     isLoading: false, isError: false, refetch: () => {},
   }),
   useRoomStatusAction: () => ({ mutate, isPending: false, variables: undefined }),
@@ -47,4 +50,17 @@ describe('RoomsPage — closing a unit with bookings ahead', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(mutate).not.toHaveBeenCalled();
   });
+
+  // (R8 #1) The question sat at the top of the page and never said which unit — easy to
+  // miss after clicking a unit further down. It now opens right under that unit's row and
+  // names it.
+  it('asks right under the unit that was clicked, and names it', () => {
+    render(<RoomsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Out of service' }));
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('DEMO-D3');
+    const unitRow = screen.getByText('DEMO-D3').closest('tr')!;
+    expect(unitRow.nextElementSibling).toContainElement(alert);
+  });
 });
+

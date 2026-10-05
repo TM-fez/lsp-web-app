@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { BedDouble, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,24 +113,6 @@ export function RoomsPage() {
         </div>
       )}
 
-      {closeQuestion && (
-        <div role="alert" className="flex flex-col gap-3 rounded-md border border-line bg-cream px-4 py-3 text-sm text-char sm:flex-row sm:items-center">
-          <p className="flex-1">{closeQuestion.message}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => setCloseQuestion(null)}>
-              Keep it open
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => changeStatus(closeQuestion.id, closeQuestion.action, true)}
-            >
-              {closeQuestion.action === 'maintenance' ? 'Put it into maintenance anyway' : 'Take it out of service anyway'}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {isLoading ? (
         <div className="flex h-40 items-center justify-center">
           <Spinner className="h-6 w-6" />
@@ -182,7 +164,8 @@ export function RoomsPage() {
               {filtered.map((room) => {
                 const pending = statusAction.isPending && statusAction.variables?.id === room.id;
                 return (
-                  <tr key={room.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                  <Fragment key={room.id}>
+                  <tr className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                     <td className="px-2.5 py-3 sm:px-4">
                       <div className="whitespace-nowrap font-medium text-slate-900">{room.code}</div>
                       <div className="text-xs text-slate-500">{room.name}</div>
@@ -253,6 +236,32 @@ export function RoomsPage() {
                       </div>
                     </td>
                   </tr>
+                  {/* (R8 #1) The "still has bookings" question opens right under the unit it is
+                      about and names it — at the top of the page it was easy to miss. */}
+                  {closeQuestion?.id === room.id && (
+                    <tr>
+                      <td colSpan={6} className="px-2.5 pb-3 sm:px-4">
+                        <div role="alert" className="flex flex-col gap-3 rounded-md border border-terra/40 bg-cream px-4 py-3 text-sm text-char sm:flex-row sm:items-center">
+                          <p className="flex-1">
+                            <span className="font-medium text-ink">{room.code}:</span> {closeQuestion.message}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setCloseQuestion(null)}>
+                              Keep it open
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => changeStatus(closeQuestion.id, closeQuestion.action, true)}
+                            >
+                              {closeQuestion.action === 'maintenance' ? 'Put it into maintenance anyway' : 'Take it out of service anyway'}
+                            </Button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>

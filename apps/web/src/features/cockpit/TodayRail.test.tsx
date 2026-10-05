@@ -99,4 +99,17 @@ describe('TodayRail', () => {
     expect(line.className).toMatch(/whitespace-nowrap/);
     expect(screen.getByTestId('guest-row-actions').className).toMatch(/w-full/);
   });
+
+  // (R8 #4) From ~1024 px the rail is three columns, a third of the screen each, and the
+  // one-line row cut names short again ("Kabelo Kgos…"). The name now wraps at every width
+  // short of very wide screens, and carries its full text as a tooltip.
+  it('does not cut the name at medium desktop widths either', () => {
+    render(
+      <TodayRail today={TODAY} arrivals={[card({ guest_name: 'Kabelo Kgosiemang-Moremi' })]} inHouse={[]} departures={[]} />
+    );
+    const name = screen.getByText('Kabelo Kgosiemang-Moremi');
+    expect(name.className).not.toMatch(/(^|\s)(sm|md|lg|xl):truncate/);
+    expect(name).toHaveAttribute('title', 'Kabelo Kgosiemang-Moremi');
+  });
 });
+

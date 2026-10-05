@@ -196,6 +196,8 @@ export interface FolioInvoiceLine {
   kind: 'DEPOSIT' | 'BALANCE' | 'REFUND';
   status: 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'REFUNDED' | 'VOID';
   total_amount: number;
+  /** Credit notes already raised against this receipt (R8). */
+  refunded_amount?: number;
   created_at: string;
 }
 
