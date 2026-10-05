@@ -147,6 +147,11 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    (`audit_logs.property_id` / `scope_kind`, migration 088, set by trigger via `audit_property_of`); the
    activity feed reads two index-ordered streams instead of resolving every row. Guests ('C') are still
    resolved at read time.
+   **R6 (2026-10-05).** (a) **The public /stay page never reveals who owns an email**: an existing guest
+   record is reused only when email AND phone (digits) both match; otherwise a new contact is created from
+   what was typed and noted as a possible duplicate. The reply always carries the typed name.
+   (b) `forwardOccupancy` counts only real bookings (`CASE WHEN res.id IS NOT NULL` — LEAST/GREATEST
+   ignore NULLs) and, per D02, includes PENDING; nudges are capped at 100%.
 
    **Stage 3 (2026-10-03).** Cash reports (`revenueBy*`, `vatOutput`) count `PAID` **and `REFUNDED`**
    receipts (refund rows negative) and date money by **when it moved** — the paying intent's

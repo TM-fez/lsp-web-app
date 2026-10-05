@@ -37,4 +37,11 @@ describe('buildNudges', () => {
   it('skips properties with no rooms (no division by zero)', () => {
     expect(buildNudges([row({ room_count: 0, booked_nights_7: 5 })])).toHaveLength(0);
   });
+
+  // (R6) Whatever the counts say, never more than 100%.
+  it('never reports more than 100% booked', () => {
+    const out = buildNudges([{ property_id: 'p', property_name: 'CBD', booked_nights_7: 30, booked_nights_30: 90, room_count: 2 }]);
+    for (const n of out) expect(n.detail).not.toMatch(/\b(10[1-9]|1[1-9][0-9]|[2-9][0-9]{2})%/);
+    expect(out.map((n) => n.detail).join(' ')).toMatch(/100%/);
+  });
 });

@@ -29,8 +29,10 @@ export function buildNudges(rows: ForwardOccupancyRow[]): Nudge[] {
 
   for (const r of rows) {
     if (r.room_count <= 0) continue;
-    const occ7 = r.booked_nights_7 / (r.room_count * 7);
-    const occ30 = r.booked_nights_30 / (r.room_count * 30);
+    // (R6) Belt and braces: a share of the house can't be more than all of it, whatever the
+    // inputs — "150% booked" is never a true sentence.
+    const occ7 = Math.min(1, r.booked_nights_7 / (r.room_count * 7));
+    const occ30 = Math.min(1, r.booked_nights_30 / (r.room_count * 30));
 
     if (occ7 >= 0.85) {
       nudges.push({

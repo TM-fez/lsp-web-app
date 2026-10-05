@@ -122,22 +122,32 @@ export class PublicService {
     const actorId = await this.repository.systemActorId();
     const actorMeta = { userId: actorId, ip: meta.ip, requestId: meta.requestId };
 
-    // Find (by email) or create the guest contact.
-    let contact = await this.repository.findContactByEmail(dto.email);
-    if (!contact) {
-      contact = await this.contacts.create(
-        {
-          type: 'individual',
-          name: dto.name,
-          email: dto.email,
-          phone: dto.phone,
-          notes: 'Created from a website booking',
-          created_by: actorId,
-          updated_by: actorId,
-        },
-        actorMeta,
-      );
-    }
+    // (R6 NEW-5, privacy) Which guest record does this booking belong to?
+    //
+    // This page is public. Matching on email alone attached the booking to whoever already
+    // owned that email and echoed THEIR stored name back — anyone could find out who an
+    // email belongs to — and silently dropped the name and phone that were typed. Now the
+    // existing record is reused only when email AND phone both match (the same person
+    // coming back). Otherwise a new record is made from what was typed and flagged as a
+    // possible duplicate for staff to check; nothing about the existing guest leaks.
+    const existing = await this.repository.findContactByEmail(dto.email);
+    const samePerson = !!existing && !!dto.phone && digitsOf(existing.phone) !== '' && digitsOf(existing.phone) === digitsOf(dto.phone);
+    const contact = samePerson
+      ? existing!
+      : await this.contacts.create(
+          {
+            type: 'individual',
+            name: dto.name,
+            email: dto.email,
+            phone: dto.phone,
+            notes: existing
+              ? 'Created from a website booking — possible duplicate: another guest already uses this email. Check before merging.'
+              : 'Created from a website booking',
+            created_by: actorId,
+            updated_by: actorId,
+          },
+          actorMeta,
+        );
 
     // Pick the first unit of the requested type that's free for the dates.
     const candidates = await this.repository.bookableRoomsByType(dto.unit_type as UnitType);
@@ -182,7 +192,8 @@ export class PublicService {
     const confirmation = {
       confirmation_code: `LSP-${reservation.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`,
       reservation_id: reservation.id,
-      guest_name: contact.name,
+      // Always the name the caller typed — never a stored one (R6 NEW-5).
+      guest_name: dto.name,
       unit_code: chosen.code,
       unit_name: chosen.name,
       unit_type: dto.unit_type,
@@ -302,4 +313,9 @@ export class PublicService {
       check_out: day(row.check_out_date),
     };
   }
+}
+
+/** Phone numbers compared by their digits only: "+267 71 234 567" = "+26771234567". */
+function digitsOf(phone: string | null | undefined): string {
+  return (phone ?? '').replace(/\D/g, '');
 }
