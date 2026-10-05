@@ -437,7 +437,8 @@ describe('1b. Pay later after the cockpit wizard (#110)', () => {
 
   it('refuses money on a hold with no booking behind it', async () => {
     const b = await booking({ startOffset: 440 });
-    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(440), check_out: dateOnly(442), guests: 1 }, meta());
+    // Clear of the booking's own nights: since R5 a bare hold can't sit on a booked night.
+    const quote = await quotes.createQuote({ unit_type: 'CONFERENCE', check_in: dateOnly(460), check_out: dateOnly(462), guests: 1 }, meta());
     const hold = await holds.createHold({ quote_id: quote.id, room_id: b.roomId } as never, meta());
     await expect(payments.createIntent({ hold_id: hold.id, method: 'CASH', purpose: 'DEPOSIT' } as never, meta()))
       .rejects.toThrow(/isn’t attached to a booking/);

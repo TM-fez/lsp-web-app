@@ -199,10 +199,13 @@ export function FinanceCockpitPage() {
                   </table>
                 </div>
               </section>
-
-              <HeldOnCancelledSection />
             </>
           )}
+
+          {/* (R5 retest) Money kept on cancelled / no-show bookings is not a receivable, so it
+              must show even when nothing is outstanding — it used to sit inside the
+              "has receivables" branch and vanished behind "All settled". */}
+          <HeldOnCancelledSection />
         </>
       )}
     </div>

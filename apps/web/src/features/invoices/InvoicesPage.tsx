@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -120,12 +120,19 @@ export function InvoicesPage() {
   const refundThebe = pulaToThebe(amount);
   const refundAmountOk = !Number.isNaN(refundThebe) && refundThebe > 0 && !!refunding && refundThebe <= refundable(refunding);
 
+  // (R5 retest) `refund.isPending` is read from the render the click happened in, so two
+  // clicks in the same tick both saw false: the server's Idempotency-Key made it one refund,
+  // but the replayed answer showed "Refund recorded" twice. A ref flips synchronously.
+  const refundInFlight = useRef(false);
   const submitRefund = () => {
-    // refund.isPending: a second click before the button re-renders disabled is dropped.
-    if (!refunding || refund.isPending || !refundAmountOk || !reason.trim()) return;
+    if (!refunding || refundInFlight.current || refund.isPending || !refundAmountOk || !reason.trim()) return;
+    refundInFlight.current = true;
     refund.mutate(
       { id: refunding.id, amount: refundThebe, reason: reason.trim(), idempotencyKey: refundKey },
-      { onSuccess: () => setRefunding(null) },
+      {
+        onSuccess: () => setRefunding(null),
+        onSettled: () => { refundInFlight.current = false; },
+      },
     );
   };
 

@@ -576,6 +576,7 @@ export class ReservationsService {
       if (!isAvailable) {
         throw AppError.conflict('Room is not available for the updated dates/room');
       }
+      await this.repository.assertNoCompetingHold(roomId, checkIn, checkOut);
     }
     
     const updatePayload: UpdateReservation = {

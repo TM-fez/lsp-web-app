@@ -23,6 +23,9 @@ import { PricingRepository } from '../../../src/modules/pricing/pricing.reposito
 import { PaymentsService } from '../../../src/modules/payments/payments.service.js';
 import { PaymentsRepository } from '../../../src/modules/payments/payments.repository.js';
 import { expireIntentsOfDeadHolds } from '../../../src/modules/payments/payments.expiry.js';
+import { ReservationsService } from '../../../src/modules/reservations/reservations.service.js';
+import { ReservationsRepository } from '../../../src/modules/reservations/reservations.repository.js';
+import { RoomsRepository } from '../../../src/modules/rooms/rooms.repository.js';
 
 const mockState = vi.hoisted(() => ({ user: null as any }));
 vi.mock('jsonwebtoken', () => ({
@@ -91,6 +94,7 @@ afterAll(async () => {
   await db.deleteFrom('quotes').where('id', 'in', quoteIds).execute();
   await db.deleteFrom('rate_plans').where('id', '=', planId).execute();
   await db.deleteFrom('contacts').where('id', '=', guestId).execute();
+  await db.deleteFrom('maintenance_work_orders').where('room_id', '=', roomId).execute();
   await db.deleteFrom('rooms').where('id', '=', roomId).execute();
   await db.deleteFrom('buildings').where('id', '=', bldId).execute();
   await db.deleteFrom('properties').where('id', '=', propId).execute();
@@ -133,6 +137,41 @@ describe('a hold on a unit with no booking behind it', () => {
     expect(clash.body.message).toMatch(/being held for another guest/i);
     expect(clear.status).toBe(201);
     reservationIds.push(clear.body.id);
+    await closeHolds();
+  });
+});
+
+// (R5 retest) The hold and the booking/repair checks must agree in BOTH directions.
+describe('holds against bookings and repairs, both ways', () => {
+  const reservations = () => new ReservationsService(new ReservationsRepository(db), new RoomsRepository(db));
+
+  it('refuses to move a booking onto nights a booking-less hold covers', async () => {
+    const h = await holds.createHold({ quote_id: await quote('2036-07-10', '2036-07-14'), room_id: roomId } as never, meta());
+    holdIds.push(h.id);
+    const b = await booking('2036-07-20', '2036-07-22');
+
+    await expect(
+      reservations().modifyReservation(b, { check_in_date: '2036-07-12', check_out_date: '2036-07-15' } as never, { userId } as never, propId),
+    ).rejects.toThrow(/being held for another guest/i);
+    await closeHolds();
+  });
+
+  it('refuses a hold over nights that are already booked', async () => {
+    await booking('2036-08-10', '2036-08-14');
+    const attempt = holds.createHold({ quote_id: await quote('2036-08-12', '2036-08-16'), room_id: roomId } as never, meta());
+    await expect(attempt).rejects.toThrow(/isn’t free for this quote’s dates/);
+  });
+
+  it('refuses a hold over a serious repair’s dates, but not beside them', async () => {
+    await db.insertInto('maintenance_work_orders').values({
+      room_id: roomId, title: 'Geyser', priority: 'CRITICAL', status: 'OPEN', reported_by: userId,
+      blocks_from: '2036-09-10', blocks_to: '2036-09-12',
+    } as never).execute();
+    await expect(
+      holds.createHold({ quote_id: await quote('2036-09-11', '2036-09-13'), room_id: roomId } as never, meta()),
+    ).rejects.toThrow(/closed for a repair/);
+    const beside = await holds.createHold({ quote_id: await quote('2036-09-12', '2036-09-14'), room_id: roomId } as never, meta());
+    holdIds.push(beside.id);
     await closeHolds();
   });
 });

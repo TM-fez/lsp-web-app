@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAuthStore } from '@/store/auth';
 
@@ -100,11 +100,14 @@ describe('InvoicesPage — refund dialog', () => {
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
     fireEvent.click(submitBtn());
+    // The first attempt failed (settled without success) — a retry reuses the same key.
+    act(() => refundMutate.mock.calls[0]![1].onSettled());
     fireEvent.click(submitBtn());
     const keys = refundMutate.mock.calls.map((c) => c[0].idempotencyKey);
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
 
+    act(() => refundMutate.mock.calls[1]![1].onSettled());
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
@@ -123,5 +126,16 @@ describe('InvoicesPage — refund dialog', () => {
     expect(submitBtn()).toBeDisabled();
     fireEvent.click(submitBtn());
     expect(refundMutate).not.toHaveBeenCalled();
+  });
+
+  // (R5 retest) Two clicks in the same tick used to both go out (one refund thanks to the
+  // key, but "Refund recorded" twice). Only the first is sent now.
+  it('sends one request for a double click, before the pending state has rendered', () => {
+    render(<InvoicesPage />);
+    openDialog();
+    fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    fireEvent.click(submitBtn());
+    fireEvent.click(submitBtn());
+    expect(refundMutate).toHaveBeenCalledTimes(1);
   });
 });

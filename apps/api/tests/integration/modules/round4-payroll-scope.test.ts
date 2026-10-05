@@ -226,6 +226,16 @@ describe('R5 — a person who works in two properties is costed once', () => {
     expect((await call('post', '/payroll/post-to-costs', { month: MONTH_B })).body.amount).toBe(2_000_00 + 500_00);
   });
 
+  it('a limited user cannot pull a shared person’s home onto their own property', async () => {
+    // dual's home is the Village now (previous test); the CBD clerk works at CBD only.
+    asClerk();
+    const res = await call('put', `/payroll/employees/${dual}`, { gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: propCbd });
+    expect(res.status).toBe(403);
+    // …while the Village clerk, who holds that home, may move it.
+    asVillageClerk();
+    expect((await call('put', `/payroll/employees/${dual}`, { gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: propVillage })).status).toBe(200);
+  });
+
   it('a limited user cannot make a salary company-level', async () => {
     asClerk();
     const res = await call('put', `/payroll/employees/${cbdStaff}`, { gross_amount: 1_000_00, frequency: 'MONTHLY', home_property_id: null });

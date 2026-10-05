@@ -29,6 +29,18 @@ export class HoldsService {
     const quote = await this.quotes.getQuote(dto.quote_id);
     this.quotes.assertUsable(quote);
 
+    // (R5 retest) A hold with no booking behind it reserves the unit by itself, so it must
+    // not land on nights that are already booked or closed for a repair. (One attached to
+    // a booking rides that booking's own, already-checked dates.)
+    if (dto.room_id && !dto.reservation_id) {
+      const free = await this.repository.unitFreeForHold(dto.room_id, quote.check_in_date, quote.check_out_date);
+      if (!free) {
+        throw AppError.conflict(
+          'That unit isn’t free for this quote’s dates — it’s booked, or closed for a repair, on some of those nights. Choose another unit or other dates.',
+        );
+      }
+    }
+
     try {
       return await this.repository.create(
         {

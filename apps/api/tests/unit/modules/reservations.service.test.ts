@@ -11,6 +11,7 @@ describe('ReservationsService', () => {
       findById: vi.fn(),
       findPaginated: vi.fn(),
       checkAvailability: vi.fn(),
+      assertNoCompetingHold: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       contactExists: vi.fn(),
