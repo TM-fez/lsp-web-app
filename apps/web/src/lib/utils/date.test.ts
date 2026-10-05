@@ -30,3 +30,17 @@ describe('calendarDay / shortDay', () => {
     expect(shortDay('2026-08-21')).toBe('08-21');
   });
 });
+
+// (R6 #14) A moment (a TIMESTAMPTZ like a cleaning task's opened_at) shown as a clock time
+// must be the property's clock: slicing the ISO string showed UTC — "opened 10-05 04:49"
+// when the clock in Gaborone read 06:49.
+describe('propertyMoment', () => {
+  it('shows a UTC instant as Gaborone wall-clock time (UTC+2)', async () => {
+    const { propertyMoment } = await import('./date');
+    expect(propertyMoment('2026-10-05T04:49:00.000Z')).toBe('10-05 06:49');
+  });
+  it('rolls over midnight into the property’s next day', async () => {
+    const { propertyMoment } = await import('./date');
+    expect(propertyMoment('2026-10-05T23:30:00.000Z')).toBe('10-06 01:30');
+  });
+});

@@ -24,7 +24,7 @@ describe('ReportStatementPage', () => {
     render(<MemoryRouter initialEntries={['/reports/print?from=2025-07-01&to=2026-06-30']}><ReportStatementPage /></MemoryRouter>);
     expect(screen.getByText('Lifestyle Apartments')).toBeInTheDocument();
     expect(screen.getByText('Profit & Loss Statement')).toBeInTheDocument();
-    expect(screen.getByText('VAT collected (output)')).toBeInTheDocument();
+    expect(screen.getByText(/^Output VAT \(on /)).toBeInTheDocument();
     expect(screen.getByText('Village')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Print/ })).toBeInTheDocument();
   });

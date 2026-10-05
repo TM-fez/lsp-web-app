@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { housekeepingTone, taskActionLabel } from './status';
 import { useHousekeepingTransition } from './hooks';
+import { propertyMoment } from '@/lib/utils/date';
 
 const nextAction: Record<Exclude<HousekeepingTaskStatus, 'DONE'>, HousekeepingAction> = {
   OPEN: 'start',
@@ -36,7 +37,7 @@ export function HousekeepingQueue({ items }: { items: HousekeepingQueueItem[] })
                 <div className="truncate text-sm font-medium text-slate-900">
                   {item.room_code} · {item.room_name}
                 </div>
-                <div className="text-xs text-slate-500">opened {item.opened_at.slice(5, 16).replace('T', ' ')}</div>
+                <div className="text-xs text-slate-500">opened {propertyMoment(item.opened_at)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Badge tone={housekeepingTone[item.housekeeping_status]}>

@@ -662,7 +662,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 <p className="text-[11px] text-muted">
                   In pula. Outstanding: {formatMoney(outstanding)}.
                 </p>
-                <AmountError value={payAmount} />
+                <AmountError value={payAmount} positive />
                 {payAmountWellFormed && payAmountThebe !== null && payAmountThebe > outstanding && (
                   <p className="text-[11px] text-terra">
                     That is more than this booking still owes.
@@ -700,43 +700,54 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 />
               </div>
 
+              {/* (R6 item 20) The confirm step used to turn "Record payment" into "Yes — record"
+                  in place, so a double click went straight through it. Confirming now puts
+                  Cancel in that spot (a fresh element, keyed) and the real action beside it. */}
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="primary"
-                  disabled={busy || !payAmountValid}
-                  onClick={async () => {
-                    if (!confirmPay) {
-                      setConfirmPay(true);
-                      return;
-                    }
-                    try {
-                      await markPaid.mutateAsync({
-                        id: reservation!.id,
-                        input: {
-                          method: payMethod,
-                          amount: payAmountThebe ?? undefined,
-                          reference: payReference.trim() || null,
-                        },
-                        idempotencyKey: payKey.current,
-                      });
-                      onOpenChange(false);
-                    } catch {
-                      /* hook surfaces the error toast */
-                      setConfirmPay(false);
-                    }
-                  }}
-                >
-                  {markPaid.isPending ? (
-                    <Spinner className="h-4 w-4" />
-                  ) : confirmPay ? (
-                    `Yes — record ${formatMoney(payAmountThebe ?? outstanding)}`
-                  ) : (
-                    'Record payment'
-                  )}
-                </Button>
-                {confirmPay && !markPaid.isPending && (
-                  <Button variant="outline" disabled={busy} onClick={() => setConfirmPay(false)}>
-                    Cancel
+                {confirmPay ? (
+                  <>
+                    {!markPaid.isPending && (
+                      <Button key="pay-cancel" variant="outline" disabled={busy} onClick={() => setConfirmPay(false)}>
+                        Cancel
+                      </Button>
+                    )}
+                    <Button
+                      key="pay-confirm"
+                      variant="primary"
+                      disabled={busy || !payAmountValid}
+                      onClick={async () => {
+                        try {
+                          await markPaid.mutateAsync({
+                            id: reservation!.id,
+                            input: {
+                              method: payMethod,
+                              amount: payAmountThebe ?? undefined,
+                              reference: payReference.trim() || null,
+                            },
+                            idempotencyKey: payKey.current,
+                          });
+                          onOpenChange(false);
+                        } catch {
+                          /* hook surfaces the error toast */
+                          setConfirmPay(false);
+                        }
+                      }}
+                    >
+                      {markPaid.isPending ? (
+                        <Spinner className="h-4 w-4" />
+                      ) : (
+                        `Yes — record ${formatMoney(payAmountThebe ?? outstanding)}`
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    key="pay-start"
+                    variant="primary"
+                    disabled={busy || !payAmountValid}
+                    onClick={() => setConfirmPay(true)}
+                  >
+                    Record payment
                   </Button>
                 )}
               </div>

@@ -302,7 +302,9 @@ export class ReportsService {
         total_cost,
         net,
         margin_pct: revenue > 0 ? round1((net / revenue) * 100) : 0,
-        vat_output: num(vatTotal),
+        // (R6 item 19) The VAT that belongs to the revenue beside it: earned VAT on the
+        // accrual basis, collected VAT on the cash basis. It used to be cash VAT on both.
+        vat_output: accrual ? earnedMonth.reduce((sum, row) => sum + num(row.tax), 0) : num(vatTotal),
         reservations,
         room_nights_booked,
         room_nights_available,

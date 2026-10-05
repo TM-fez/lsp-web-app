@@ -46,8 +46,11 @@ export function isPulaAmount(pula: string): boolean {
  * Why a typed Pula amount is not acceptable, in words for the person typing — or null when
  * it is fine (or blank: "required" is the form's own rule, not this one's).
  */
-export function pulaAmountError(pula: string): string | null {
+export function pulaAmountError(pula: string, opts: { positive?: boolean } = {}): string | null {
   const t = pula.trim();
+  // (R6 item 20) A payment, refund or cost of P0 is well-formed but moves nothing; the
+  // button stayed grey with no reason given. `positive` boxes say so.
+  if (opts.positive && PULA_AMOUNT.test(t) && pulaToThebe(t) === 0) return 'Enter more than P0.00';
   if (t === '' || PULA_AMOUNT.test(t)) return null;
   // "10,5" / "10,50": a decimal comma. The dangerous one — it used to read as P105.
   if (/^\d+,\d{1,2}$/.test(t)) return 'Use a dot for decimals, e.g. 10.50';

@@ -183,6 +183,19 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     );
   });
 
+  // (R6 item 20) "Yes — record" appeared exactly where "Record payment" had been, so a
+  // double click sailed through the confirm step. The spot under the pointer is now Cancel.
+  it('a double click on "Record payment" does not record — the confirm step still asks', async () => {
+    open();
+    const first = screen.getByRole('button', { name: 'Record payment' });
+    fireEvent.click(first);
+    fireEvent.click(first);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(markPaidMutate).not.toHaveBeenCalled();
+    const row = screen.getByRole('button', { name: /^Yes — record/ }).parentElement!;
+    expect(row.querySelector('button')).toHaveTextContent('Cancel');
+  });
+
   it('sends a part payment in thebe, and the method and reference entered', async () => {
     open();
     fireEvent.change(screen.getByLabelText('How much did they pay?'), { target: { value: '200' } });

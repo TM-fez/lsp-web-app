@@ -71,6 +71,14 @@ describe('which clock the P&L is on', () => {
 
   // Nothing about cash is reconstructed, and nothing is missing from it that a
   // backfill would supply — an empty disclosure there would invite a false reading.
+  // (R6 item 19) vat_output was the cash VAT on both bases, so an accrual P&L put
+  // September's earned revenue beside October's collected VAT.
+  it('reports the VAT that goes with the basis — earned on accrual, received on cash', async () => {
+    const { service } = setup({ vatOutput: vi.fn(async () => 9_000) });
+    expect((await service.getReports(WINDOW)).summary.vat_output).toBe(12_280);
+    expect((await service.getReports({ ...WINDOW, basis: 'CASH' })).summary.vat_output).toBe(9_000);
+  });
+
   it('discloses nothing on the cash basis', async () => {
     const { service } = setup();
     const { summary } = await service.getReports({ ...WINDOW, basis: 'CASH' });

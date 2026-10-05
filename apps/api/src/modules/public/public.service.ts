@@ -143,6 +143,8 @@ export class PublicService {
             notes: existing
               ? 'Created from a website booking — possible duplicate: another guest already uses this email. Check before merging.'
               : 'Created from a website booking',
+            // Not a new owner of the email — a second record that shares it (migration 089).
+            ...(existing ? { email_shared: true } : {}),
             created_by: actorId,
             updated_by: actorId,
           },

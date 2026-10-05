@@ -17,29 +17,37 @@ export function downloadPnlCsv(data: ReportsResponse, from: string, to: string):
 }
 
 function buildAndSave(data: ReportsResponse, from: string, to: string): void {
+  downloadCsv(`lsp-pnl-${from}-to-${to}.csv`, pnlCsvRows(data, from, to));
+}
+
+/**
+ * The CSV's lines. (R6 item 20) Revenue is before VAT on both bases (owner, round 4) and the
+ * VAT line follows the basis, so the file says both — it is often read without the screen.
+ */
+export function pnlCsvRows(data: ReportsResponse, from: string, to: string): string[] {
   const s = data.summary;
-  const rows: string[] = [
+  const cash = s.revenue_basis === 'CASH';
+  return [
     `Lifestyle Apartments — Profit & Loss`,
     `Period,${from} to ${to}`,
+    `Basis,${cash ? 'Received (cash)' : 'Earned (accrual)'}`,
     '',
     'Summary,Amount (BWP)',
-    `Revenue,${pula(s.revenue)}`,
+    `Revenue (excl. VAT),${pula(s.revenue)}`,
     `Maintenance cost,${pula(s.maintenance_cost)}`,
     `Operating expenses,${pula(s.operating_expenses)}`,
     `Total cost,${pula(s.total_cost)}`,
     `Net,${pula(s.net)}`,
     `Margin %,${s.margin_pct}`,
-    `VAT collected (output),${pula(s.vat_output)}`,
+    `VAT (output) on ${cash ? 'money received' : 'revenue earned'},${pula(s.vat_output)}`,
     `Occupancy %,${s.occupancy_pct}`,
     '',
-    'Month,Revenue,Maintenance,Operating,Net',
+    'Month,Revenue (excl. VAT),Maintenance,Operating,Net',
     ...(data.monthly ?? []).map((m) => [m.month, pula(m.revenue), pula(m.maintenance_cost), pula(m.operating_expenses), pula(m.net)].join(',')),
     '',
-    'Property,Revenue,Maintenance,Operating,Net,Occupancy %',
+    'Property,Revenue (excl. VAT),Maintenance,Operating,Net,Occupancy %',
     ...(data.by_property ?? []).map((p) =>
       [cell(p.property_name), pula(p.revenue), pula(p.maintenance_cost), pula(p.operating_expenses), pula(p.net), p.occupancy_pct ?? ''].join(','),
     ),
   ];
-
-  downloadCsv(`lsp-pnl-${from}-to-${to}.csv`, rows);
 }

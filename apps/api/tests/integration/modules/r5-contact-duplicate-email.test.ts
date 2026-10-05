@@ -63,3 +63,29 @@ describe('duplicate guest email', () => {
     expect(edited.name).toBe('Child B');
   });
 });
+
+// (R6 NEW-4) The check ran before the insert: 6 parallel saves of one new email made 2 guests.
+describe('duplicate guest email — parallel saves', () => {
+  it('six parallel saves of one new email make exactly one guest; the rest get the question', async () => {
+    const racer = `race-${uniq}@t.example`;
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, i) => service.createContact({ type: 'individual', name: `Racer ${i}`, email: racer }, meta())),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    for (const r of results.filter((x) => x.status === 'rejected')) {
+      expect((r as PromiseRejectedResult).reason.error).toBe('Duplicate Email');
+    }
+    const rows = await db.selectFrom('contacts').select('id').where('email', '=', racer).where('deleted_at', 'is', null).execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  // (R6 NEW-2) The override is recorded — on the row, and so in its audit entry.
+  it('records "Save anyway" on the guest and in the audit trail', async () => {
+    const sharedEmail = `audited-${uniq}@t.example`;
+    await service.createContact({ type: 'individual', name: 'First', email: sharedEmail }, meta());
+    const second = await service.createContact({ type: 'individual', name: 'Second', email: sharedEmail, allow_duplicate_email: true }, meta());
+    expect(second.email_shared).toBe(true);
+    const audit = await db.selectFrom('audit_logs').select('diff').where('entity', '=', 'contacts').where('entity_id', '=', second.id).executeTakeFirstOrThrow();
+    expect((audit.diff as Record<string, unknown>).email_shared).toBe(true);
+  });
+});

@@ -4,6 +4,7 @@ import { ReportsService } from '../reports/reports.service.js';
 import { accessiblePropertyIdsForUser } from '../../core/scope/activeProperty.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { SEGMENT_KEYS, type GenerateCampaignDTO, type SegmentKey } from './marketing.types.js';
+import { parseLimit, parsePage } from '../../core/http/pagination.js';
 
 export class MarketingController {
   constructor(
@@ -37,7 +38,10 @@ export class MarketingController {
         );
       }
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const limit = parseInt(req.query.limit as string, 10) || undefined;
+      // (R6 NEW-6) The shared rule, with this list's own ceiling: the web exports up to 2000
+      // members in one go. limit=0 / abc / 5000 and page=0 used to be quietly accepted.
+      const limit = parseLimit(req.query, 500, 2000);
+      parsePage(req.query);
       res.json(await this.service.getSegmentMembers(key, { search, limit }, await this.viewer(req)));
     } catch (err) {
       next(err);

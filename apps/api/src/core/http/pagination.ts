@@ -40,6 +40,11 @@ export function parseLimit(query: Query, fallback: number, max: number): number 
   return whole(query.limit, 'limit', 1, max) ?? fallback;
 }
 
+/** (R6 NEW-6) `?page=` on its own: a whole number of 1 or more, else a 400. */
+export function parsePage(query: Query): number {
+  return whole(query.page, 'page', 1, Number.MAX_SAFE_INTEGER) ?? 1;
+}
+
 /**
  * Opt-in paging for the small "everything" lists (users, payroll staff, costs, expenses).
  * No `limit` → every row, exactly as before, so existing callers are unaffected. With

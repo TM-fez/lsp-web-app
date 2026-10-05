@@ -110,6 +110,15 @@ export function getWorkspace(id: WorkspaceId): WorkspaceDef {
   return WORKSPACES.find((w) => w.id === id) ?? WORKSPACES[0];
 }
 
+/**
+ * (R6 item 20) The workspaces worth offering this user: those with a screen they can open.
+ * Maintenance, housekeeping and contractor logins were shown a Finance workspace with
+ * nothing in it. A screen with no permission (Settings) counts, so Admin stays for everyone.
+ */
+export function workspacesFor(hasPerm: (perm: string) => boolean): WorkspaceDef[] {
+  return WORKSPACES.filter((ws) => ws.items.some((i) => i.built && (!i.perm || hasPerm(i.perm))));
+}
+
 /** Which workspace a pathname belongs to (longest-prefix match; URL is the source of truth). */
 export function workspaceForPath(pathname: string): WorkspaceId {
   // Placeholder pages keep their own workspace selected.

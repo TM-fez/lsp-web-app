@@ -45,8 +45,9 @@ export function useCreateGuest() {
   return useMutation({
     mutationFn: ({ input, idempotencyKey }: { input: CreateGuestInput; idempotencyKey?: string }) =>
       createGuest(input, idempotencyKey),
-    onSuccess: () => {
-      toast.success('Guest added');
+    onSuccess: (guest) => {
+      // (R6 item 20) A replay is the same guest coming back — one "Guest added" is enough.
+      if (!guest.replayed) toast.success('Guest added');
       invalidate();
     },
     // A duplicate email is a question the form asks inline ("Save anyway"), not an error toast.

@@ -160,6 +160,8 @@ export function ReportsPage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const useCustom = !!(customFrom && customTo && customFrom <= customTo);
+  // (R6 item 20) Typed back to front, the range used to fall back to the preset in silence.
+  const reversed = !!(customFrom && customTo && customFrom > customTo);
   const preset = windowFor(months);
   const from = useCustom ? customFrom : preset.from;
   const to = useCustom ? customTo : preset.to;
@@ -201,10 +203,10 @@ export function ReportsPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[11px] uppercase tracking-[0.18em] text-muted">Custom range</span>
-        <Input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-40" />
+        <Input type="date" aria-label="Custom range from" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-40" />
         <span className="text-muted">→</span>
-        <Input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-40" />
-        {useCustom && (
+        <Input type="date" aria-label="Custom range to" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-40" />
+        {(useCustom || reversed) && (
           <button type="button" onClick={() => { setCustomFrom(''); setCustomTo(''); }} className="text-xs text-terra hover:underline">Clear</button>
         )}
         <div className="ml-auto flex gap-2">
@@ -215,6 +217,11 @@ export function ReportsPage() {
             <Printer className="mr-1.5 h-3.5 w-3.5" />Print statement
           </Button>
         </div>
+        {reversed && (
+          <p role="alert" className="basis-full text-xs text-terra">
+            The end date is before the start date — swap them to see that range. Showing {from} to {to} until then.
+          </p>
+        )}
       </div>
 
       {isLoading ? (
@@ -237,7 +244,8 @@ export function ReportsPage() {
               sub={`maint ${compactPula(s.maintenance_cost)} · opex ${compactPula(s.operating_expenses)}`} />
             <Metric label="Net margin" value={compactPula(s.net)} sub={`${s.margin_pct}% of revenue`}
               tone={s.net >= 0 ? 'pos' : 'neg'} />
-            <Metric label="VAT collected" value={compactPula(s.vat_output)} sub="output VAT for BURS" />
+            <Metric label="Output VAT" value={compactPula(s.vat_output)}
+              sub={s.revenue_basis === 'CASH' ? 'on money received' : 'on revenue earned'} />
             <Metric label="Occupancy" value={`${s.occupancy_pct}%`}
               sub={`${s.room_nights_booked.toLocaleString('en')} of ${s.room_nights_available.toLocaleString('en')} nights`} />
           </div>

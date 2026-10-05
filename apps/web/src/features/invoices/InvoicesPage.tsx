@@ -391,7 +391,7 @@ export function InvoicesPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="refund-amount">Amount (Pula)</Label>
               <Input id="refund-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              <AmountError value={amount} />
+              <AmountError value={amount} positive />
               {!Number.isNaN(refundThebe) && refunding && refundThebe > refundable(refunding) && (
                 <p role="alert" className="text-[11px] text-terra">
                   Only {formatMoney(refundable(refunding), refunding.currency)} can still be refunded on this invoice.

@@ -108,6 +108,8 @@ export interface ContactsTable {
   deleted_by: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  // (089) Deliberately shares its email with another guest ("Save anyway" / public possible duplicate).
+  email_shared: Generated<boolean>;
 }
 
 export interface LeadsTable {

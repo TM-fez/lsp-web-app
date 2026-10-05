@@ -91,8 +91,10 @@ export function FinanceCockpitPage() {
             <Metric label="Overdue" value={compactPula(s.overdue_amount)}
               sub={s.overdue_count > 0 ? `${s.overdue_count} past their due date` : 'nothing past due'}
               tone={s.overdue_count > 0 ? 'neg' : undefined} />
-            <Metric label="Oldest debt" value={s.oldest_days > 0 ? `${s.oldest_days}d` : '—'}
-              sub={s.oldest_days > 0 ? 'since issue' : 'nothing outstanding'}
+            {/* (R6 item 20) 0 days old is an invoice raised today, not "nothing outstanding". */}
+            <Metric label="Oldest debt"
+              value={s.oldest_days > 0 ? `${s.oldest_days}d` : s.total_receivable > 0 ? '0d' : '—'}
+              sub={s.oldest_days > 0 ? 'since issue' : s.total_receivable > 0 ? 'raised today' : 'nothing outstanding'}
               tone={s.oldest_days > 90 ? 'neg' : undefined} />
             <Metric label="Refunds payable" value={compactPula(s.refunds_payable)}
               sub="owed back to guests" tone={s.refunds_payable > 0 ? 'neg' : undefined} />
