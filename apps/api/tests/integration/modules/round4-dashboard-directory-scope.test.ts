@@ -15,6 +15,8 @@ import { dashboardRouter } from '../../../src/modules/dashboard/dashboard.routes
 import { clearStatsCache } from '../../../src/modules/dashboard/dashboard.service.js';
 import { errorHandler } from '../../../src/core/errors/errorHandler.middleware.js';
 import { db } from '../../../src/config/db.js';
+import { sql } from 'kysely';
+import { getAggregateStats } from '../../../src/modules/dashboard/dashboard.repository.js';
 
 const mockState = vi.hoisted(() => ({ user: null as any }));
 vi.mock('jsonwebtoken', () => ({
@@ -123,10 +125,29 @@ describe('GET /dashboard/stats', () => {
     const mine = (await get('/dashboard/stats')).body;
 
     expect(mine.totalUsers).toBe(2);                          // me + my CBD colleague
-    expect(mine.totalContacts).toBeLessThan(house.totalContacts);
     expect(house.totalUsers).toBeGreaterThanOrEqual(4);
     // The admin's cached house-wide numbers are not served to the limited user, nor vice versa.
     asAdmin();
     expect((await get('/dashboard/stats')).body.totalUsers).toBe(house.totalUsers);
+  });
+
+  // The guest count is a house-wide number, and other test files add and remove guests all
+  // the time — comparing two HTTP answers taken a moment apart flaked when a parallel file
+  // created unbooked (= visible to everyone) guests in between. Both counts are taken here
+  // from ONE repeatable-read snapshot, so the only difference left is the scope rule: the
+  // Village guest is in the house count and not in CBD's.
+  it('counts fewer guests for a CBD-only user than for the house, in the same snapshot', async () => {
+    const [house, mine] = await db.connection().execute(async (conn) => {
+      await sql`BEGIN ISOLATION LEVEL REPEATABLE READ`.execute(conn);
+      try {
+        const h = await getAggregateStats({ userId: cbdUser, ids: null, allProperties: true }, conn);
+        const m = await getAggregateStats({ userId: cbdUser, ids: [propCbd], allProperties: false }, conn);
+        return [h, m] as const;
+      } finally {
+        await sql`COMMIT`.execute(conn);
+      }
+    });
+    expect(mine.totalContacts).toBeLessThan(house.totalContacts);
+    expect(house.totalContacts - mine.totalContacts).toBeGreaterThanOrEqual(1); // at least the Village guest
   });
 });
