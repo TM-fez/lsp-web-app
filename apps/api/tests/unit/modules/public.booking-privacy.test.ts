@@ -29,7 +29,7 @@ function serviceFor(found: typeof existing | undefined) {
     priceReservation: vi.fn().mockResolvedValue({ total: 300_000 }),
   };
   const service = new PublicService(repository as never, reservations as never, contacts as never, {} as never);
-  return { service, contacts, reservations };
+  return { service, contacts, reservations, repository };
 }
 
 const booking = (over: Record<string, unknown>) => ({
@@ -67,3 +67,35 @@ describe('PublicService.createBooking — never reveals who owns an email', () =
     expect(String((contacts.create.mock.calls[0]![0] as Record<string, unknown>).notes)).not.toMatch(/duplicate/i);
   });
 });
+
+// (R7 N7-2) Two website bookings with the same brand-new email at the same moment: both
+// saw "no guest with this email", one saved, and the other hit the one-live-email rule
+// (migration 089) and got a generic "That clashes with something just saved". The loser
+// now looks again and carries on exactly as if the first had been there all along.
+describe('PublicService.createBooking — two at once with the same new email', () => {
+  const raced = Object.assign(new Error('duplicate key'), { code: '23505', constraint: 'contacts_email_unique' });
+
+  it('the second one becomes a flagged duplicate, not an error', async () => {
+    const { service, contacts, repository } = serviceForRace({ ...existing, phone: '+267 71 999 999' });
+    const res = await service.createBooking(booking({ email: 'thato@example.com' }), { ip: '1.1.1.1' });
+    expect(res.guest_name).toBe('R6 Public Tester');
+    expect(repository.findContactByEmail).toHaveBeenCalledTimes(2);
+    const second = contacts.create.mock.calls[1]![0] as Record<string, unknown>;
+    expect(second).toMatchObject({ email_shared: true });
+  });
+
+  it('the same person booking twice at once reuses the record the first one made', async () => {
+    const { service, contacts, reservations } = serviceForRace({ ...existing, phone: '+267 72 000 000' });
+    await service.createBooking(booking({ email: 'thato@example.com' }), { ip: '1.1.1.1' });
+    expect(contacts.create).toHaveBeenCalledTimes(1);
+    expect(reservations.createReservation.mock.calls[0]![0]).toMatchObject({ contact_id: 'c-thato' });
+  });
+
+  function serviceForRace(winner: typeof existing) {
+    const built = serviceFor(undefined);
+    built.repository.findContactByEmail.mockResolvedValueOnce(undefined).mockResolvedValue(winner);
+    built.contacts.create.mockRejectedValueOnce(raced);
+    return built;
+  }
+});
+

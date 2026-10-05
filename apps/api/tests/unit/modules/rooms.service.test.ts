@@ -78,12 +78,13 @@ describe('RoomsService', () => {
 
     it('sets status to MAINTENANCE for a non-occupied room', async () => {
       repository.findById.mockResolvedValue({ id: 'r1', status: 'AVAILABLE' } as any);
-      repository.update.mockResolvedValue({ id: 'r1', status: 'MAINTENANCE' } as any);
+      (repository as any).closeUnit = vi.fn().mockResolvedValue({ id: 'r1', status: 'MAINTENANCE' });
 
       const result = await service.setMaintenance('r1', meta);
 
       expect(result.status).toBe('MAINTENANCE');
-      expect(repository.update).toHaveBeenCalledWith('r1', { status: 'MAINTENANCE', updated_by: 'u1' }, meta);
+      // (R7 N7-4) Through closeUnit, which asks first when bookings or holds are ahead.
+      expect((repository as any).closeUnit).toHaveBeenCalledWith('r1', 'MAINTENANCE', false, meta);
     });
   });
 

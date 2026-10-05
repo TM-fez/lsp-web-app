@@ -66,13 +66,14 @@ export async function rotateRoomGuestToken(id: string): Promise<Room> {
   return data;
 }
 
-export async function setRoomMaintenance(id: string): Promise<Room> {
-  const { data } = await api.post<Room>(`/rooms/${id}/maintenance`, {});
+/** `confirm` answers the server's "this unit still has bookings ahead" question (R7). */
+export async function setRoomMaintenance(id: string, confirm = false): Promise<Room> {
+  const { data } = await api.post<Room>(`/rooms/${id}/maintenance`, confirm ? { confirm_overlap: true } : {});
   return data;
 }
 
-export async function setRoomOutOfService(id: string): Promise<Room> {
-  const { data } = await api.post<Room>(`/rooms/${id}/out-of-service`, {});
+export async function setRoomOutOfService(id: string, confirm = false): Promise<Room> {
+  const { data } = await api.post<Room>(`/rooms/${id}/out-of-service`, confirm ? { confirm_overlap: true } : {});
   return data;
 }
 

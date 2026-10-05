@@ -10,6 +10,14 @@ export function isDuplicateEmail(e: unknown): boolean {
   return a?.response?.status === 409 && a?.response?.data?.error === 'Duplicate Email';
 }
 
+/** (R7 N7-4) The server's question "this unit still has bookings or holds ahead" — answered with "anyway". */
+export function unitHasBookingsMessage(e: unknown): string | null {
+  const a = e as { response?: { status?: number; data?: { error?: string; message?: string } } };
+  return a?.response?.status === 409 && a?.response?.data?.error === 'Unit Has Bookings'
+    ? a.response.data.message ?? 'This unit still has bookings or holds ahead.'
+    : null;
+}
+
 /** (R6) The server's question "this repair falls on booked / held nights" — answered with "Save anyway". */
 export function repairOverlapMessage(e: unknown): string | null {
   const a = e as { response?: { status?: number; data?: { error?: string; message?: string } } };

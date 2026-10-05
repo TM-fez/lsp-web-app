@@ -201,6 +201,14 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    (f) Housekeeping times show in Gaborone time (`propertyMoment`). (g) The workspace switcher only offers
    workspaces with a screen the user can open (`workspacesFor`). (h) An unpaid PENDING check-in stays
    allowed — that is invariant 3, not a bug.
+   **R7 (2026-10-05).** (a) **Taking a unit off sale is a question when guests are still booked into
+   it**: `/rooms/:id/maintenance` and `/out-of-service` answer 409 `error: 'Unit Has Bookings'` while bookings
+   or live bare holds lie ahead, unless `confirm_overlap`; then bare holds are released and bookings stay
+   put for staff to move (`RoomsRepository.closeUnit`, under the unit's row lock). (b) The public booking
+   page retries its guest lookup once when a parallel booking just took the same new email (23505 on
+   `contacts_email_unique`), so the loser becomes a reused or flagged record, never a generic clash.
+   (c) `email_shared` follows the email: true only when "Save anyway" was used AND another live guest
+   really has it; a changed email decides it afresh.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

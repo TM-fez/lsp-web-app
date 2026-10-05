@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
-import { useRooms, useRoomStatusAction } from './hooks';
+import { unitHasBookingsMessage } from '@/lib/api/errors';
+import { useRooms, useRoomStatusAction, type RoomStatusAction } from './hooks';
 import { RoomFormDrawer } from './RoomFormDrawer';
 import type { HousekeepingStatus, Room, RoomStatus } from '@/types';
 
@@ -43,6 +44,18 @@ export function RoomsPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | RoomStatus>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Room | null>(null);
+  // (R7 N7-4) The server's "this unit still has bookings ahead" question, waiting for an answer.
+  const [closeQuestion, setCloseQuestion] = useState<{ id: string; action: RoomStatusAction; message: string } | null>(null);
+
+  function changeStatus(id: string, action: RoomStatusAction, confirm = false) {
+    setCloseQuestion(null);
+    statusAction.mutate(confirm ? { id, action, confirm } : { id, action }, {
+      onError: (e) => {
+        const message = unitHasBookingsMessage(e);
+        if (message) setCloseQuestion({ id, action, message });
+      },
+    });
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -97,6 +110,24 @@ export function RoomsPage() {
             <option value="MAINTENANCE">Maintenance</option>
             <option value="OUT_OF_SERVICE">Out of service</option>
           </Select>
+        </div>
+      )}
+
+      {closeQuestion && (
+        <div role="alert" className="flex flex-col gap-3 rounded-md border border-line bg-cream px-4 py-3 text-sm text-char sm:flex-row sm:items-center">
+          <p className="flex-1">{closeQuestion.message}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCloseQuestion(null)}>
+              Keep it open
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => changeStatus(closeQuestion.id, closeQuestion.action, true)}
+            >
+              {closeQuestion.action === 'maintenance' ? 'Put it into maintenance anyway' : 'Take it out of service anyway'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -187,7 +218,7 @@ export function RoomsPage() {
                               variant="outline"
                               className={ACTION}
                               disabled={pending}
-                              onClick={() => statusAction.mutate({ id: room.id, action: 'maintenance' })}
+                              onClick={() => changeStatus(room.id, 'maintenance')}
                             >
                               Maintenance
                             </Button>
@@ -196,7 +227,7 @@ export function RoomsPage() {
                               variant="outline"
                               className={ACTION}
                               disabled={pending}
-                              onClick={() => statusAction.mutate({ id: room.id, action: 'out-of-service' })}
+                              onClick={() => changeStatus(room.id, 'out-of-service')}
                             >
                               Out of service
                             </Button>
@@ -208,7 +239,7 @@ export function RoomsPage() {
                             variant="outline"
                             className={ACTION}
                             disabled={pending}
-                            onClick={() => statusAction.mutate({ id: room.id, action: 'restore' })}
+                            onClick={() => changeStatus(room.id, 'restore')}
                           >
                             Restore
                           </Button>

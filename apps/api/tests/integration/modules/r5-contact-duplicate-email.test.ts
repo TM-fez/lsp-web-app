@@ -89,3 +89,25 @@ describe('duplicate guest email — parallel saves', () => {
     expect((audit.diff as Record<string, unknown>).email_shared).toBe(true);
   });
 });
+
+// (R7 N7-3) A guest saved with "Save anyway" kept email_shared = true after their email was
+// changed to one nobody else uses, so the one-live-email rule no longer covered them.
+// The flag now follows the email: shared only while someone else really has it.
+describe('the shared-email flag follows the email', () => {
+  it('clears when a shared guest moves to an email nobody else uses', async () => {
+    const shared = `flag-${uniq}@t.example`;
+    await service.createContact({ type: 'individual', name: 'Owner', email: shared }, meta());
+    const second = await service.createContact({ type: 'individual', name: 'Sharer', email: shared, allow_duplicate_email: true }, meta());
+    expect(second.email_shared).toBe(true);
+
+    const moved = await service.updateContact(second.id, { email: `fresh-${uniq}@t.example` }, meta());
+    expect(moved.email_shared).toBe(false);
+  });
+
+  it('is not set when "Save anyway" turned out not to be needed', async () => {
+    const alone = await service.createContact(
+      { type: 'individual', name: 'Alone', email: `alone-${uniq}@t.example`, allow_duplicate_email: true }, meta());
+    expect(alone.email_shared).toBe(false);
+  });
+});
+

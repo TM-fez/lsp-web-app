@@ -108,7 +108,7 @@ export class RoomsController {
   setMaintenance = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      const room = await this.service.setMaintenance(req.params.id as string, meta);
+      const room = await this.service.setMaintenance(req.params.id as string, meta, req.body);
       res.json(room);
     } catch (err) {
       next(err);
@@ -118,7 +118,7 @@ export class RoomsController {
   setOutOfService = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const meta = this.getRequestMeta(req);
-      const room = await this.service.setOutOfService(req.params.id as string, meta);
+      const room = await this.service.setOutOfService(req.params.id as string, meta, req.body);
       res.json(room);
     } catch (err) {
       next(err);

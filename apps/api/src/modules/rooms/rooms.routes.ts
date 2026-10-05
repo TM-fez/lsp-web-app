@@ -9,7 +9,7 @@ import { requireActiveProperty } from '../../core/scope/activeProperty.js';
 import { propertyOfBuilding, requireBodyRefInActiveProperty } from '../../core/scope/propertyOf.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { validateBody } from '../../core/middleware/validate.middleware.js';
-import { CreateRoomSchema, UpdateRoomSchema, UpdateChannelConfigSchema } from './rooms.types.js';
+import { CreateRoomSchema, UpdateRoomSchema, UpdateChannelConfigSchema, RoomCloseSchema } from './rooms.types.js';
 import type { Request, Response, NextFunction } from 'express';
 
 export function createRoomsRouter(dbInstance = db): Router {
@@ -53,8 +53,8 @@ export function createRoomsRouter(dbInstance = db): Router {
   // Guest self check-in (Phase 5): rotate the in-apartment QR token (reprint after).
   router.post('/:id/guest-qr/rotate-token', authorize('rooms.channel.manage'), requireActiveProperty, inActiveProperty, controller.rotateGuestToken);
 
-  router.post('/:id/maintenance',    authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setMaintenance);
-  router.post('/:id/out-of-service', authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.setOutOfService);
+  router.post('/:id/maintenance',    authorize('rooms.update'), requireActiveProperty, inActiveProperty, validateBody(RoomCloseSchema), controller.setMaintenance);
+  router.post('/:id/out-of-service', authorize('rooms.update'), requireActiveProperty, inActiveProperty, validateBody(RoomCloseSchema), controller.setOutOfService);
   router.post('/:id/restore',        authorize('rooms.update'), requireActiveProperty, inActiveProperty, controller.restoreRoom);
   router.delete('/:id', authorize('rooms.delete'), requireActiveProperty, inActiveProperty, controller.deleteRoom);
 

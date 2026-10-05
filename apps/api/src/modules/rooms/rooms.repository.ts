@@ -1,5 +1,7 @@
 import { assertCanDelete } from '../../core/integrity/liveBookings.js';
 import { Kysely, sql } from 'kysely';
+import { AppError } from '../../core/errors/AppError.js';
+import { todayInPropertyTZ } from '../../core/time.js';
 import type { Database, RoomRow, NewRoom, UpdateRoom } from '../../db/types.js';
 import type { RoomFilters, RoomPaginationOptions, PaginatedRoomResult, RoomRequestMeta, RoomListRow } from './rooms.types.js';
 
@@ -194,6 +196,84 @@ export class RoomsRepository {
         }).execute();
       }
 
+      return updated;
+    });
+  }
+
+  /**
+   * (R7 N7-4) Take a unit off sale (MAINTENANCE / OUT_OF_SERVICE). If it still has bookings
+   * or live bare holds from today on, that is a question (409 "Unit Has Bookings") unless
+   * `confirm` — then the status changes, bare holds are released (their payment attempts
+   * expire) and bookings stay exactly where they are for staff to move. Checked under a lock
+   * on the unit's row, so a booking can't slip in between the check and the change.
+   */
+  async closeUnit(
+    id: string,
+    status: 'MAINTENANCE' | 'OUT_OF_SERVICE',
+    confirm: boolean,
+    meta: RoomRequestMeta
+  ): Promise<RoomRow | undefined> {
+    return this.db.transaction().execute(async (trx) => {
+      const locked = await trx.selectFrom('rooms').select('id').where('id', '=', id)
+        .where('deleted_at', 'is', null).forUpdate().executeTakeFirst();
+      if (!locked) return undefined;
+
+      const today = todayInPropertyTZ();
+      const bookings = await sql<{ n: string }>`
+        SELECT count(*) AS n FROM reservations r
+         WHERE r.room_id = ${id}::uuid AND r.deleted_at IS NULL
+           AND r.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN', 'BLOCKED')
+           AND r.check_out_date > ${today}::date`.execute(trx);
+      const holds = await sql<{ id: string }>`
+        SELECT h.id FROM holds h
+         WHERE h.room_id = ${id}::uuid AND h.status = 'HELD' AND h.deleted_at IS NULL
+           AND h.reservation_id IS NULL AND h.held_until > now()`.execute(trx);
+      const booked = Number(bookings.rows[0]?.n ?? 0);
+      const holdIds = holds.rows.map((h) => h.id);
+
+      if ((booked > 0 || holdIds.length > 0) && !confirm) {
+        const parts = [
+          booked ? `${booked} booking${booked === 1 ? '' : 's'}` : '',
+          holdIds.length ? `${holdIds.length} hold${holdIds.length === 1 ? '' : 's'}` : '',
+        ].filter(Boolean).join(' and ');
+        const what = status === 'MAINTENANCE' ? 'into maintenance' : 'out of service';
+        throw new AppError(
+          409,
+          'Unit Has Bookings',
+          `This unit still has ${parts} from today on. Move the guests first — or take it ${what} anyway (holds will be released; bookings stay where they are for you to move).`,
+        );
+      }
+
+      if (holdIds.length) {
+        await trx.updateTable('holds')
+          .set({ status: 'RELEASED', release_reason: 'unit_closed', updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', 'in', holdIds).where('status', '=', 'HELD').execute();
+        const expired = await trx.updateTable('payment_intents')
+          .set({ status: 'EXPIRED', last_error: 'unit taken off sale', updated_by: meta.userId, updated_at: sql`now()` })
+          .where('hold_id', 'in', holdIds).where('status', 'in', ['PENDING', 'RETRY'])
+          .returning('id').execute();
+        await trx.insertInto('audit_logs').values([
+          ...holdIds.map((holdId) => ({
+            request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+            entity: 'holds', entity_id: holdId, diff: { status: 'RELEASED', release_reason: 'unit_closed' },
+            ip_address: meta.ip ?? null,
+          })),
+          ...expired.map((pi) => ({
+            request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE' as const,
+            entity: 'payment_intents', entity_id: pi.id, diff: { status: 'EXPIRED', reason: 'unit_closed' },
+            ip_address: meta.ip ?? null,
+          })),
+        ]).execute();
+      }
+
+      const updated = await trx.updateTable('rooms')
+        .set({ status, updated_by: meta.userId, updated_at: sql`now()` })
+        .where('id', '=', id).returningAll().executeTakeFirst();
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null, user_id: meta.userId, action: 'UPDATE', entity: 'rooms', entity_id: id,
+        diff: { status, ...(booked || holdIds.length ? { closed_with_bookings: booked, released_holds: holdIds.length } : {}) },
+        ip_address: meta.ip ?? null,
+      }).execute();
       return updated;
     });
   }
