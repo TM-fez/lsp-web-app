@@ -51,9 +51,14 @@ interface Props {
   rooms: Room[];
   canUpdate?: boolean;
   canCancel?: boolean;
+  /**
+   * (Calendar) A new booking started from an empty square on the board: that unit and that
+   * night are filled in. Ignored when editing. Pass a stable object — it resets the form.
+   */
+  initial?: { room_id?: string; check_in_date?: string; check_out_date?: string } | null;
 }
 
-export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, canUpdate, canCancel }: Props) {
+export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, canUpdate, canCancel, initial }: Props) {
   const isEdit = !!reservation;
   // Editable only if the user may update AND the reservation is still open.
   const editable = isEdit ? !!canUpdate && isOpen(reservation!.status) : true;
@@ -176,9 +181,10 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
         ? { id: reservation.billing_contact_id, name: reservation.billing_contact_name ?? 'Contact' }
         : null,
     );
-    setRoomId(reservation?.room_id ?? '');
-    setCheckIn(toDateInput(reservation?.check_in_date));
-    setCheckOut(toDateInput(reservation?.check_out_date));
+    const start = reservation ? null : initial;
+    setRoomId(reservation?.room_id ?? start?.room_id ?? '');
+    setCheckIn(toDateInput(reservation?.check_in_date ?? start?.check_in_date));
+    setCheckOut(toDateInput(reservation?.check_out_date ?? start?.check_out_date));
     setNotes(reservation?.notes ?? '');
     setSource(reservation?.source ?? 'WALK_IN');
     setConfirmCancel(false);
@@ -192,7 +198,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
     setDiscType('PERCENT');
     setDiscValue('');
     setDiscReason('');
-  }, [open, reservation]);
+  }, [open, reservation, initial]);
 
   // Bookable rooms (always keep the currently-selected room visible on edit).
   const roomOptions = useMemo(

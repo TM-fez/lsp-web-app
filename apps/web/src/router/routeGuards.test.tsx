@@ -36,6 +36,7 @@ const PROTECTED: Record<string, { sample: string; api: string | null }> = {
   '/owners/print': { sample: '/owners/print', api: 'reports.read' },
   '/housekeeping/board': { sample: '/housekeeping/board', api: 'housekeeping.read' },
   '/reservations': { sample: '/reservations', api: 'reservations.read' },
+  '/calendar': { sample: '/calendar', api: 'reservations.read' },
   '/leads': { sample: '/leads', api: 'crm.leads.read' },
   '/guests': { sample: '/guests', api: 'crm.contacts.read' },
   '/housekeeping': { sample: '/housekeeping', api: 'housekeeping.read' },

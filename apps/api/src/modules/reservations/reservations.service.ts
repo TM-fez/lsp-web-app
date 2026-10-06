@@ -24,7 +24,10 @@ import type {
   MarkPaidDTO,
   ConfirmReservationDTO,
   ReservationListRow,
-  ReservationFolio
+  ReservationFolio,
+  CalendarQueryDTO,
+  CalendarView,
+  CalendarClosure,
 } from './reservations.types.js';
 
 /**
@@ -464,6 +467,90 @@ export class ReservationsService {
     return reservation;
   }
 
+  /**
+   * (Calendar, 2026-10-06) The front-desk board for the active property — LH-style, one row
+   * per unit and one column per night. It draws, it never decides: bookings, repair
+   * windows, closed units and bare holds are read exactly as the availability rules leave
+   * them, so a square that looks free is one a booking attempt will accept.
+   *
+   * The money corner ("incomplete payment") is display only and computed here, after the
+   * fact, from the same paid-to-date the folio uses — nothing about whether a unit is
+   * free looks at it (invariant 7).
+   */
+  async getCalendar(query: CalendarQueryDTO, propertyId: string): Promise<CalendarView> {
+    const today = todayInPropertyTZ();
+    const from = query.from ?? today;
+    const end = new Date(`${from}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + query.days);
+    const to = end.toISOString().slice(0, 10);
+
+    const [units, rows, closures] = await Promise.all([
+      this.repository.calendarUnits(propertyId),
+      this.repository.calendarBookings(propertyId, from, to),
+      this.repository.calendarClosures(propertyId, from, to),
+    ]);
+    const paid = await this.repository.paidToDate(rows.map((r) => r.id));
+
+    // A stay with no agreed total yet (made before totals were frozen) is priced at today's
+    // rates — exactly what its folio does — so the corner and the drawer never disagree. A
+    // few at a time: each is a handful of reads, and the pool is shared with everyone else.
+    const priced = new Map<string, { total: number; frozen: boolean }>();
+    for (const r of rows) if (r.folio_total_amount != null) priced.set(r.id, { total: r.folio_total_amount, frozen: true });
+    const unpriced = rows.filter((r) => r.folio_total_amount == null && r.status !== 'BLOCKED');
+    if (this.pricing && this.rooms) {
+      for (let i = 0; i < unpriced.length; i += 4) {
+        await Promise.all(
+          unpriced.slice(i, i + 4).map(async (r) => {
+            const p = await this.priceReservation(r.id, propertyId);
+            priced.set(r.id, { total: 'priceable' in p && p.priceable === false ? 0 : (p as ReservationPricing).total_amount, frozen: false });
+          })
+        );
+      }
+    }
+
+    const bookings = rows.map(({ folio_total_amount: _frozen, ...r }) => {
+      const received = paid.get(r.id) ?? 0;
+      const agreed = priced.get(r.id);
+      // The folio's own rule (getFolio → payment_state): settled when an agreed P0 stay
+      // (complimentary, or fully refunded) or when what arrived covers the total. A
+      // Booking.com block is paid through Booking.com, never at our desk.
+      const settled =
+        r.status === 'BLOCKED' ||
+        (agreed?.frozen === true && agreed.total === 0) ||
+        (agreed != null && received > 0 && received >= agreed.total);
+      return { ...r, payment_incomplete: !settled };
+    });
+
+    const closed: CalendarClosure[] = [
+      // A unit taken off sale with no end date is closed for every night on screen.
+      ...units
+        .filter((u) => u.status === 'MAINTENANCE' || u.status === 'OUT_OF_SERVICE')
+        .map((u) => ({
+          room_id: u.id,
+          kind: u.status as 'MAINTENANCE' | 'OUT_OF_SERVICE',
+          from: null,
+          to: null,
+          label: u.status === 'MAINTENANCE' ? 'Closed — under maintenance' : 'Closed — out of service',
+          ref_id: null,
+        })),
+      ...closures.repairs.map((w) => ({
+        room_id: w.room_id, kind: 'REPAIR' as const, from: w.from, to: w.to, label: `Closed — ${w.title}`, ref_id: w.id,
+      })),
+      ...closures.holds.map((h) => ({
+        room_id: h.room_id, kind: 'HOLD' as const, from: h.from, to: h.to, label: 'Held for a quote', ref_id: null,
+      })),
+    ];
+
+    return {
+      from,
+      to,
+      today,
+      units: units.sort(byUnit),
+      bookings,
+      closures: closed,
+    };
+  }
+
   async getReservations(
     filters: ReservationFilters,
     pagination: ReservationPaginationOptions
@@ -797,4 +884,14 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to remove reservation with id ${id}`);
     }
   }
+}
+
+/**
+ * Units grouped by type, then in the order staff read them on the doors: B1, B2 … B10,
+ * not B1, B10, B2 (a plain string sort).
+ */
+const TYPE_ORDER = ['STANDARD', 'DELUXE', 'SUITE', 'CONFERENCE', 'CUSTOM'];
+function byUnit(a: { type: string; code: string }, b: { type: string; code: string }): number {
+  const t = TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
+  return t !== 0 ? t : a.code.localeCompare(b.code, 'en', { numeric: true, sensitivity: 'base' });
 }

@@ -234,6 +234,11 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    and `finance` queries too, so an open booking updates in place. (d) "Cancelled with money held" rows
    open their booking in place. (e) Once a total is agreed, the drawer's price box shows "Agreed total"
    from the folio and labels the live figure "Price at today's rates" — never "Total due".
+   **Calendar (2026-10-06).** `GET /reservations/calendar?from=&days=` (1–31, default today + 28)
+   feeds `/calendar`, the LH-style board. It draws, never decides: bookings (not cancelled/no-show),
+   units off sale, live dated repairs (`LIVE_SERIOUS_WINDOW`) and live bare holds — the same things
+   that make a booking attempt say no. `payment_incomplete` follows the folio's own rule (an unpriced
+   stay is priced at today's rates, as `getFolio` does); nothing about availability reads it.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

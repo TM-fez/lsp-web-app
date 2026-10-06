@@ -191,3 +191,68 @@ export interface ReservationFilters {
 }
 
 export type { CRMRequestMeta as ReservationRequestMeta, PaginatedResult as PaginatedReservationResult, PaginationOptions as ReservationPaginationOptions };
+
+/**
+ * (Calendar, 2026-10-06) GET /reservations/calendar — the Little Hotelier-style front-desk
+ * board: one row per unit, one column per night. `from` is the first night shown; `days`
+ * how many (7 / 14 / 28 on screen, up to 31 accepted so a month view stays possible).
+ */
+export const CalendarQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-06.')
+    .refine((s) => {
+      const d = new Date(`${s}T00:00:00Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && s >= '2000-01-01' && s < '2100-01-01';
+    }, 'That is not a real date.')
+    .optional(),
+  days: z.coerce.number().int().min(1).max(31).default(28),
+});
+export type CalendarQueryDTO = z.infer<typeof CalendarQuerySchema>;
+
+export interface CalendarUnit {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  status: string;
+  building_name: string | null;
+}
+
+export interface CalendarBooking {
+  id: string;
+  room_id: string;
+  check_in_date: string;
+  check_out_date: string;
+  status: z.infer<typeof ReservationStatusEnum>;
+  source: z.infer<typeof ReservationSourceEnum>;
+  guest_name: string | null;
+  /** Who the stay is for, LH-style "Company, Guest": the billing contact, else the guest's company. */
+  company_name: string | null;
+  /** True while a live stay still owes money — the board's "incomplete payment" corner. */
+  payment_incomplete: boolean;
+}
+
+/**
+ * A night the unit cannot be sold that is not a booking. `from` / `to` are half-open like a
+ * stay; null means "before / after anything on screen" (a unit closed with no end date).
+ */
+export interface CalendarClosure {
+  room_id: string;
+  kind: 'REPAIR' | 'MAINTENANCE' | 'OUT_OF_SERVICE' | 'HOLD';
+  from: string | null;
+  to: string | null;
+  label: string;
+  /** The work order behind a REPAIR, so the board can link to it. */
+  ref_id: string | null;
+}
+
+export interface CalendarView {
+  from: string;
+  /** Exclusive: the morning after the last night shown. */
+  to: string;
+  today: string;
+  units: CalendarUnit[];
+  bookings: CalendarBooking[];
+  closures: CalendarClosure[];
+}
