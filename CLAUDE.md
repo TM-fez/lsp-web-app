@@ -239,6 +239,15 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    units off sale, live dated repairs (`LIVE_SERIOUS_WINDOW`) and live bare holds — the same things
    that make a booking attempt say no. `payment_incomplete` follows the folio's own rule (an unpriced
    stay is priced at today's rates, as `getFolio` does); nothing about availability reads it.
+   **R10 (2026-10-06, refund polish).** (a) **A refund that would bring a LIVE booking's agreed total
+   to P0 is a question**: 409 `error: 'Full Refund'` unless `confirm_full_refund` (owner decisions
+   2026-10-02 / 10-04 (d) unchanged — answered, it still refunds and leaves the booking as it is).
+   Partial refunds, a shortened stay's overpayment and cancelled/no-show bookings are not asked.
+   (b) Refund boxes start empty everywhere; the drawer's limit is the server's (a shortened stay's
+   credit). (c) A refund reason is trimmed (`'   '` is refused). (d) `GET /reservations/:id` carries
+   the list row's display names (`findDetailById`). (e) `payment_state` is `REFUNDED` when everything
+   received went back even on a total never lowered (pre-2026-10-02); `npm run db:report-unlowered-refunds`
+   (report only, owner-run) lists live ones that still owe on paper.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

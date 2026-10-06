@@ -273,7 +273,13 @@ describe('§3 refunds', () => {
     const over = await refund(b.invoiceId, { amount: b.total - 50_000 + 1, reason: 'x' });
     expect(over.status).toBe(409);
     expect(over.body.message).toMatch(/Only BWP 1,500\.00 of this invoice is left to refund\. BWP 500\.00 has already been refunded/);
-    expect((await refund(b.invoiceId, { amount: b.total - 50_000, reason: 'rest' })).status).toBe(201);
+    // (R10 #1) The rest is everything left on a live stay: the server asks first…
+    const asked = await refund(b.invoiceId, { amount: b.total - 50_000, reason: 'rest' });
+    expect(asked.status).toBe(409);
+    expect(asked.body.error).toBe('Full Refund');
+    expect(await creditNotes(b.invoiceId)).toBe(1);
+    // …and refunds once answered.
+    expect((await refund(b.invoiceId, { amount: b.total - 50_000, reason: 'rest', confirm_full_refund: true })).status).toBe(201);
     expect(await creditNotes(b.invoiceId)).toBe(2);
   });
 

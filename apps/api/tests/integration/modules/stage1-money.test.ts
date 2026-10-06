@@ -620,8 +620,8 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     // Since partial refunds (2026-10-04) two smaller refunds are both legitimate, so the
     // double click that must lose is the one asking for money that is no longer there.
     const results = await Promise.allSettled([
-      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta()),
-      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta()),
+      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta(), { confirmFullRefund: true }),
+      invoices.refundInvoice(receipt.id, receipt.total_amount, 'double click', meta(), { confirmFullRefund: true }),
     ]);
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
@@ -650,7 +650,8 @@ describe('2. Part payments, the open balance invoice, and settling', () => {
     const statusOf = async () =>
       (await db.selectFrom('reservations').select('status').where('id', '=', b.id).executeTakeFirstOrThrow()).status;
     const before = await statusOf();
-    await invoices.refundInvoice(receipt.id, left, 'rest', meta());
+    // (R10 #1) The rest is everything left on a live stay: answered "refund anyway".
+    await invoices.refundInvoice(receipt.id, left, 'rest', meta(), { confirmFullRefund: true });
     expect((await invoices.getInvoice(receipt.id)).status).toBe('REFUNDED');
     // (R4 owner decision 4a) A full refund never touches the booking — staff cancel it
     // separately if the stay is off.

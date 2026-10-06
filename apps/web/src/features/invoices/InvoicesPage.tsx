@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth';
 import { formatMoney, thebeToPula, pulaToThebe } from '@/lib/utils/money';
+import { fullRefundMessage } from '@/lib/api/errors';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
 import { AmountError } from '@/components/ui/amount-error';
 import { cn } from '@/lib/utils/cn';
@@ -106,13 +107,18 @@ export function InvoicesPage() {
   // One key per time the dialog opens: a double click, or a retry after a slow network,
   // replays the same refund instead of recording a second one. A fresh open = a new key.
   const [refundKey, setRefundKey] = useState('');
+  // (R10 #1) The server's "this refunds everything and makes the stay free" question, asked
+  // in the dialog and answered there.
+  const [fullRefundQuestion, setFullRefundQuestion] = useState<string | null>(null);
 
   // A part-refunded invoice can be refunded again — but only up to what is left.
   const refundable = (inv: Invoice) => inv.total_amount - (inv.refunded_amount ?? 0);
   const openRefund = (inv: Invoice) => {
     setRefunding(inv);
-    setAmount(thebeToPula(refundable(inv)));
+    // (R10 #2) Empty, as on the booking: the limit is in the line above the box.
+    setAmount('');
     setReason('');
+    setFullRefundQuestion(null);
     setRefundKey(newIdempotencyKey());
   };
 
@@ -125,13 +131,14 @@ export function InvoicesPage() {
   // clicks in the same tick both saw false: the server's Idempotency-Key made it one refund,
   // but the replayed answer showed "Refund recorded" twice. A ref flips synchronously.
   const refundInFlight = useRef(false);
-  const submitRefund = () => {
+  const submitRefund = (confirmFullRefund = false) => {
     if (!refunding || refundInFlight.current || refund.isPending || !refundAmountOk || !reason.trim()) return;
     refundInFlight.current = true;
     refund.mutate(
-      { id: refunding.id, amount: refundThebe, reason: reason.trim(), idempotencyKey: refundKey },
+      { id: refunding.id, amount: refundThebe, reason: reason.trim(), idempotencyKey: refundKey, confirmFullRefund },
       {
         onSuccess: () => setRefunding(null),
+        onError: (e) => setFullRefundQuestion(fullRefundMessage(e)),
         onSettled: () => { refundInFlight.current = false; },
       },
     );
@@ -390,7 +397,16 @@ export function InvoicesPage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="refund-amount">Amount (Pula)</Label>
-              <Input id="refund-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <Input
+                id="refund-amount"
+                inputMode="decimal"
+                value={amount}
+                placeholder={refunding ? `up to ${thebeToPula(refundable(refunding))}` : ''}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setFullRefundQuestion(null);
+                }}
+              />
               <AmountError value={amount} positive />
               {!Number.isNaN(refundThebe) && refunding && refundThebe > refundable(refunding) && (
                 <p role="alert" className="text-[11px] text-terra">
@@ -402,16 +418,32 @@ export function InvoicesPage() {
               <Label htmlFor="refund-reason">Reason</Label>
               <Input id="refund-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. guest cancelled within policy" />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRefunding(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                disabled={busy || refund.isPending || !reason.trim() || !refundAmountOk}
-                onClick={submitRefund}
-              >
-                Record refund
-              </Button>
-            </div>
+            {fullRefundQuestion ? (
+              <div role="alert" className="flex flex-col gap-2 rounded-md border border-terra/40 bg-terra/5 p-3">
+                <p className="text-sm text-terra">{fullRefundQuestion}</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setFullRefundQuestion(null)}>Don’t refund</Button>
+                  <Button
+                    variant="danger"
+                    disabled={busy || refund.isPending || !reason.trim() || !refundAmountOk}
+                    onClick={() => submitRefund(true)}
+                  >
+                    Yes — refund anyway
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRefunding(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  disabled={busy || refund.isPending || !reason.trim() || !refundAmountOk}
+                  onClick={() => submitRefund()}
+                >
+                  Record refund
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

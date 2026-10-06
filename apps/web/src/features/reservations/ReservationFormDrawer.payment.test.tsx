@@ -177,19 +177,71 @@ describe('ReservationFormDrawer — the money on a booking', () => {
         ],
       };
     };
-    beforeEach(() => refundMutate.mockClear());
+    beforeEach(() => refundMutate.mockClear().mockResolvedValue({}));
 
-    it('offers a refund on a cancelled booking that still holds money, capped at what is left', async () => {
+    // (R10 #2) Empty on a cancelled booking too — a prefilled full amount was one click from
+    // refunding all of it. The limit is said above the box. No "makes the stay free" question:
+    // a cancelled stay is already off.
+    it('offers a refund on a cancelled booking that still holds money, starting empty, capped at what is left', async () => {
       perms = ['invoices.refund'];
       cancelledWithMoney();
       open({ status: 'CANCELLED' });
       const amount = screen.getByLabelText('Refund amount (Pula)') as HTMLInputElement;
-      expect(amount.value).toBe('400.00'); // P500 receipt, P100 already refunded
+      expect(amount.value).toBe('');
+      expect(screen.getByText(/Up to BWP 400.00 can go back from here/)).toBeInTheDocument(); // P500 receipt, P100 already refunded
+      fireEvent.change(amount, { target: { value: '400' } });
       fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Cancelled within terms' } });
       fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 400.00' }));
       await waitFor(() => expect(refundMutate).toHaveBeenCalledWith({
-        id: 'rcpt-1', amount: 40_000, reason: 'Cancelled within terms', idempotencyKey: expect.stringMatching(UUID),
+        id: 'rcpt-1', amount: 40_000, reason: 'Cancelled within terms', idempotencyKey: expect.stringMatching(UUID), confirmFullRefund: false,
       }));
+    });
+
+    // (R10 #1) Refunding a live stay down to P0 makes it free while the guest keeps the unit.
+    it('asks before a refund that would make a live stay free, and only "Yes" sends it', async () => {
+      perms = ['invoices.refund'];
+      folioData = {
+        ...folioData!, total_amount: 50_000, paid_amount: 50_000, outstanding_amount: 0, credit_amount: 0, payment_state: 'PAID',
+        invoices: [{ id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 50_000, refunded_amount: 0, created_at: '2026-08-24T10:00:00Z' }],
+      };
+      open({ status: 'CONFIRMED' });
+      fireEvent.change(screen.getByLabelText('Refund amount (Pula)'), { target: { value: '500' } });
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Guest asked' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 500.00' }));
+      expect(screen.getByRole('alert')).toHaveTextContent(/makes the stay free — the guest keeps the unit/);
+      expect(refundMutate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Yes — refund BWP 500.00' }));
+      await waitFor(() => expect(refundMutate).toHaveBeenCalledWith(expect.objectContaining({ amount: 50_000, confirmFullRefund: true })));
+    });
+
+    it('shows the server’s question when it asks (its figures may be newer than the screen’s)', async () => {
+      perms = ['invoices.refund'];
+      cancelledWithMoney();
+      refundMutate.mockRejectedValueOnce({ response: { status: 409, data: { error: 'Full Refund', message: 'This refunds everything and makes the stay free.' } } });
+      open({ status: 'CONFIRMED' });
+      fireEvent.change(screen.getByLabelText('Refund amount (Pula)'), { target: { value: '100' } });
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 100.00' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('This refunds everything and makes the stay free.');
+    });
+
+    // (R10 #4) A stay shortened after payment can only hand back the overpayment — the server
+    // refuses more. The drawer said "Up to P2,223" while the server allowed P741.
+    it('caps a shortened stay at what was overpaid, not at the receipt', () => {
+      perms = ['invoices.refund'];
+      folioData = {
+        ...folioData!, total_amount: 148_200, paid_amount: 222_300, outstanding_amount: 0, credit_amount: 74_100, payment_state: 'PAID',
+        invoices: [{ id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 222_300, refunded_amount: 0, created_at: '2026-08-24T10:00:00Z' }],
+      };
+      open({ status: 'CONFIRMED' });
+      expect(screen.getByText(/Up to BWP 741.00 can go back from here — what was paid beyond the shortened stay/)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Refund amount (Pula)'), { target: { value: '741.01' } });
+      expect(screen.getByText('That is more than can be refunded from here.')).toBeInTheDocument();
+      // …and handing back exactly the overpayment does not make the stay free, so no question.
+      fireEvent.change(screen.getByLabelText('Refund amount (Pula)'), { target: { value: '741' } });
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Stay shortened' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Refund BWP 741.00' }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('is not offered without the refund permission', () => {
@@ -220,6 +272,49 @@ describe('ReservationFormDrawer — the money on a booking', () => {
       open({ status: 'CONFIRMED' });
       expect(screen.queryByLabelText('Refund amount (Pula)')).not.toBeInTheDocument();
     });
+  });
+
+  // (R10 #3) "P1,723 of P1,723 paid" after a P500 refund — true, but silent about the refund.
+  it('shows what has been refunded on a part-refunded booking', () => {
+    folioData = {
+      ...folioData!, total_amount: 172_300, paid_amount: 172_300, outstanding_amount: 0, credit_amount: 0, payment_state: 'PAID',
+      invoices: [
+        { id: 'i1', number: 'INV-1', kind: 'BALANCE', status: 'PAID', total_amount: 222_300, refunded_amount: 50_000, created_at: '2026-08-24T10:00:00Z' },
+        { id: 'i2', number: 'CN-1', kind: 'REFUND', status: 'PAID', total_amount: 50_000, created_at: '2026-08-25T10:00:00Z' },
+      ],
+    };
+    open({ status: 'CONFIRMED' });
+    expect(screen.getByText('BWP 1,723.00 of BWP 1,723.00 paid')).toBeInTheDocument();
+    expect(screen.getByText('BWP 500.00 refunded')).toBeInTheDocument();
+  });
+
+  // (R10 #5, #6) Once confirmed, "Deposit to confirm" is advice for a step already done; and a
+  // section that can no longer take a discount is headed "Price", not "Discount".
+  it('shows "Deposit to confirm" and "Price & discount" only while the booking is pending', () => {
+    perms = ['reservations.discount.request'];
+    open({ status: 'PENDING' });
+    expect(screen.getByText(/Deposit to confirm/)).toBeInTheDocument();
+    expect(screen.getByText('Price & discount')).toBeInTheDocument();
+  });
+
+  it('hides "Deposit to confirm" and heads the box "Price" on a confirmed booking with no discount', () => {
+    perms = ['reservations.discount.request'];
+    open({ status: 'CONFIRMED' });
+    expect(screen.queryByText(/Deposit to confirm/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Price & discount')).not.toBeInTheDocument();
+    expect(screen.getByText('Price', { exact: true })).toBeInTheDocument();
+  });
+
+  // (R10 #6) Text still sent staff to the Invoices page, which the booking can now do itself.
+  it('points to the refund on this booking, not the Invoices page', () => {
+    perms = ['invoices.refund'];
+    folioData = {
+      ...folioData!, total_amount: 148_200, paid_amount: 222_300, outstanding_amount: 0, credit_amount: 74_100, payment_state: 'PAID',
+      invoices: [{ id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 222_300, refunded_amount: 0, created_at: '2026-08-24T10:00:00Z' }],
+    };
+    open({ status: 'CONFIRMED' });
+    expect(screen.getByText(/refund due — the guest has paid more than the agreed price\. Refund it below\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Invoices page/)).not.toBeInTheDocument();
   });
 
   // (R9 #5) "Fully refunded · P0 of P0 paid" sat beside a price box still calling today's

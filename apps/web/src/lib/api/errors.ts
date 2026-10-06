@@ -25,3 +25,11 @@ export function repairOverlapMessage(e: unknown): string | null {
     ? a.response.data.message ?? 'This repair falls on booked or held nights.'
     : null;
 }
+
+/** (R10 #1) The server's question "this refunds everything and makes the stay free" — answered with "Refund anyway". */
+export function fullRefundMessage(e: unknown): string | null {
+  const a = e as { response?: { status?: number; data?: { error?: string; message?: string } } };
+  return a?.response?.status === 409 && a?.response?.data?.error === 'Full Refund'
+    ? a.response.data.message ?? 'This refunds everything and makes the stay free.'
+    : null;
+}

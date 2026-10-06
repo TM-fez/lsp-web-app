@@ -27,7 +27,7 @@ import { nights, statusLabel, statusTone, paymentTone, paymentLabel, isOpen, fmt
 import { todayISO } from '@/lib/utils/date';
 import { formatMoney, isPulaAmount, pulaToThebe } from '@/lib/utils/money';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
-import { errMessage } from '@/lib/api/errors';
+import { errMessage, fullRefundMessage } from '@/lib/api/errors';
 import { AmountError } from '@/components/ui/amount-error';
 import { useAuthStore } from '@/store/auth';
 import { useRefundInvoice } from '@/features/invoices/hooks';
@@ -551,6 +551,13 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       )
                     )}
 
+                    {/* (R10 #3) After a P500 refund the line read "P1,723 of P1,723 paid" — true
+                        (paid is net, and the refund lowered the total) but silent about the
+                        P500 that went back. */}
+                    {refundedTotal(folio.data) > 0 && !fullyRefunded(folio.data) && (
+                      <p className="mt-1 text-sm text-muted">{formatMoney(refundedTotal(folio.data))} refunded</p>
+                    )}
+
                     {folio.data.outstanding_amount > 0 && (
                       <p className="mt-1 text-sm text-terra">
                         {formatMoney(folio.data.outstanding_amount)} still outstanding
@@ -562,7 +569,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                     {folio.data.credit_amount > 0 && (
                       <p className="mt-1 text-sm text-terra">
                         {formatMoney(folio.data.credit_amount)} refund due — the guest has paid more than
-                        the agreed price. Refund it from the receipt on the Invoices page.
+                        the agreed price.{hasPerm('invoices.refund') ? ' Refund it below.' : ''}
                       </p>
                     )}
 
@@ -571,7 +578,9 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                         This booking is {reservation.status === 'CANCELLED' ? 'cancelled' : 'a no-show'}, so nothing
                         is owed.
                         {folio.data.paid_amount > 0 &&
-                          ' Whether what was paid is returned depends on your cancellation terms — refund it from the Invoices page if so.'}
+                          ` Whether what was paid is returned depends on your cancellation terms${
+                            hasPerm('invoices.refund') ? ' — refund it below if so.' : '.'
+                          }`}
                       </p>
                     )}
 
@@ -786,7 +795,11 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
 
           {showDiscountTools && (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
-              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Discount</Label>
+              {/* (R10 #6) "Discount" headed a price box with no discount in it when none could
+                  be added any more — the heading now says what the section holds. */}
+              <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">
+                {reservation!.discount_value != null || !discountBlocked ? 'Price & discount' : 'Price'}
+              </Label>
 
               {pricing.data?.priceable && (
                 <div className="rounded-md border border-line bg-cream-2/40 px-3 py-2.5 text-sm">
@@ -833,10 +846,14 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                       <span className="font-display">{formatMoney(pricing.data.total_amount)}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between text-xs text-muted">
-                    <span>Deposit to confirm ({pricing.data.deposit_pct}%)</span>
-                    <span>{formatMoney(pricing.data.deposit_amount)}</span>
-                  </div>
+                  {/* (R10 #5) Only a PENDING booking still needs confirming — once it is
+                      confirmed (paid or vouched for) this line was advice for a step already done. */}
+                  {reservation!.status === 'PENDING' && (
+                    <div className="flex items-center justify-between text-xs text-muted">
+                      <span>Deposit to confirm ({pricing.data.deposit_pct}%)</span>
+                      <span>{formatMoney(pricing.data.deposit_amount)}</span>
+                    </div>
+                  )}
                   {pricing.data.discount && !pricing.data.discount.approved && (
                     <p className="mt-1.5 text-xs text-terra">
                       Discount is pending approval — not applied to the total yet.
@@ -1047,6 +1064,11 @@ function ClaimBookingSection({ reservationId, onClaimed }: { reservationId: stri
 }
 
 /** Everything paid has gone back: agreed total P0 with a receipt and its credit note behind it. */
+/** Everything that has gone back to the guest on this booking: the credit notes. */
+function refundedTotal(f: ReservationFolio): number {
+  return f.invoices.filter((i) => i.kind === 'REFUND').reduce((sum, i) => sum + i.total_amount, 0);
+}
+
 function fullyRefunded(f: ReservationFolio): boolean {
   return (
     f.total_amount === 0 &&
@@ -1067,39 +1089,62 @@ function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status:
   const refund = useRefundInvoice();
   const closed = status === 'CANCELLED' || status === 'NO_SHOW';
   // (R9 #4) Any booking holding money can refund from here, up to what it holds — a refund
-  // lowers the agreed total by the same amount, so it never puts the guest in debt
-  // (2026-10-02). Prefilled only where the whole amount is plainly due back (a closed
-  // booking, or what was paid beyond the total); a live paid stay starts empty, so nobody
-  // refunds a whole stay by accident.
+  // lowers the agreed total by the same amount, so it never puts the guest in debt (2026-10-02).
   const receipt = [...folio.invoices]
     .reverse()
     .find((i) => i.kind !== 'REFUND' && i.status === 'PAID' && i.total_amount - (i.refunded_amount ?? 0) > 0);
-  const cap = receipt ? Math.min(folio.paid_amount, receipt.total_amount - (receipt.refunded_amount ?? 0)) : 0;
-  const suggested = closed ? cap : Math.min(folio.credit_amount, cap);
+  const onReceipt = receipt ? Math.min(folio.paid_amount, receipt.total_amount - (receipt.refunded_amount ?? 0)) : 0;
+  // (R10 #4) A stay shortened after payment can only hand back what was overpaid — the server
+  // refuses more (it would eat into nights actually stayed). Say THAT limit, not the receipt's.
+  const cap = !closed && folio.credit_amount > 0 ? Math.min(onReceipt, folio.credit_amount) : onReceipt;
 
+  // (R10 #2) The box starts empty everywhere — a prefilled full amount on a cancelled booking was
+  // one click from refunding all of it. The limit is right above it.
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  // (R10 #1) Refunding a live stay down to P0 makes it free — asked first, here or by the server.
+  const [askFull, setAskFull] = useState<string | null>(null);
   const key = useRef('');
   const inFlight = useRef(false);
   useEffect(() => {
-    setAmount(suggested > 0 ? (suggested / 100).toFixed(2) : '');
+    setAmount('');
     setReason('');
+    setAskFull(null);
     key.current = newIdempotencyKey();
-  }, [receipt?.id, cap, suggested]);
+  }, [receipt?.id, cap]);
 
   if (!hasPerm('invoices.refund') || !receipt || cap <= 0) return null;
 
   const thebe = pulaToThebe(amount);
   const valid = !Number.isNaN(thebe) && thebe > 0 && thebe <= cap && reason.trim().length > 0;
+  // Mirrors the server: what is left of the agreed total after this refund (only the part
+  // beyond any overpayment lowers it).
+  const makesFree =
+    !closed && folio.total_amount > 0 && folio.total_amount - Math.max(0, thebe - (folio.credit_amount ?? 0)) <= 0;
 
-  async function submit() {
+  async function submit(confirmFullRefund = false) {
     if (!valid || !receipt || inFlight.current) return;
+    if (makesFree && !confirmFullRefund) {
+      setAskFull(
+        'This refunds everything and makes the stay free — the guest keeps the unit and nothing more can be charged. Refund anyway? (To end the stay too, cancel the booking.)'
+      );
+      return;
+    }
     inFlight.current = true;
     try {
-      await refund.mutateAsync({ id: receipt.id, amount: thebe, reason: reason.trim(), idempotencyKey: key.current });
+      await refund.mutateAsync({
+        id: receipt.id,
+        amount: thebe,
+        reason: reason.trim(),
+        idempotencyKey: key.current,
+        confirmFullRefund,
+      });
       key.current = newIdempotencyKey();
-    } catch {
-      /* hook surfaces the error toast */
+      setAskFull(null);
+    } catch (e) {
+      // The server asks too (its figures may be newer than this screen's).
+      const question = fullRefundMessage(e);
+      if (question) setAskFull(question);
     } finally {
       inFlight.current = false;
     }
@@ -1109,11 +1154,21 @@ function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status:
     <div className="flex flex-col gap-3 border-t border-line pt-4">
       <Label className="text-[11px] uppercase tracking-[0.18em] text-muted">Refund</Label>
       <p className="text-xs text-muted">
-        Refunds from receipt {receipt.number}. Up to {formatMoney(cap)} can go back from here.
+        Refunds from receipt {receipt.number}. Up to {formatMoney(cap)} can go back from here
+        {cap < onReceipt ? ' — what was paid beyond the shortened stay.' : '.'}
       </p>
       <div className="flex flex-col gap-1">
         <Label htmlFor="res-refund-amount">Refund amount (Pula)</Label>
-        <Input id="res-refund-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <Input
+          id="res-refund-amount"
+          inputMode="decimal"
+          placeholder={`up to ${(cap / 100).toFixed(2)}`}
+          value={amount}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            setAskFull(null);
+          }}
+        />
         <AmountError value={amount} positive />
         {!Number.isNaN(thebe) && thebe > cap && (
           <p className="text-[11px] text-terra">That is more than can be refunded from here.</p>
@@ -1128,11 +1183,25 @@ function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status:
           onChange={(e) => setReason(e.target.value)}
         />
       </div>
-      <div>
-        <Button variant="outline" disabled={!valid || refund.isPending} onClick={submit}>
-          {refund.isPending ? <Spinner className="h-4 w-4" /> : `Refund ${formatMoney(Number.isNaN(thebe) ? 0 : thebe)}`}
-        </Button>
-      </div>
+      {askFull ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md border border-terra/40 bg-terra/5 p-3">
+          <p className="text-sm text-terra">{askFull}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger" disabled={!valid || refund.isPending} onClick={() => submit(true)}>
+              {refund.isPending ? <Spinner className="h-4 w-4" /> : `Yes — refund ${formatMoney(thebe)}`}
+            </Button>
+            <Button variant="ghost" disabled={refund.isPending} onClick={() => setAskFull(null)}>
+              Don’t refund
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Button variant="outline" disabled={!valid || refund.isPending} onClick={() => submit()}>
+            {refund.isPending ? <Spinner className="h-4 w-4" /> : `Refund ${formatMoney(Number.isNaN(thebe) ? 0 : thebe)}`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listInvoices, issueInvoice, settleInvoice, refundInvoice, getInvoiceDocument, sendInvoice, type InvoiceListParams } from '@/lib/api/invoices';
 import { listQuotes } from '@/lib/api/quotes';
-import { errMessage } from '@/lib/api/errors';
+import { errMessage, fullRefundMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
 import type { InvoiceDocument, InvoiceList, Quote } from '@/types';
 
@@ -78,12 +78,29 @@ export function useRefundInvoice() {
     qc.invalidateQueries({ queryKey: ['finance'] });
   };
   return useMutation({
-    mutationFn: ({ id, amount, reason, idempotencyKey }: { id: string; amount: number; reason: string; idempotencyKey?: string }) =>
-      refundInvoice(id, amount, reason, idempotencyKey),
+    mutationFn: ({
+      id,
+      amount,
+      reason,
+      idempotencyKey,
+      confirmFullRefund,
+    }: {
+      id: string;
+      amount: number;
+      reason: string;
+      idempotencyKey?: string;
+      confirmFullRefund?: boolean;
+    }) => refundInvoice(id, amount, reason, idempotencyKey, confirmFullRefund),
     onSuccess: () => {
       toast.success('Refund recorded ✓');
       refresh();
     },
-    onError: (e) => toast.error(errMessage(e)),
+    onError: (e) => {
+      // (R10 #6) A refused refund usually means the money moved under us (another refund, a
+      // changed stay) — re-read it, or the screen keeps offering the figure that was refused.
+      refresh();
+      // The "makes the stay free" question is asked by the screen itself, not as a toast.
+      if (!fullRefundMessage(e)) toast.error(errMessage(e));
+    },
   });
 }

@@ -46,7 +46,18 @@ export async function settleInvoice(id: string, receipt_file_id?: string | null)
 }
 
 // `idempotencyKey`: one per dialog open, so a double click / retry can't refund twice.
-export async function refundInvoice(id: string, amount: number, reason: string, idempotencyKey?: string): Promise<Invoice> {
-  const { data } = await api.post<Invoice>(`/invoices/${id}/refund`, { amount, reason }, idempotencyConfig(idempotencyKey));
+export async function refundInvoice(
+  id: string,
+  amount: number,
+  reason: string,
+  idempotencyKey?: string,
+  confirmFullRefund?: boolean
+): Promise<Invoice> {
+  const { data } = await api.post<Invoice>(
+    `/invoices/${id}/refund`,
+    // (R10 #1) Sent only as the answer to the server's "this makes the stay free" question.
+    { amount, reason, ...(confirmFullRefund ? { confirm_full_refund: true } : {}) },
+    idempotencyConfig(idempotencyKey)
+  );
   return data;
 }
