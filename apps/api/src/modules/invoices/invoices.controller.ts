@@ -86,6 +86,7 @@ export class InvoicesController {
       const dto = req.body as RefundInvoiceDTO;
       res.status(201).json(await this.service.refundInvoice(req.params.id as string, dto.amount, dto.reason, this.getRequestMeta(req), {
         hasIdempotencyKey: Boolean(req.get('Idempotency-Key')),
+        confirmFullRefund: dto.confirm_full_refund === true,
       }));
     } catch (err) {
       next(err);

@@ -32,7 +32,11 @@ export const SettleInvoiceSchema = z.object({
 
 export const RefundInvoiceSchema = z.object({
   amount: z.number().int().positive().max(MAX_MONEY_THEBE, 'That amount is too large — the most one entry can be is P1,000,000.'),
-  reason: z.string().min(1).max(500),
+  // (R10 #6) Trimmed first: a reason of only spaces said nothing and was accepted.
+  reason: z.string().trim().min(1, 'Say why the money is going back.').max(500),
+  // (R10 #1) The answer to "this refunds everything and makes the stay free — continue?".
+  // Needed only for a refund that would bring a live booking's agreed total to P0.
+  confirm_full_refund: z.boolean().optional(),
 });
 
 export type IssueInvoiceDTO = z.infer<typeof IssueInvoiceSchema>;

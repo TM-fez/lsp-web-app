@@ -266,7 +266,11 @@ describe('booking folio', () => {
     expect(folio.payment_state).toBe('REFUNDED');
   });
 
-  it('returns to UNPAID when everything received is refunded', async () => {
+  // (R10 #6) A booking refunded in full BEFORE refunds lowered the agreed total still carries
+  // its old total. It used to read UNPAID — as if the guest had never paid — when what happened
+  // is that everything paid went back. It reads REFUNDED; the old total still shows as owed on
+  // paper, which `db:report-unlowered-refunds` lists for a person to decide.
+  it('reads REFUNDED, not UNPAID, when everything received went back on an unlowered total', async () => {
     const id = await makeBooking('fullref', STAY_TOTAL);
     await addInvoice(id, { kind: 'BALANCE', status: 'REFUNDED', total: STAY_TOTAL });
     await addInvoice(id, { kind: 'REFUND', status: 'PAID', total: STAY_TOTAL });
@@ -274,8 +278,15 @@ describe('booking folio', () => {
     const folio = await buildService().getFolio(id, propertyId);
 
     expect(folio.paid_amount).toBe(0);
-    expect(folio.payment_state).toBe('UNPAID');
+    expect(folio.payment_state).toBe('REFUNDED');
     expect(folio.outstanding_amount).toBe(STAY_TOTAL);
+  });
+
+  it('still reads UNPAID when nothing was ever received', async () => {
+    const id = await makeBooking('neverpaid', STAY_TOTAL);
+    await addInvoice(id, { kind: 'BALANCE', status: 'ISSUED', total: STAY_TOTAL });
+    const folio = await buildService().getFolio(id, propertyId);
+    expect(folio.payment_state).toBe('UNPAID');
   });
 
   it('ignores soft-deleted and VOID invoices (invariant 5)', async () => {

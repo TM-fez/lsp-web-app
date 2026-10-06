@@ -209,7 +209,7 @@ export class InvoicesService {
     amount: number,
     reason: string,
     meta: InvoiceRequestMeta,
-    opts: { hasIdempotencyKey?: boolean } = {}
+    opts: { hasIdempotencyKey?: boolean; confirmFullRefund?: boolean } = {}
   ): Promise<InvoiceRow> {
     // Fast, friendly refusals. The authoritative checks — including "how much is left"
     // after earlier partial refunds — run again in the repository under the invoice's row
@@ -250,7 +250,7 @@ export class InvoicesService {
       meta,
       // A caller that sent an Idempotency-Key already has exact retry protection (and a
       // repeat of the same amount with a NEW key is a deliberate second refund).
-      { duplicateGuard: !opts.hasIdempotencyKey }
+      { duplicateGuard: !opts.hasIdempotencyKey, confirmFullRefund: opts.confirmFullRefund }
     );
   }
 }

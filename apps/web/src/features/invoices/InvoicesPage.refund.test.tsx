@@ -47,10 +47,36 @@ describe('InvoicesPage — refund dialog', () => {
     });
   });
 
-  it('starts at what is still refundable (total − already refunded)', () => {
+  // (R10 #2) Empty, not prefilled with everything — the limit is said, and shown as a hint.
+  it('starts empty, saying what is still refundable (total − already refunded)', () => {
     render(<InvoicesPage />);
     openDialog();
-    expect(amountBox().value).toBe('500.00');
+    expect(amountBox().value).toBe('');
+    expect(amountBox().placeholder).toBe('up to 500.00');
+    expect(screen.getByText(/Up to BWP 500\.00 can still be refunded/)).toBeInTheDocument();
+    fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    expect(submitBtn()).toBeDisabled();
+  });
+
+  // (R10 #1) The server asks before a refund that would make a live stay free; the dialog
+  // shows the question and sends the same refund again, answered, only on "Yes".
+  it('asks the server’s "makes the stay free" question and resends with the answer', () => {
+    render(<InvoicesPage />);
+    openDialog();
+    fireEvent.change(reasonBox(), { target: { value: 'guest asked' } });
+    fireEvent.change(amountBox(), { target: { value: '500.00' } });
+    fireEvent.click(submitBtn());
+    const question = { response: { status: 409, data: { error: 'Full Refund', message: 'This refunds everything and makes the stay free.' } } };
+    act(() => {
+      refundMutate.mock.calls[0]![1].onError(question);
+      refundMutate.mock.calls[0]![1].onSettled();
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('makes the stay free');
+    fireEvent.click(screen.getByRole('button', { name: 'Yes — refund anyway' }));
+    expect(refundMutate).toHaveBeenCalledTimes(2);
+    expect(refundMutate.mock.calls[1]![0]).toMatchObject({ amount: 50_000, confirmFullRefund: true });
+    // Same open, same key: the first try was refused, so nothing was recorded under it.
+    expect(refundMutate.mock.calls[1]![0].idempotencyKey).toBe(refundMutate.mock.calls[0]![0].idempotencyKey);
   });
 
   it('refuses a decimal comma — "10,5" is not P105 — and disables the button', () => {
@@ -92,13 +118,14 @@ describe('InvoicesPage — refund dialog', () => {
     fireEvent.click(submitBtn());
     expect(refundMutate).toHaveBeenCalledTimes(1);
     const [vars] = refundMutate.mock.calls[0]!;
-    expect(vars).toEqual({ id: 'inv-paid', amount: 1050, reason: 'guest left early', idempotencyKey: expect.stringMatching(UUID) });
+    expect(vars).toEqual({ id: 'inv-paid', amount: 1050, reason: 'guest left early', idempotencyKey: expect.stringMatching(UUID), confirmFullRefund: false });
   });
 
   it('keeps the same key for every submit within one open, and mints a new one on the next open', () => {
     render(<InvoicesPage />);
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    fireEvent.change(amountBox(), { target: { value: '10' } });
     fireEvent.click(submitBtn());
     // The first attempt failed (settled without success) — a retry reuses the same key.
     act(() => refundMutate.mock.calls[0]![1].onSettled());
@@ -111,6 +138,7 @@ describe('InvoicesPage — refund dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    fireEvent.change(amountBox(), { target: { value: '10' } });
     fireEvent.click(submitBtn());
     expect(refundMutate.mock.calls[2]![0].idempotencyKey).toMatch(UUID);
     expect(refundMutate.mock.calls[2]![0].idempotencyKey).not.toBe(keys[0]);
@@ -120,6 +148,7 @@ describe('InvoicesPage — refund dialog', () => {
     render(<InvoicesPage />);
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    fireEvent.change(amountBox(), { target: { value: '10' } });
     refundPending = true;
     // re-render with the mutation pending
     fireEvent.change(reasonBox(), { target: { value: 'xy' } });
@@ -134,6 +163,7 @@ describe('InvoicesPage — refund dialog', () => {
     render(<InvoicesPage />);
     openDialog();
     fireEvent.change(reasonBox(), { target: { value: 'x' } });
+    fireEvent.change(amountBox(), { target: { value: '10' } });
     fireEvent.click(submitBtn());
     fireEvent.click(submitBtn());
     expect(refundMutate).toHaveBeenCalledTimes(1);

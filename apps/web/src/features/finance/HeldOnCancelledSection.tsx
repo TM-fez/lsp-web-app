@@ -98,8 +98,13 @@ function HeldBookingDrawer({ row, onClose }: { row: OpenRow; onClose: () => void
     <ReservationFormDrawer
       open
       onOpenChange={(o) => { if (!o) onClose(); }}
-      // The by-id read carries no joined names; the row already has them.
-      reservation={{ ...booking.data, guest_name: row.guest_name ?? undefined, room_code: row.room_code ?? undefined }}
+      // (R10 #6) The by-id read now carries the unit name, coordinator and bill-to the drawer
+      // shows ("DEMO-G2 ·" had nothing after the dot); the row's names are only a fallback.
+      reservation={{
+        ...booking.data,
+        guest_name: booking.data.guest_name ?? row.guest_name ?? undefined,
+        room_code: booking.data.room_code ?? row.room_code ?? undefined,
+      }}
       rooms={rooms ?? []}
       canUpdate={hasPerm('reservations.update')}
       canCancel={hasPerm('reservations.delete')}

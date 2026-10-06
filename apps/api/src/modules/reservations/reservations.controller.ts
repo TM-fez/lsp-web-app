@@ -56,7 +56,7 @@ export class ReservationsController {
 
   getReservationById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const reservation = await this.service.getReservationById(req.params.id as string, req.activePropertyId);
+      const reservation = await this.service.getReservationDetail(req.params.id as string, req.activePropertyId);
       res.json(reservation);
     } catch (err) {
       next(err);

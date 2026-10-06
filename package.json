@@ -23,7 +23,8 @@
     "db:backfill-invoices": "npm run db:backfill-invoices --workspace=@lsp/api",
     "db:backfill-invoices:apply": "npm run db:backfill-invoices:apply --workspace=@lsp/api",
     "db:repair-orphaned-bookings": "npm run db:repair-orphaned-bookings --workspace=@lsp/api",
-    "db:repair-orphaned-bookings:apply": "npm run db:repair-orphaned-bookings:apply --workspace=@lsp/api"
+    "db:repair-orphaned-bookings:apply": "npm run db:repair-orphaned-bookings:apply --workspace=@lsp/api",
+    "db:report-unlowered-refunds": "npm run db:report-unlowered-refunds --workspace=@lsp/api"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

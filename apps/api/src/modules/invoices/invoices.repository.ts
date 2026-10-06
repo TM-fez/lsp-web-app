@@ -11,6 +11,7 @@ import {
   lockReservation,
   paidToDate,
   OPEN_INVOICE_STATUSES,
+  TERMINAL_RESERVATION_STATUSES,
 } from '../../core/money/folio.js';
 import type { PaginationOptions } from '../crm/crm.types.js';
 import { insertInvoice, reconcileReceivable } from './invoices.receivable.js';
@@ -476,7 +477,7 @@ export class InvoicesRepository {
     refundInvoice: UnnumberedInvoice,
     reason: string,
     meta: InvoiceRequestMeta,
-    opts: { duplicateGuard?: boolean } = {}
+    opts: { duplicateGuard?: boolean; confirmFullRefund?: boolean } = {}
   ): Promise<InvoiceRow> {
     return inTransaction(this.db, async (trx) => {
       if (refundInvoice.reservation_id) await lockReservation(trx, refundInvoice.reservation_id);
@@ -553,6 +554,20 @@ export class InvoicesRepository {
             throw AppError.conflict(
               `This booking was shortened after payment, so only ${formatThebe(credit, original.currency)} is owed back to the guest. ` +
                 `That is the most that can be refunded until the stay changes.`
+            );
+          }
+          // (R10 #1) A refund lowers the agreed total (2026-10-02) and a full refund leaves the
+          // booking as it is (2026-10-04 (d)) — so refunding everything on a live stay quietly
+          // makes it free: the guest keeps the unit and no further payment can be taken. That
+          // stays allowed, but only as an answer to the question, never by accident.
+          const lowered = agreed - Math.max(0, refundInvoice.total_amount - credit);
+          const live = !(TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(reservation.status);
+          if (live && agreed > 0 && lowered <= 0 && !opts.confirmFullRefund) {
+            throw new AppError(
+              409,
+              'Full Refund',
+              'This refunds everything and makes the stay free — the guest keeps the unit and nothing more can be charged. ' +
+                'Refund anyway? (To end the stay too, cancel the booking.)'
             );
           }
         }

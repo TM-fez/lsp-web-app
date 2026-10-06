@@ -190,7 +190,13 @@ export class ReservationsService {
       payment_state:
         total === 0 && source === 'FOLIO' && outstanding === 0
           ? invoices.some((i) => i.kind === 'REFUND' || i.status === 'REFUNDED') ? 'REFUNDED' : 'PAID'
-          : paid <= 0 ? 'UNPAID' : outstanding > 0 ? 'PART_PAID' : 'PAID',
+          : paid <= 0
+            ? // (R10 #6) Money came in and all of it went back. Bookings refunded before
+              // refunds lowered the agreed total (2026-10-02) still carry their old total, so
+              // the P0-total test above misses them and they read UNPAID — as if the guest had
+              // never paid. `npm run db:report-unlowered-refunds` lists any that still owe on paper.
+              invoices.some((i) => i.kind === 'REFUND') ? 'REFUNDED' : 'UNPAID'
+            : outstanding > 0 ? 'PART_PAID' : 'PAID',
       total_source: source,
       invoices,
     };
@@ -446,6 +452,14 @@ export class ReservationsService {
     const updated = await this.repository.update(id, { status: 'NO_SHOW', updated_by: meta.userId }, meta);
     if (!updated) throw AppError.notFound(`Reservation with id ${id} not found`);
     return updated;
+  }
+
+  /** The by-id read for the screen: scope-checked like every by-id read, with display names. */
+  async getReservationDetail(id: string, activePropertyId?: string): Promise<ReservationListRow> {
+    await this.getReservationById(id, activePropertyId);
+    const detail = await this.repository.findDetailById(id);
+    if (!detail) throw AppError.notFound(`Reservation with id ${id} not found`);
+    return detail;
   }
 
   async getReservationById(id: string, activePropertyId?: string): Promise<ReservationRow> {
