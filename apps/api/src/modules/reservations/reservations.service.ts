@@ -28,6 +28,8 @@ import type {
   CalendarQueryDTO,
   CalendarView,
   CalendarClosure,
+  MovePreviewQueryDTO,
+  MovePreview,
 } from './reservations.types.js';
 
 /**
@@ -734,6 +736,86 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
     return updated;
+  }
+
+  /**
+   * (Calendar drag, 2026-10-06) What dragging a booking to new dates or another unit would do —
+   * READ-ONLY, for the confirm box. It runs the same checks as an edit (the unit in this
+   * property, dates in order, the unit free of bookings, closures and holds) and prices the
+   * change the way the edit will: an unpaid PENDING booking at today's price for the new stay,
+   * any other live booking moved by the DIFFERENCE between the old and new stay at today's
+   * rates (Stage 3), so negotiated rates and refunds survive. The edit itself re-checks and
+   * re-prices under the booking's lock; this only says what to expect.
+   *
+   * What the board lets staff drag: pending, confirmed and in-house stays. A checked-in guest
+   * has arrived, so only the unit and the leaving day can change. Booking.com blocks belong
+   * to Booking.com; checked-out and cancelled stays are history.
+   */
+  async previewMove(id: string, q: MovePreviewQueryDTO, activePropertyId: string): Promise<MovePreview> {
+    const existing = await this.getReservationById(id, activePropertyId);
+    const day = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
+    const roomId = q.room_id ?? existing.room_id;
+    const checkIn = q.check_in_date ?? day(existing.check_in_date);
+    const checkOut = q.check_out_date ?? day(existing.check_out_date);
+    const base = {
+      room_id: roomId,
+      check_in_date: checkIn,
+      check_out_date: checkOut,
+      currency: existing.folio_currency ?? 'BWP',
+      opens_cleaning_task: existing.status === 'CHECKED_IN' && roomId !== existing.room_id,
+    };
+    const refuse = (reason: string): MovePreview => ({
+      ...base, allowed: false, reason, current_total: existing.folio_total_amount, new_total: null,
+      total_source: existing.folio_total_amount != null ? 'FOLIO' : 'PRICED',
+    });
+
+    if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(existing.status)) {
+      return refuse(
+        existing.status === 'BLOCKED'
+          ? 'This is a Booking.com booking — change it on Booking.com.'
+          : 'Only pending, confirmed and in-house stays can be moved.'
+      );
+    }
+    if (existing.status === 'CHECKED_IN' && checkIn !== day(existing.check_in_date)) {
+      return refuse('This guest has already arrived, so the arrival day can’t change — only the unit or the leaving day.');
+    }
+    if (checkIn >= checkOut) return refuse('The stay must be at least one night.');
+    if (checkIn !== day(existing.check_in_date) && checkIn < todayInPropertyTZ()) {
+      return refuse('A stay can’t be moved to start in the past.');
+    }
+    if (roomId !== existing.room_id && (await this.repository.roomPropertyId(roomId)) !== activePropertyId) {
+      return refuse('That unit is not in this property.');
+    }
+    const ci = new Date(`${checkIn}T00:00:00Z`);
+    const co = new Date(`${checkOut}T00:00:00Z`);
+    if (!(await this.checkAvailability(roomId, ci, co, id))) {
+      return refuse('That unit isn’t free for those nights — another booking, a closure or a repair is in the way.');
+    }
+    try {
+      await this.repository.assertNoCompetingHold(roomId, ci, co);
+    } catch (e) {
+      if (e instanceof AppError) return refuse(e.message);
+      throw e;
+    }
+
+    const after = { ...existing, room_id: roomId, check_in_date: ci, check_out_date: co };
+    const [was, now] = await Promise.all([this.priceStay(existing, existing), this.priceStay(after, after)]);
+    const priceable = !('priceable' in was && was.priceable === false) && !('priceable' in now && now.priceable === false);
+    const nowTotal = priceable ? (now as ReservationPricing).total_amount : null;
+
+    if (existing.folio_total_amount == null) {
+      // Nothing agreed: the folio shows today's price for whatever the stay is, so does this.
+      return { ...base, allowed: true, reason: null, current_total: priceable ? (was as ReservationPricing).total_amount : null, new_total: nowTotal, total_source: 'PRICED' };
+    }
+    const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
+    let newTotal: number | null;
+    if (!priceable) newTotal = existing.folio_total_amount; // the edit leaves an unpriceable stay's total alone
+    else if (existing.status === 'PENDING' && paid === 0) newTotal = nowTotal;
+    else newTotal = existing.folio_total_amount + ((now as ReservationPricing).total_amount - (was as ReservationPricing).total_amount);
+    if (newTotal != null && newTotal < 0) {
+      return refuse('This move would take the agreed price below zero because of earlier refunds. Ask the owner to review the refunds first.');
+    }
+    return { ...base, allowed: true, reason: null, current_total: existing.folio_total_amount, new_total: newTotal, total_source: 'FOLIO' };
   }
 
   /**

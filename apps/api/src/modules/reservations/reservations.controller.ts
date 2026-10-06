@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
-import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema, CalendarQuerySchema } from './reservations.types.js';
+import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema, CalendarQuerySchema, MovePreviewQuerySchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO, ClaimOtaBookingDTO, MarkPaidDTO, ConfirmReservationDTO } from './reservations.types.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { parsePageQuery } from '../../core/http/pagination.js';
@@ -49,6 +49,16 @@ export class ReservationsController {
         throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Choose a start date and a number of days.');
       }
       res.json(await this.service.getCalendar(parsed.data, req.activePropertyId as string));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  previewMove = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = MovePreviewQuerySchema.safeParse(req.query);
+      if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Choose the new unit or dates.');
+      res.json(await this.service.previewMove(req.params.id as string, parsed.data, req.activePropertyId as string));
     } catch (err) {
       next(err);
     }

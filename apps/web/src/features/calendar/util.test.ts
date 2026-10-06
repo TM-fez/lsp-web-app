@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween } from './util';
+import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween, moveTarget } from './util';
 
 describe('calendar util', () => {
   it('steps days across month and year ends without touching the browser’s zone', () => {
@@ -50,5 +50,30 @@ describe('calendar util', () => {
     expect(bookingTone('CHECKED_OUT')).toBe('out');
     expect(bookingTone('PENDING')).toBe('pending');
     expect(bookingTone('BLOCKED')).toBe('confirmed');
+  });
+
+  describe('where a drag lands (calendar drag)', () => {
+    const stay = { room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-27', status: 'CONFIRMED' as const };
+
+    it('moves the whole stay, and to another unit', () => {
+      expect(moveTarget(stay, 'move', 1, 'b2')).toEqual({ room_id: 'b2', check_in_date: '2026-10-26', check_out_date: '2026-10-28' });
+      expect(moveTarget(stay, 'move', -2, 'd6')).toEqual({ room_id: 'd6', check_in_date: '2026-10-23', check_out_date: '2026-10-25' });
+    });
+
+    it('stretches or shortens by the leaving day, never below one night', () => {
+      expect(moveTarget(stay, 'resize', 3, 'ignored')).toEqual({ room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-30' });
+      expect(moveTarget(stay, 'resize', -5, 'b2')).toEqual({ room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-26' });
+    });
+
+    it('never moves an in-house guest’s arrival day — only the unit', () => {
+      const inHouse = { ...stay, status: 'CHECKED_IN' as const };
+      expect(moveTarget(inHouse, 'move', 2, 'b2')).toBeNull();
+      expect(moveTarget(inHouse, 'move', 2, 'd6')).toEqual({ room_id: 'd6', check_in_date: '2026-10-25', check_out_date: '2026-10-27' });
+      expect(moveTarget(inHouse, 'resize', 1, 'b2')).toEqual({ room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-28' });
+    });
+
+    it('is nothing when the bar ends where it started', () => {
+      expect(moveTarget(stay, 'move', 0, 'b2')).toBeNull();
+    });
   });
 });
