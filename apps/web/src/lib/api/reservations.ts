@@ -1,6 +1,6 @@
 import { api } from './client';
 import { idempotencyConfig, wasReplayed } from './idempotency';
-import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio } from '@/types';
+import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio, CalendarView } from '@/types';
 
 export interface ReservationListParams {
   search?: string;
@@ -182,4 +182,10 @@ export async function checkAvailability(params: {
 }): Promise<boolean> {
   const { data } = await api.get<{ available: boolean }>('/reservations/availability', { params });
   return data.available;
+}
+
+/** (Calendar) The front-desk board for the active property: `days` nights from `from`. */
+export async function getCalendar(from: string, days: number): Promise<CalendarView> {
+  const { data } = await api.get<CalendarView>('/reservations/calendar', { params: { from, days } });
+  return data;
 }

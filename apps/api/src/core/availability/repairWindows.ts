@@ -11,7 +11,7 @@ import { sql, type RawBuilder } from 'kysely';
  * availability queries and `ReservationsRepository.checkAvailability` — must use these,
  * so search and booking can never disagree (the D01 lesson).
  */
-const LIVE_SERIOUS_WINDOW = sql`w.deleted_at IS NULL
+export const LIVE_SERIOUS_WINDOW = sql`w.deleted_at IS NULL
   AND w.status NOT IN ('COMPLETED', 'CANCELLED')
   AND w.priority IN ('HIGH', 'CRITICAL')
   AND w.blocks_from IS NOT NULL`;

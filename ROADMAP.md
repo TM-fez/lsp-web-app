@@ -83,6 +83,11 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   until keyed (no API call). `/marketing` in the Operations workspace.
 - 🔒 OTA guest details — Fahad decides: manual Extranet copy (no build) vs full Reservations API (separate approval)
 - ✅ Booking.com via iCal — already solved
+- ✅ Front-desk calendar (2026-10-06) — `/calendar`, laid out like Little Hotelier's (from the
+  owner's screenshot): units by type down the side, 7/14/28 nights across, one bar per stay
+  ("Company, Guest"), LH's colours, incomplete-payment corner, closures and holds in red/amber,
+  search, tap a bar to open the booking, tap an empty square to start one.
+  ⏳ Next: drag a bar to move or stretch a stay (moves dates and price — its own PR).
 
 ### A5. Dashboards
 - 🟡 `reports` + `dashboard` modules — exist to build on

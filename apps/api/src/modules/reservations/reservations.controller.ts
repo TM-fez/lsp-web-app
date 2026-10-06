@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ReservationsService } from './reservations.service.js';
-import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema } from './reservations.types.js';
+import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema, CalendarQuerySchema } from './reservations.types.js';
 import type { CreateReservationDTO, UpdateReservationDTO, ClaimOtaBookingDTO, MarkPaidDTO, ConfirmReservationDTO } from './reservations.types.js';
+import { AppError } from '../../core/errors/AppError.js';
 import { parsePageQuery } from '../../core/http/pagination.js';
 
 export class ReservationsController {
@@ -36,6 +37,18 @@ export class ReservationsController {
         { page, limit }
       );
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getCalendar = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = CalendarQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Choose a start date and a number of days.');
+      }
+      res.json(await this.service.getCalendar(parsed.data, req.activePropertyId as string));
     } catch (err) {
       next(err);
     }

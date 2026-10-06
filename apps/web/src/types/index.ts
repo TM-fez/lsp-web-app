@@ -862,3 +862,43 @@ export interface RoleInfo {
   name: RoleName;
   permissions: string[];
 }
+
+// (Calendar, 2026-10-06) GET /reservations/calendar — the front-desk board.
+export interface CalendarUnit {
+  id: string;
+  code: string;
+  name: string;
+  type: UnitType;
+  status: RoomStatus;
+  building_name: string | null;
+}
+
+export interface CalendarBooking {
+  id: string;
+  room_id: string;
+  check_in_date: string; // YYYY-MM-DD
+  check_out_date: string; // YYYY-MM-DD, the morning they leave
+  status: ReservationStatus;
+  source: ReservationSource;
+  guest_name: string | null;
+  company_name: string | null;
+  payment_incomplete: boolean;
+}
+
+export interface CalendarClosure {
+  room_id: string;
+  kind: 'REPAIR' | 'MAINTENANCE' | 'OUT_OF_SERVICE' | 'HOLD';
+  from: string | null; // null = before anything on screen
+  to: string | null; // null = after anything on screen
+  label: string;
+  ref_id: string | null;
+}
+
+export interface CalendarView {
+  from: string;
+  to: string;
+  today: string;
+  units: CalendarUnit[];
+  bookings: CalendarBooking[];
+  closures: CalendarClosure[];
+}

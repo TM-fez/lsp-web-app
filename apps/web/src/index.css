@@ -46,6 +46,17 @@
   --color-sky-100: #DDE3E0;
   --color-sky-700: #3D5346;
   --color-white: #FBF9F4;
+
+  /* (Calendar) The front-desk board's status colours, kept close to Little Hotelier's so
+     staff moving across read it at a glance — warmed to sit on the cream palette. */
+  --color-cal-confirmed: #DE7247;
+  --color-cal-pending: #EBA580;
+  --color-cal-in: #7C9E4E;
+  --color-cal-out: #A39C90;
+  --color-cal-closed: #C6404A;
+  --color-cal-hold: #C9982C;
+  --color-cal-weekend: #E5EBE7;
+  --color-cal-unpaid: #5E1A1E;
 }
 
 :root { color-scheme: light; }

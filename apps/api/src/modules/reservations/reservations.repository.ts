@@ -8,7 +8,7 @@ import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../.
 import { inTransaction } from '../../core/db/transaction.js';
 import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
-import { repairWindowOverlaps } from '../../core/availability/repairWindows.js';
+import { repairWindowOverlaps, LIVE_SERIOUS_WINDOW } from '../../core/availability/repairWindows.js';
 import { assertNoCompetingHold } from '../holds/holds.conflicts.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
@@ -667,5 +667,86 @@ export class ReservationsRepository {
       meta,
       'refreeze'
     );
+  }
+
+  /**
+   * (Calendar, 2026-10-06) Everything the front-desk board needs for one property and one
+   * window of nights `[from, to)`, read in three plain queries. Read-only — nothing here
+   * decides availability; it draws what the availability rules already produced (a booking
+   * on a unit, a repair window, a unit closed, a bare hold), so the board and a booking
+   * attempt can never disagree.
+   */
+  async calendarUnits(propertyId: string) {
+    return this.db
+      .selectFrom('rooms')
+      .innerJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .select(['rooms.id', 'rooms.code', 'rooms.name', 'rooms.type', 'rooms.status', 'buildings.name as building_name'])
+      .where('buildings.property_id', '=', propertyId)
+      .where('rooms.deleted_at', 'is', null)
+      .execute();
+  }
+
+  /**
+   * Bookings with at least one night in the window. Cancelled and no-show stays hold no
+   * nights (invariant 7), so they are not drawn. Dates leave as 'YYYY-MM-DD' text so the
+   * board never meets a timestamp it could shift across midnight.
+   */
+  async calendarBookings(propertyId: string, from: string, to: string) {
+    return this.db
+      .selectFrom('reservations')
+      .innerJoin('rooms', 'rooms.id', 'reservations.room_id')
+      .innerJoin('buildings', 'buildings.id', 'rooms.building_id')
+      .leftJoin('contacts', 'contacts.id', 'reservations.contact_id')
+      .leftJoin('contacts as biller', 'biller.id', 'reservations.billing_contact_id')
+      .select([
+        'reservations.id',
+        'reservations.room_id',
+        'reservations.status',
+        'reservations.source',
+        'reservations.folio_total_amount',
+        'contacts.name as guest_name',
+      ])
+      .select(sql<string>`to_char(reservations.check_in_date, 'YYYY-MM-DD')`.as('check_in_date'))
+      .select(sql<string>`to_char(reservations.check_out_date, 'YYYY-MM-DD')`.as('check_out_date'))
+      // LH shows "Company, Guest". A billing contact who is not the guest is the company paying;
+      // otherwise fall back to the company written on the guest's own record.
+      .select(
+        sql<string | null>`CASE WHEN biller.id IS NOT NULL AND biller.id <> reservations.contact_id
+                                THEN biller.name ELSE NULLIF(btrim(contacts.company), '') END`.as('company_name')
+      )
+      .where('buildings.property_id', '=', propertyId)
+      .where('reservations.deleted_at', 'is', null)
+      .where('reservations.status', 'not in', ['CANCELLED', 'NO_SHOW'])
+      .where('reservations.check_in_date', '<', sql<Date>`${to}::date`)
+      .where('reservations.check_out_date', '>', sql<Date>`${from}::date`)
+      .orderBy('reservations.check_in_date')
+      .orderBy('reservations.id')
+      .execute();
+  }
+
+  /** Repair windows and bare holds with a night in the window (whole-unit closures come from the unit's status). */
+  async calendarClosures(propertyId: string, from: string, to: string) {
+    const repairs = await sql<{ room_id: string; id: string; title: string; from: string; to: string }>`
+      SELECT w.room_id, w.id, w.title,
+             to_char(w.blocks_from, 'YYYY-MM-DD') AS "from", to_char(w.blocks_to, 'YYYY-MM-DD') AS "to"
+        FROM maintenance_work_orders w
+        JOIN rooms r ON r.id = w.room_id
+        JOIN buildings b ON b.id = r.building_id
+       WHERE b.property_id = ${propertyId}::uuid AND ${LIVE_SERIOUS_WINDOW}
+         AND w.blocks_from < ${to}::date AND w.blocks_to > ${from}::date
+       ORDER BY w.blocks_from, w.id`.execute(this.db);
+    // The same "live bare hold" as assertNoCompetingHold: no booking behind it, not lapsed.
+    const holds = await sql<{ room_id: string; from: string; to: string }>`
+      SELECT h.room_id,
+             to_char(q.check_in_date, 'YYYY-MM-DD') AS "from", to_char(q.check_out_date, 'YYYY-MM-DD') AS "to"
+        FROM holds h
+        JOIN quotes q ON q.id = h.quote_id
+        JOIN rooms r ON r.id = h.room_id
+        JOIN buildings b ON b.id = r.building_id
+       WHERE b.property_id = ${propertyId}::uuid
+         AND h.status = 'HELD' AND h.deleted_at IS NULL AND h.reservation_id IS NULL AND h.held_until > now()
+         AND q.check_in_date < ${to}::date AND q.check_out_date > ${from}::date
+       ORDER BY q.check_in_date, h.id`.execute(this.db);
+    return { repairs: repairs.rows, holds: holds.rows };
   }
 }

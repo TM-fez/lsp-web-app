@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { PropertyGate } from '@/features/auth/PropertyGate';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ReservationsPage } from '@/features/reservations/ReservationsPage';
+import { CalendarPage } from '@/features/calendar/CalendarPage';
 import { LeadsPage } from '@/features/leads/LeadsPage';
 import { GuestsPage } from '@/features/guests/GuestsPage';
 import { HousekeepingDashboardPage } from '@/features/housekeeping/HousekeepingDashboardPage';
@@ -68,6 +69,7 @@ export const router = createBrowserRouter([
             children: [
           { path: '/', element: <HomeRoute /> },
           { path: '/reservations', element: <ReservationsPage /> },
+          { path: '/calendar', element: <CalendarPage /> },
           { path: '/leads', element: <LeadsPage /> },
           { path: '/guests', element: <GuestsPage /> },
           { path: '/housekeeping', element: <HousekeepingDashboardPage /> },

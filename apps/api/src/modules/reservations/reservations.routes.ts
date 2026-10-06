@@ -36,6 +36,8 @@ export function createReservationsRouter(dbInstance = db): Router {
   router.use(requireActiveProperty);
 
   router.get('/availability', authorize('reservations.read'), controller.checkAvailability);
+  // (Calendar) The front-desk board; before '/:id' so 'calendar' is never read as an id.
+  router.get('/calendar', authorize('reservations.read'), controller.getCalendar);
   router.get('/', authorize('reservations.read'), controller.getReservations);
   router.get('/:id', authorize('reservations.read'), controller.getReservationById);
   // Amount-due breakdown: prices the stay + applies the (approved) discount.
