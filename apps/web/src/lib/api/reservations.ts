@@ -1,6 +1,6 @@
 import { api } from './client';
 import { idempotencyConfig, wasReplayed } from './idempotency';
-import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio, CalendarView } from '@/types';
+import type { Paginated, Reservation, ReservationStatus, ReservationSource, PaymentMethod, ReservationFolio, CalendarView, MovePreview } from '@/types';
 
 export interface ReservationListParams {
   search?: string;
@@ -187,5 +187,14 @@ export async function checkAvailability(params: {
 /** (Calendar) The front-desk board for the active property: `days` nights from `from`. */
 export async function getCalendar(from: string, days: number): Promise<CalendarView> {
   const { data } = await api.get<CalendarView>('/reservations/calendar', { params: { from, days } });
+  return data;
+}
+
+/** (Calendar drag) What moving a booking would do — checks and price — before anything is saved. */
+export async function getMovePreview(
+  id: string,
+  change: { room_id?: string; check_in_date?: string; check_out_date?: string }
+): Promise<MovePreview> {
+  const { data } = await api.get<MovePreview>(`/reservations/${id}/move-preview`, { params: change });
   return data;
 }

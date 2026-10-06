@@ -87,7 +87,8 @@ Status legend: 🆕 not started · 🟡 partial (foundation exists) · 🔒 bloc
   owner's screenshot): units by type down the side, 7/14/28 nights across, one bar per stay
   ("Company, Guest"), LH's colours, incomplete-payment corner, closures and holds in red/amber,
   search, tap a bar to open the booking, tap an empty square to start one.
-  ⏳ Next: drag a bar to move or stretch a stay (moves dates and price — its own PR).
+  ✅ Drag to move (sideways / to another unit) or stretch (right edge) a stay — confirm box shows the
+  price change first; same checks and price rule as editing the booking.
 
 ### A5. Dashboards
 - 🟡 `reports` + `dashboard` modules — exist to build on

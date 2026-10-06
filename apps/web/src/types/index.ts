@@ -902,3 +902,17 @@ export interface CalendarView {
   bookings: CalendarBooking[];
   closures: CalendarClosure[];
 }
+
+// (Calendar drag) GET /reservations/:id/move-preview.
+export interface MovePreview {
+  allowed: boolean;
+  reason: string | null;
+  room_id: string;
+  check_in_date: string;
+  check_out_date: string;
+  currency: string;
+  current_total: number | null;
+  new_total: number | null;
+  total_source: 'FOLIO' | 'PRICED';
+  opens_cleaning_task: boolean;
+}

@@ -54,4 +54,18 @@ describe('GET /reservations/calendar', () => {
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toMatch(/real date/);
   });
+
+  // (Calendar drag) The move preview is reached as its own route, not swallowed by '/:id'.
+  it('answers a move preview for a booking that is not there with a 404, and bad dates with a 400', async () => {
+    const missing = await request(app)
+      .get('/api/v1/reservations/00000000-0000-4000-8000-000000000000/move-preview?check_out_date=2037-05-03')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Property-Id', propertyId);
+    expect(missing.status).toBe(404);
+    const bad = await request(app)
+      .get('/api/v1/reservations/00000000-0000-4000-8000-000000000000/move-preview?check_out_date=3%20May')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Property-Id', propertyId);
+    expect(bad.status).toBe(400);
+  });
 });

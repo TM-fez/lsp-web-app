@@ -256,3 +256,32 @@ export interface CalendarView {
   bookings: CalendarBooking[];
   closures: CalendarClosure[];
 }
+
+/**
+ * (Calendar drag, 2026-10-06) GET /reservations/:id/move-preview — "what would this move do?"
+ * before anything is saved. Dates are 'YYYY-MM-DD'; anything left out stays as it is.
+ */
+const DayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-06.');
+export const MovePreviewQuerySchema = z.object({
+  room_id: z.string().uuid().optional(),
+  check_in_date: DayString.optional(),
+  check_out_date: DayString.optional(),
+});
+export type MovePreviewQueryDTO = z.infer<typeof MovePreviewQuerySchema>;
+
+export interface MovePreview {
+  /** False with a plain-English `reason` when the move would be refused. */
+  allowed: boolean;
+  reason: string | null;
+  room_id: string;
+  check_in_date: string;
+  check_out_date: string;
+  currency: string;
+  /** What the booking is agreed at now, and would be after the move (same rule as the edit). */
+  current_total: number | null;
+  new_total: number | null;
+  /** 'FOLIO' = an agreed total moves; 'PRICED' = nothing agreed yet, today's rate shown. */
+  total_source: 'FOLIO' | 'PRICED';
+  /** An in-house guest changing unit: the vacated unit gets a cleaning job. */
+  opens_cleaning_task: boolean;
+}

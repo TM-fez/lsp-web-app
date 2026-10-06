@@ -46,6 +46,9 @@ export function createReservationsRouter(dbInstance = db): Router {
   // Gated on reservations.read, not a payments permission — this REPORTS money, it
   // never moves any, and anyone who can see a booking can see what it owes.
   router.get('/:id/folio', authorize('reservations.read'), controller.getFolio);
+  // (Calendar drag) What a move would do — checks and price — before anything is saved. Read-only,
+  // but gated like the edit it previews.
+  router.get('/:id/move-preview', authorize('reservations.update'), controller.previewMove);
 
   router.post('/', authorize('reservations.create'), validateBody(CreateReservationSchema), rejectOverlappingHold(dbInstance), controller.createReservation);
 

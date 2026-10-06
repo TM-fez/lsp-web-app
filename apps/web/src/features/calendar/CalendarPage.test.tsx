@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CalendarView } from '@/types';
@@ -7,16 +7,23 @@ const cal = vi.hoisted(() => ({
   value: { data: undefined as unknown, isLoading: false, isError: false, isFetching: false, refetch: () => {} },
   calls: [] as [string, number][],
 }));
+const preview = vi.hoisted(() => ({ value: { data: undefined as unknown, isLoading: false, isError: false }, calls: [] as unknown[] }));
 vi.mock('./hooks', () => ({
   useCalendar: (from: string, days: number) => {
     cal.calls.push([from, days]);
     return cal.value;
   },
+  useMovePreview: (id: string, change: unknown) => {
+    preview.calls.push([id, change]);
+    return preview.value;
+  },
 }));
+const updateMutate = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/utils/date', () => ({ todayISO: () => '2026-10-05' }));
 vi.mock('@/features/reservations/hooks', () => ({
   useReservation: (id: string) => ({ data: { id, status: 'CONFIRMED', room_id: 'b1' } }),
   useReservations: () => ({ data: { data: [] }, isLoading: false }),
+  useUpdateReservation: () => ({ mutateAsync: updateMutate, isPending: false }),
 }));
 vi.mock('@/features/rooms/hooks', () => ({ useRooms: () => ({ data: [] }) }));
 const perms = vi.hoisted(() => ({ set: new Set<string>() }));
@@ -33,6 +40,18 @@ vi.mock('@/features/reservations/ReservationFormDrawer', () => ({
 }));
 
 import { CalendarPage } from './CalendarPage';
+
+// jsdom has no PointerEvent, so fireEvent.pointer* would drop clientX / button / pointerType.
+if (!('PointerEvent' in window)) {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerType = init.pointerType ?? 'mouse';
+    }
+  }
+  (window as unknown as { PointerEvent: unknown }).PointerEvent = PointerEventPolyfill;
+}
 
 const view = (over: Partial<CalendarView> = {}): CalendarView => ({
   from: '2026-10-05', to: '2026-11-02', today: '2026-10-05',
@@ -145,5 +164,105 @@ describe('CalendarPage', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  // (Calendar drag) Drag a bar to move a stay; nothing is saved until "Move booking".
+  describe('dragging a booking', () => {
+    const DAY = 40; // px per night: the track is 28 × 40 wide
+    function track(rowCode: string) {
+      const row = screen.getByTestId(`unit-row-${rowCode}`);
+      const t = row.querySelector('[data-track]') as HTMLElement;
+      t.getBoundingClientRect = () => ({ width: 28 * DAY, height: 44, top: 0, left: 0, right: 28 * DAY, bottom: 44, x: 0, y: 0, toJSON: () => ({}) });
+      return row;
+    }
+    beforeEach(() => {
+      updateMutate.mockReset().mockResolvedValue({});
+      preview.calls = [];
+      preview.value = {
+        data: { allowed: true, reason: null, current_total: 222_300, new_total: 296_400, total_source: 'FOLIO', opens_cleaning_task: false },
+        isLoading: false, isError: false,
+      };
+    });
+
+    it('moves a stay two nights later and to another unit, asking first and showing the price change', async () => {
+      renderPage();
+      track('B2');
+      const b1 = track('B1');
+      document.elementFromPoint = vi.fn(() => b1);
+      fireEvent.pointerDown(screen.getByText('Garth Miller').closest('button')!, { clientX: 500, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 500 + 2 * DAY + 5, clientY: 10 });
+      expect(screen.getByTestId('drag-ghost')).toBeInTheDocument();
+      fireEvent.pointerUp(window);
+
+      expect(preview.calls.at(-1)).toEqual(['r2', { room_id: 'b1', check_in_date: '2026-10-27', check_out_date: '2026-10-29' }]);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('From B2 ·');
+      expect(dialog).toHaveTextContent('To B1 ·');
+      expect(screen.getByTestId('move-price')).toHaveTextContent('The agreed price changes from BWP 2,223.00 to BWP 2,964.00 (+BWP 741.00).');
+      expect(updateMutate).not.toHaveBeenCalled();
+      // The drop did not also open the booking.
+      expect(screen.queryByText(/Booking r2 for/)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Move booking' }));
+      await waitFor(() => expect(updateMutate).toHaveBeenCalledWith({
+        id: 'r2', input: { room_id: 'b1', check_in_date: '2026-10-27', check_out_date: '2026-10-29' },
+      }));
+    });
+
+    it('stretches a stay by its right edge without changing unit or arrival', () => {
+      renderPage();
+      const b2 = track('B2');
+      document.elementFromPoint = vi.fn(() => b2);
+      const handle = screen.getByText('Garth Miller').closest('button')!.querySelector('[data-resize]')!;
+      fireEvent.pointerDown(handle, { clientX: 800, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 800 + 3 * DAY, clientY: 10 });
+      fireEvent.pointerUp(window);
+      expect(preview.calls.at(-1)).toEqual(['r2', { room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-30' }]);
+    });
+
+    it('says why a move is refused and offers nothing to confirm', async () => {
+      preview.value = { data: { allowed: false, reason: 'That unit isn’t free for those nights — another booking, a closure or a repair is in the way.', current_total: 222_300, new_total: null, total_source: 'FOLIO', opens_cleaning_task: false }, isLoading: false, isError: false };
+      renderPage();
+      const b2 = track('B2');
+      document.elementFromPoint = vi.fn(() => b2);
+      fireEvent.pointerDown(screen.getByText('Garth Miller').closest('button')!, { clientX: 500, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 500 - DAY, clientY: 10 });
+      fireEvent.pointerUp(window);
+      expect(await screen.findByRole('alert')).toHaveTextContent('isn’t free');
+      expect(screen.queryByRole('button', { name: 'Move booking' })).not.toBeInTheDocument();
+    });
+
+    it('treats a press without movement as a tap that opens the booking', () => {
+      renderPage();
+      track('B2');
+      const bar = screen.getByText('Garth Miller').closest('button')!;
+      fireEvent.pointerDown(bar, { clientX: 500, clientY: 10, button: 0 });
+      fireEvent.pointerUp(window);
+      fireEvent.click(bar);
+      expect(preview.calls).toHaveLength(0);
+      expect(screen.getByRole('dialog')).toHaveTextContent('Booking r2 for Garth Miller');
+    });
+
+    it('does not drag for someone who can only look, nor on a touch screen', () => {
+      perms.set = new Set(['reservations.read']);
+      renderPage();
+      const b1 = track('B1');
+      track('B2');
+      document.elementFromPoint = vi.fn(() => b1);
+      fireEvent.pointerDown(screen.getByText('Garth Miller').closest('button')!, { clientX: 500, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 600, clientY: 10 });
+      fireEvent.pointerUp(window);
+      expect(preview.calls).toHaveLength(0);
+    });
+
+    it('keeps the checked-in stay’s arrival when dragged sideways on its own row (nothing to confirm)', () => {
+      renderPage();
+      const b1 = track('B1');
+      document.elementFromPoint = vi.fn(() => b1);
+      fireEvent.pointerDown(screen.getByText('Financial Services Botswana, Alexander Forbes').closest('button')!, { clientX: 300, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 300 + 2 * DAY, clientY: 10 });
+      fireEvent.pointerUp(window);
+      expect(preview.calls).toHaveLength(0);
+    });
   });
 });

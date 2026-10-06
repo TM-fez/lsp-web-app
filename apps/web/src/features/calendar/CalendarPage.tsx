@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
@@ -20,12 +20,14 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuthStore } from '@/store/auth';
 import { useRooms } from '@/features/rooms/hooks';
-import { useReservation, useReservations } from '@/features/reservations/hooks';
+import { useReservation, useReservations, useUpdateReservation } from '@/features/reservations/hooks';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatMoney } from '@/lib/utils/money';
 import { ReservationFormDrawer } from '@/features/reservations/ReservationFormDrawer';
 import { fmtDate } from '@/features/reservations/util';
 import { todayISO } from '@/lib/utils/date';
 import { cn } from '@/lib/utils/cn';
-import { useCalendar } from './hooks';
+import { useCalendar, useMovePreview } from './hooks';
 import {
   addDays,
   barPlacement,
@@ -37,13 +39,34 @@ import {
   TONE_CLASS,
   unitTypeLabel,
   VIEW_DAYS,
+  DRAGGABLE,
+  moveTarget,
   type DayColumn,
+  type DragMode,
+  type MoveTarget,
 } from './util';
 import type { CalendarBooking, CalendarClosure, CalendarUnit, UnitType } from '@/types';
 
 /** Width of the unit-name column, and the narrowest a night may get before the board scrolls. */
 const UNIT_COL = '5.5rem';
 const MIN_DAY = '2.75rem';
+
+/** (Calendar drag) A bar being dragged: where it started, and where it would land now. */
+interface Drag {
+  booking: CalendarBooking;
+  mode: DragMode;
+  startX: number;
+  dayWidth: number;
+  /** Whole days moved so far, and the unit row under the pointer. */
+  shift: number;
+  roomId: string;
+  moved: boolean;
+}
+
+interface PendingMove {
+  booking: CalendarBooking;
+  target: MoveTarget;
+}
 
 interface Opened {
   id: string;
@@ -73,6 +96,67 @@ export function CalendarPage() {
   const [opened, setOpened] = useState<Opened | null>(null);
   // A new booking: null = drawer shut; {} = from "+ Reservation"; filled = from an empty square.
   const [creating, setCreating] = useState<{ room_id?: string; check_in_date?: string; check_out_date?: string } | null>(null);
+
+  // (Calendar drag, 2026-10-06) Drag a bar sideways to move the stay, up or down to change unit,
+  // or by its right edge to change the leaving day. Nothing is saved on drop: the confirm box
+  // asks the server what the move would do (same checks and same price rule as an edit) and
+  // only "Move booking" sends the edit. Mouse and pen only — on a phone the board stays
+  // tap-to-open, and dates are changed in the booking window.
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  // A drag ends with a click on the bar it started on; that click must not also open it.
+  const swallowClick = useRef(false);
+  // The listeners below live for the whole drag; they read the latest drag through this.
+  const dragRef = useRef<Drag | null>(null);
+  dragRef.current = drag;
+  const dragging = drag !== null;
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      setDrag((d) => {
+        if (!d) return d;
+        const shift = Math.round((e.clientX - d.startX) / d.dayWidth);
+        const row = d.mode === 'move' ? document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-unit-id]') : null;
+        const roomId = row?.dataset.unitId ?? d.roomId;
+        const moved = d.moved || Math.abs(e.clientX - d.startX) > 4 || roomId !== d.booking.room_id;
+        return shift === d.shift && roomId === d.roomId && moved === d.moved ? d : { ...d, shift, roomId, moved };
+      });
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      if (d?.moved) {
+        // Only the click that ends THIS drag — if the pointer was let go over another row no
+        // click reaches the bar, and the flag must not eat the next real one.
+        swallowClick.current = true;
+        setTimeout(() => {
+          swallowClick.current = false;
+        }, 0);
+        const target = moveTarget(d.booking, d.mode, d.shift, d.roomId);
+        if (target) setPendingMove({ booking: d.booking, target });
+      }
+      setDrag(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrag(null);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [dragging]);
+
+  const startDrag = (e: ReactPointerEvent<HTMLElement>, booking: CalendarBooking, mode: DragMode) => {
+    if (!canUpdate || !DRAGGABLE.has(booking.status) || e.pointerType === 'touch' || e.button !== 0) return;
+    const track = e.currentTarget.closest<HTMLElement>('[data-track]');
+    const width = track?.getBoundingClientRect().width ?? 0;
+    if (width <= 0) return;
+    e.preventDefault();
+    setDrag({ booking, mode, startX: e.clientX, dayWidth: width / days, shift: 0, roomId: booking.room_id, moved: false });
+  };
+  const ghost = drag?.moved ? moveTarget(drag.booking, drag.mode, drag.shift, drag.roomId) : null;
 
   const { data, isLoading, isError, isFetching, refetch } = useCalendar(from, days);
   const { data: rooms } = useRooms();
@@ -219,7 +303,17 @@ export function CalendarPage() {
                         today={data.today}
                         bookings={byRoom.bookings.get(u.id) ?? []}
                         closures={byRoom.closures.get(u.id) ?? []}
-                        onOpen={(b) => setOpened({ id: b.id, guest_name: b.guest_name, room_code: u.code })}
+                        onOpen={(b) => {
+                          if (swallowClick.current) {
+                            swallowClick.current = false;
+                            return;
+                          }
+                          setOpened({ id: b.id, guest_name: b.guest_name, room_code: u.code });
+                        }}
+                        canDrag={canUpdate}
+                        onDragStart={startDrag}
+                        draggingId={drag?.moved ? drag.booking.id : null}
+                        ghost={ghost && ghost.room_id === u.id && drag ? { booking: drag.booking, target: ghost } : null}
                         onCreate={
                           canCreate
                             ? (iso) => setCreating({ room_id: u.id, check_in_date: iso, check_out_date: addDays(iso, 1) })
@@ -243,6 +337,13 @@ export function CalendarPage() {
           onClose={() => setOpened(null)}
           canUpdate={canUpdate}
           canCancel={canCancel}
+        />
+      )}
+      {pendingMove && data && (
+        <MoveConfirm
+          move={pendingMove}
+          units={data.units}
+          onClose={() => setPendingMove(null)}
         />
       )}
       {creating && (
@@ -310,13 +411,21 @@ interface UnitRowProps {
   onOpen: (b: CalendarBooking) => void;
   onCreate?: (iso: string) => void;
   onRepair?: () => void;
+  canDrag?: boolean;
+  onDragStart?: (e: ReactPointerEvent<HTMLElement>, b: CalendarBooking, mode: DragMode) => void;
+  /** The bar being dragged (drawn faded where it was). */
+  draggingId?: string | null;
+  /** Where the dragged bar would land, when that is on this row. */
+  ghost?: PendingMove | null;
 }
 
-function UnitRow({ unit, columns, today, bookings, closures, onOpen, onCreate, onRepair }: UnitRowProps) {
+function UnitRow({
+  unit, columns, today, bookings, closures, onOpen, onCreate, onRepair, canDrag, onDragStart, draggingId, ghost,
+}: UnitRowProps) {
   const from = columns[0].iso;
   const days = columns.length;
   return (
-    <div className="flex h-11 border-b border-line" data-testid={`unit-row-${unit.code}`}>
+    <div className="flex h-11 border-b border-line" data-testid={`unit-row-${unit.code}`} data-unit-id={unit.id}>
       <div
         className="sticky left-0 z-20 flex shrink-0 items-center border-r border-line bg-paper px-3 text-sm font-medium text-ink"
         style={{ width: UNIT_COL }}
@@ -324,7 +433,7 @@ function UnitRow({ unit, columns, today, bookings, closures, onOpen, onCreate, o
       >
         <span className="truncate whitespace-nowrap">{unit.code}</span>
       </div>
-      <div className="relative flex-1">
+      <div className="relative flex-1" data-track>
         <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))` }}>
           {columns.map((c) => {
             const cls = cn('border-r border-line', c.weekend && 'bg-cal-weekend', c.iso === today && 'bg-terra-soft/30');
@@ -364,16 +473,25 @@ function UnitRow({ unit, columns, today, bookings, closures, onOpen, onCreate, o
           if (!p) return null;
           const tone = bookingTone(b.status);
           const label = bookingLabel(b);
+          const draggable = !!canDrag && DRAGGABLE.has(b.status);
           return (
             <button
               key={b.id}
               type="button"
               onClick={() => onOpen(b)}
+              onPointerDown={draggable ? (e) => onDragStart?.(e, b, 'move') : undefined}
+              data-draggable={draggable || undefined}
               title={`${label} — ${STATUS_WORDS[tone]}, ${fmtDate(b.check_in_date)} to ${fmtDate(b.check_out_date)}${
                 b.payment_incomplete ? ' · payment incomplete' : ''
               }`}
               style={barStyle(p)}
-              className={cn(barShape(p), TONE_CLASS[tone], 'text-left hover:brightness-95')}
+              className={cn(
+                barShape(p),
+                TONE_CLASS[tone],
+                'text-left hover:brightness-95',
+                draggable && 'cursor-grab active:cursor-grabbing',
+                draggingId === b.id && 'opacity-40'
+              )}
             >
               <span className="flex h-full w-5 shrink-0 items-center justify-center bg-black/15">
                 <Search className="h-3 w-3" />
@@ -385,9 +503,32 @@ function UnitRow({ unit, columns, today, bookings, closures, onOpen, onCreate, o
                   className="absolute right-0 top-0 h-0 w-0 border-l-[9px] border-t-[9px] border-l-transparent border-t-cal-unpaid"
                 />
               )}
+              {/* Grab the right edge to change the leaving day (LH does the same). */}
+              {draggable && !p.openEnd && (
+                <span
+                  aria-hidden
+                  data-resize
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    onDragStart?.(e, b, 'resize');
+                  }}
+                  className="absolute bottom-0 right-0 top-0 w-2 cursor-ew-resize"
+                />
+              )}
             </button>
           );
         })}
+        {ghost && (() => {
+          const p = barPlacement(ghost.target.check_in_date, ghost.target.check_out_date, from, days);
+          return p ? (
+            <div
+              aria-hidden
+              data-testid="drag-ghost"
+              style={barStyle(p)}
+              className={cn(barShape(p), 'pointer-events-none z-20 border-2 border-dashed border-ink/60 bg-ink/10')}
+            />
+          ) : null;
+        })()}
       </div>
     </div>
   );
@@ -540,5 +681,96 @@ function OpenBooking({
       canUpdate={canUpdate}
       canCancel={canCancel}
     />
+  );
+}
+
+/**
+ * (Calendar drag) "Move Garth Miller from B2 to D6, 25–27 Oct. Price changes from P2,223 to
+ * P2,964 (+P741)." The figures come from the server's preview — the same checks and price rule
+ * as the edit — and only "Move booking" sends the edit, which checks and prices again under
+ * the booking's lock.
+ */
+function MoveConfirm({ move, units, onClose }: { move: PendingMove; units: CalendarUnit[]; onClose: () => void }) {
+  const preview = useMovePreview(move.booking.id, move.target);
+  const update = useUpdateReservation();
+  const code = (id: string) => units.find((u) => u.id === id)?.code ?? 'another unit';
+  const { booking: b, target: t } = move;
+  const unitChanges = t.room_id !== b.room_id;
+  const p = preview.data;
+  const delta = p && p.current_total != null && p.new_total != null ? p.new_total - p.current_total : null;
+
+  async function confirm() {
+    try {
+      await update.mutateAsync({
+        id: b.id,
+        input: {
+          ...(unitChanges ? { room_id: t.room_id } : {}),
+          check_in_date: t.check_in_date,
+          check_out_date: t.check_out_date,
+        },
+      });
+      onClose();
+    } catch {
+      /* hook surfaces the error toast; the bar stays where it was */
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Move {bookingLabel(b)}?</DialogTitle>
+          <DialogDescription>Nothing changes until you confirm.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="rounded-md border border-line bg-cream-2/40 px-3 py-2.5">
+            <div className="text-muted">
+              From {code(b.room_id)} · {fmtDate(b.check_in_date)} → {fmtDate(b.check_out_date)}
+            </div>
+            <div className="font-medium text-ink">
+              To {code(t.room_id)} · {fmtDate(t.check_in_date)} → {fmtDate(t.check_out_date)}
+            </div>
+          </div>
+
+          {preview.isLoading ? (
+            <div className="flex items-center gap-2 text-muted">
+              <Spinner className="h-4 w-4" /> Checking the unit and the price…
+            </div>
+          ) : preview.isError || !p ? (
+            <p role="alert" className="text-terra">Couldn’t check this move. Close this and try again.</p>
+          ) : !p.allowed ? (
+            <p role="alert" className="rounded-md border border-terra/40 bg-terra/5 px-3 py-2 text-terra">{p.reason}</p>
+          ) : (
+            <>
+              <p data-testid="move-price" className="text-ink">
+                {p.new_total == null
+                  ? 'The price can’t be worked out automatically for this unit — check it in the booking afterwards.'
+                  : p.total_source === 'PRICED'
+                    ? `No price has been agreed on this booking yet — today’s rate for the new stay is ${formatMoney(p.new_total)}.`
+                    : delta === 0
+                      ? `The agreed price stays ${formatMoney(p.new_total)}.`
+                      : `The agreed price changes from ${formatMoney(p.current_total ?? 0)} to ${formatMoney(p.new_total)} (${
+                          (delta ?? 0) > 0 ? '+' : '−'
+                        }${formatMoney(Math.abs(delta ?? 0))}).`}
+              </p>
+              {p.opens_cleaning_task && (
+                <p className="text-muted">The guest is in-house, so {code(b.room_id)} gets a cleaning job when they move.</p>
+              )}
+            </>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose} disabled={update.isPending}>
+              {p && !p.allowed ? 'Close' : 'Cancel'}
+            </Button>
+            {p?.allowed && (
+              <Button variant="primary" onClick={confirm} disabled={update.isPending}>
+                {update.isPending ? <Spinner className="h-4 w-4" /> : 'Move booking'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

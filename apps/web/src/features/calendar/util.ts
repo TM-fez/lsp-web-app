@@ -114,3 +114,46 @@ export const unitTypeLabel = (t: UnitType): string => TYPE_LABEL[t] ?? t;
 
 /** The 7 / 14 / 28-night views LH offers. */
 export const VIEW_DAYS = [7, 14, 28] as const;
+
+/**
+ * (Calendar drag, 2026-10-06) Which stays can be dragged: pending, confirmed and in-house ones.
+ * Booking.com blocks belong to Booking.com; checked-out and cancelled stays are history.
+ */
+export const DRAGGABLE: ReadonlySet<string> = new Set(['PENDING', 'CONFIRMED', 'CHECKED_IN']);
+
+export type DragMode = 'move' | 'resize';
+
+export interface MoveTarget {
+  room_id: string;
+  check_in_date: string;
+  check_out_date: string;
+}
+
+/**
+ * Where a drag lands. `move` shifts the whole stay by `days` (and may change unit); `resize`
+ * moves only the leaving day, never below one night. An in-house guest has arrived, so a
+ * sideways move of their bar changes nothing but the unit — the server would refuse a new
+ * arrival day anyway, and the board should not suggest one. Null when nothing changed.
+ */
+export function moveTarget(
+  b: Pick<CalendarBooking, 'room_id' | 'check_in_date' | 'check_out_date' | 'status'>,
+  mode: DragMode,
+  days: number,
+  roomId: string
+): MoveTarget | null {
+  let checkIn = b.check_in_date;
+  let checkOut = b.check_out_date;
+  let room = b.room_id;
+  if (mode === 'resize') {
+    checkOut = addDays(b.check_out_date, days);
+    if (checkOut <= checkIn) checkOut = addDays(checkIn, 1);
+  } else {
+    room = roomId;
+    if (b.status !== 'CHECKED_IN') {
+      checkIn = addDays(b.check_in_date, days);
+      checkOut = addDays(b.check_out_date, days);
+    }
+  }
+  if (room === b.room_id && checkIn === b.check_in_date && checkOut === b.check_out_date) return null;
+  return { room_id: room, check_in_date: checkIn, check_out_date: checkOut };
+}

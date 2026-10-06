@@ -248,6 +248,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    the list row's display names (`findDetailById`). (e) `payment_state` is `REFUNDED` when everything
    received went back even on a total never lowered (pre-2026-10-02); `npm run db:report-unlowered-refunds`
    (report only, owner-run) lists live ones that still owe on paper.
+   **Calendar drag (2026-10-06).** Bars on `/calendar` drag (mouse/pen only; phones stay tap-to-open):
+   sideways moves the stay, up/down changes unit, the right edge changes the leaving day. Nothing saves on
+   drop — `GET /reservations/:id/move-preview` (read-only, `reservations.update`) runs the edit's checks and
+   its price rule (unpaid PENDING re-priced; otherwise moved by the delta) for the confirm box, then the
+   ordinary `PATCH` does the move under the lock. Draggable: PENDING / CONFIRMED / CHECKED_IN; an in-house
+   guest keeps their arrival day (a unit move opens the usual cleaning task). Price changes need no extra
+   sign-off, same as editing dates in the drawer.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
