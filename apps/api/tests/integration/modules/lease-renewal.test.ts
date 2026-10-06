@@ -4,7 +4,9 @@
  * Proves the reminder sweep's lease-renewal generator: a long stay checking out in
  * exactly the lead window raises one nudge to the property; a short stay or one
  * departing on a different day does not; re-runs the same day are no-ops. Dates use
- * the DB's current_date (Africa/Gaborone) — the reference the generator uses.
+ * the Gaborone day — the reference the generator uses. (Not `current_date`: since round 4 the
+ * process and DB sessions run in UTC, so from 22:00 to midnight UTC `current_date` is the day
+ * before Gaborone's and every stay landed one day off the lead window.)
  * Fixtures are self-created; assertions are scoped to their reservation ids.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -49,8 +51,8 @@ beforeAll(async () => {
     const r = await db.insertInto('reservations')
       .values({
         contact_id: contactId, room_id: roomIds[roomIdx]!,
-        check_in_date: sql<Date>`current_date + ${sql.lit(checkOutInDays - nights)}`,
-        check_out_date: sql<Date>`current_date + ${sql.lit(checkOutInDays)}`,
+        check_in_date: sql<Date>`(now() AT TIME ZONE 'Africa/Gaborone')::date + ${sql.lit(checkOutInDays - nights)}`,
+        check_out_date: sql<Date>`(now() AT TIME ZONE 'Africa/Gaborone')::date + ${sql.lit(checkOutInDays)}`,
         status: 'CONFIRMED', created_by: userId, updated_by: userId,
       })
       .returning('id').executeTakeFirstOrThrow();

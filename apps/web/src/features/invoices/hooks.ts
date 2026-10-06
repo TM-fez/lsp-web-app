@@ -69,7 +69,14 @@ export function useSettleInvoice() {
 }
 
 export function useRefundInvoice() {
-  const refresh = useRefresh();
+  const qc = useQueryClient();
+  // (R9 #2) A refund also changes the booking it belongs to (its money panel, which may be
+  // open right now) and the finance lists — refresh those too, not only the invoices.
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: KEY });
+    qc.invalidateQueries({ queryKey: ['reservations'] });
+    qc.invalidateQueries({ queryKey: ['finance'] });
+  };
   return useMutation({
     mutationFn: ({ id, amount, reason, idempotencyKey }: { id: string; amount: number; reason: string; idempotencyKey?: string }) =>
       refundInvoice(id, amount, reason, idempotencyKey),

@@ -22,6 +22,7 @@ import {
   type MarkPaidInput,
   type ReservationPricing,
   type ReservationNotPriceable,
+  getReservation,
 } from '@/lib/api/reservations';
 import { errMessage } from '@/lib/api/errors';
 import { toast } from '@/store/toast';
@@ -137,6 +138,15 @@ export function useMarkPaid() {
  *
  * `enabled` is passed by the caller so a closed drawer does not fetch.
  */
+/** One booking by id — only fetched once there is an id (R9). */
+export function useReservation(id: string | undefined) {
+  return useQuery({
+    queryKey: [...RES_KEY, 'one', id],
+    queryFn: () => getReservation(id!),
+    enabled: !!id,
+  });
+}
+
 export function useFolio(id: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: [...RES_KEY, 'folio', id],

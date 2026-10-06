@@ -1,10 +1,25 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   value: { data: undefined as unknown, isLoading: false, isError: false },
 }));
 vi.mock('./hooks', () => ({ useHeldOnCancelled: () => state.value }));
+const booking = vi.hoisted(() => ({ id: undefined as string | undefined }));
+vi.mock('@/features/reservations/hooks', () => ({
+  useReservation: (id: string | undefined) => {
+    booking.id = id;
+    return { data: id ? { id, status: 'CANCELLED', room_id: 'room-1' } : undefined, isLoading: false };
+  },
+}));
+vi.mock('@/features/rooms/hooks', () => ({ useRooms: () => ({ data: [] }) }));
+vi.mock('@/store/auth', () => ({
+  useAuthStore: (sel: (s: { hasPerm: () => boolean }) => unknown) => sel({ hasPerm: () => true }),
+}));
+vi.mock('@/features/reservations/ReservationFormDrawer', () => ({
+  ReservationFormDrawer: ({ open, reservation }: { open: boolean; reservation: { id: string; guest_name?: string } | null }) =>
+    open && reservation ? <div role="dialog">Booking {reservation.id} for {reservation.guest_name}</div> : null,
+}));
 
 import { HeldOnCancelledSection } from './HeldOnCancelledSection';
 
@@ -44,4 +59,18 @@ describe('HeldOnCancelledSection', () => {
 
     expect(screen.getByText(/Couldn’t load cancelled bookings/)).toBeInTheDocument();
   });
+
+  // (R9 #3) The list showed the bookings but they did not open — staff had to find each one
+  // again under Reservations, where the refund lives. A row now opens its booking here.
+  it('opens the booking when a row is clicked', () => {
+    state.value = {
+      data: { as_of: '', count: 1, total_held: 300_050, note: '', rows: [row()] },
+      isLoading: false, isError: false,
+    };
+    render(<HeldOnCancelledSection />);
+    fireEvent.click(screen.getByRole('button', { name: 'Neo Kgosi' }));
+    expect(booking.id).toBe('r1');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Booking r1 for Neo Kgosi');
+  });
 });
+

@@ -227,6 +227,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    otherwise a new `email_shared` record noted as a possible duplicate. (c) Marketing segments count and
    list **one entry per email** (`onePerEmail`, the record with the most stays stands for it).
    (d) `CallButton` (tel:) sits beside every `WhatsAppButton`.
+   **R9 (2026-10-05, refund polish).** (a) **The folio's `payment_state` has a fourth value, `REFUNDED`**:
+   agreed total P0 reached through a refund (receipt + credit note), as opposed to a complimentary P0
+   stay (still `PAID`). (b) Refund from the booking is offered on **any** booking holding money (a live
+   paid stay starts empty; closed or overpaid ones are prefilled). (c) A refund refreshes `reservations`
+   and `finance` queries too, so an open booking updates in place. (d) "Cancelled with money held" rows
+   open their booking in place. (e) Once a total is agreed, the drawer's price box shows "Agreed total"
+   from the folio and labels the live figure "Price at today's rates" — never "Total due".
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

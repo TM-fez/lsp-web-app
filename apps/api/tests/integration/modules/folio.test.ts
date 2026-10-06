@@ -252,6 +252,20 @@ describe('booking folio', () => {
     expect(folio.invoices.find((i) => i.id === note)?.refunded_amount).toBe(0);
   });
 
+  // (R9 N9-1) A full refund lowers the agreed total to P0 (owner decision 2026-10-02) — the
+  // folio then read PAID, as if a complimentary stay. The screen already says "fully
+  // refunded"; the API now agrees.
+  it('reads REFUNDED, not PAID, once everything paid has gone back', async () => {
+    const id = await makeBooking('full-refund', 0);
+    await addInvoice(id, { kind: 'BALANCE', status: 'REFUNDED', total: 100_000 });
+    await addInvoice(id, { kind: 'REFUND', status: 'PAID', total: 100_000 });
+
+    const folio = await buildService().getFolio(id, propertyId);
+    expect(folio.total_amount).toBe(0);
+    expect(folio.paid_amount).toBe(0);
+    expect(folio.payment_state).toBe('REFUNDED');
+  });
+
   it('returns to UNPAID when everything received is refunded', async () => {
     const id = await makeBooking('fullref', STAY_TOTAL);
     await addInvoice(id, { kind: 'BALANCE', status: 'REFUNDED', total: STAY_TOTAL });

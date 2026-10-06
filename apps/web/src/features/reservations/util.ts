@@ -37,12 +37,14 @@ export const paymentTone: Record<PaymentState, Tone> = {
   UNPAID: 'rose',
   PART_PAID: 'amber',
   PAID: 'green',
+  REFUNDED: 'slate',
 };
 
 export const paymentLabel: Record<PaymentState, string> = {
   UNPAID: 'unpaid',
   PART_PAID: 'part paid',
   PAID: 'paid',
+  REFUNDED: 'fully refunded',
 };
 
 // Booking origin, ordered for the filter dropdown (most common first).

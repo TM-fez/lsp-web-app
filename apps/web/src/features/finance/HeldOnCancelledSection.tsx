@@ -1,4 +1,9 @@
+import { useState } from 'react';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuthStore } from '@/store/auth';
+import { useReservation } from '@/features/reservations/hooks';
+import { useRooms } from '@/features/rooms/hooks';
+import { ReservationFormDrawer } from '@/features/reservations/ReservationFormDrawer';
 import { useHeldOnCancelled } from './hooks';
 
 const pula = (thebe: number) =>
@@ -8,9 +13,13 @@ const pula = (thebe: number) =>
  * Cancelled / no-show bookings that still hold the guest's money. Read-only on purpose:
  * nothing here refunds anything — it makes sure retained money is seen, then a person
  * decides each case (refund from the booking, or keep with a reason).
+ *
+ * (R9 #3) Each row opens its booking right here, where the refund lives — staff used to have
+ * to find it again under Reservations.
  */
 export function HeldOnCancelledSection() {
   const { data, isLoading, isError } = useHeldOnCancelled();
+  const [openRow, setOpenRow] = useState<OpenRow | null>(null);
 
   if (isLoading) return <Spinner />;
   if (isError || !data) {
@@ -40,8 +49,23 @@ export function HeldOnCancelledSection() {
               </thead>
               <tbody>
                 {data.rows.map((r) => (
-                  <tr key={r.reservation_id} className="border-b border-line last:border-0 hover:bg-cream-2">
-                    <td className="px-4 py-3.5 text-ink">{r.guest_name ?? '—'}</td>
+                  <tr
+                    key={r.reservation_id}
+                    onClick={() => setOpenRow({ id: r.reservation_id, guest_name: r.guest_name, room_code: r.room_code })}
+                    className="cursor-pointer border-b border-line last:border-0 hover:bg-cream-2"
+                  >
+                    <td className="px-4 py-3.5 text-ink">
+                      <button
+                        type="button"
+                        className="text-left underline-offset-2 hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenRow({ id: r.reservation_id, guest_name: r.guest_name, room_code: r.room_code });
+                        }}
+                      >
+                        {r.guest_name ?? 'Unnamed guest'}
+                      </button>
+                    </td>
                     <td className="px-4 py-3.5 text-muted">{r.room_code ?? '—'}</td>
                     <td className="px-4 py-3.5 text-muted">{r.check_in_date} → {r.check_out_date}</td>
                     <td className="px-4 py-3.5 text-muted">{r.status === 'NO_SHOW' ? 'No-show' : 'Cancelled'}</td>
@@ -53,6 +77,32 @@ export function HeldOnCancelledSection() {
           </div>
         </>
       )}
+      {openRow && <HeldBookingDrawer row={openRow} onClose={() => setOpenRow(null)} />}
     </section>
+  );
+}
+
+interface OpenRow {
+  id: string;
+  guest_name: string | null;
+  room_code: string | null;
+}
+
+/** Loads the clicked booking (and the units list the drawer needs) only once a row is opened. */
+function HeldBookingDrawer({ row, onClose }: { row: OpenRow; onClose: () => void }) {
+  const hasPerm = useAuthStore((s) => s.hasPerm);
+  const booking = useReservation(row.id);
+  const { data: rooms } = useRooms();
+  if (!booking.data) return null;
+  return (
+    <ReservationFormDrawer
+      open
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      // The by-id read carries no joined names; the row already has them.
+      reservation={{ ...booking.data, guest_name: row.guest_name ?? undefined, room_code: row.room_code ?? undefined }}
+      rooms={rooms ?? []}
+      canUpdate={hasPerm('reservations.update')}
+      canCancel={hasPerm('reservations.delete')}
+    />
   );
 }
