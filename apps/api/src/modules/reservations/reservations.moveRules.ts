@@ -73,3 +73,20 @@ export function assertStayChangeAllowed(c: StayChange): void {
   if (p.kind === 'status') throw AppError.conflict(p.message);
   throw AppError.badRequest(p.message);
 }
+
+/**
+ * (Round 12, N12-2) The one rule for a status set by hand — the cancel route and a PATCH that
+ * carries `status`. Everything else that moves a status has its own guarded path: payment and
+ * confirm-without-payment confirm, check-in/out, no-show, channel sync. So by hand a booking may
+ * only be cancelled, and only while nobody has arrived (PENDING / CONFIRMED). Sending the status
+ * it already has is not a change. Same 409 wording as the cancel route always used.
+ */
+export function assertStatusChange(from: string, to: string): void {
+  if (from === to) return;
+  if (to === 'CANCELLED' && (from === 'PENDING' || from === 'CONFIRMED')) return;
+  if (to === 'CANCELLED') throw AppError.conflict(`Cannot cancel reservation with status ${from}`);
+  throw AppError.conflict(
+    `A booking can’t be moved from ${from.toLowerCase().replace('_', ' ')} to ${to.toLowerCase().replace('_', ' ')} by editing it.`
+  );
+}
+

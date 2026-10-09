@@ -15,6 +15,8 @@ import type {
 /** The one thing check-in/out needs from the money side — see ReservationsService.ensureReceivable. */
 export interface ReceivableEnsurer {
   ensureReceivable(reservationId: string, meta: OccupancyRequestMeta): Promise<void>;
+  /** (N12-1) Bring the booking's arrival forward to the day the guest really arrived. */
+  moveArrivalForEarlyCheckIn?(reservationId: string, arrivalDay: string, meta: OccupancyRequestMeta): Promise<void>;
 }
 
 export class CheckinsService {
@@ -118,6 +120,15 @@ export class CheckinsService {
     }
     if (room.capacity != null && dto.guest_count > room.capacity) {
       throw AppError.badRequest(`This unit sleeps ${room.capacity}. Check the number of guests.`);
+    }
+
+    // (Round 12, N12-1) Arriving early means the guest is in the unit from tonight (or from
+    // the back-dated arrival), so the booking's arrival moves to that day BEFORE the check-in
+    // is written — refused if another booking holds those nights. Leaving it on tomorrow let
+    // staff and the public page sell tonight on top of an in-house guest.
+    const arrivalDay = dto.checked_in_at ? todayInPropertyTZ(dto.checked_in_at) : today;
+    if (arrivalDay < reservation.check_in_day && this.receivables?.moveArrivalForEarlyCheckIn) {
+      await this.receivables.moveArrivalForEarlyCheckIn(reservation.id, arrivalDay, meta);
     }
 
     let occupancy: OccupancyRow;
