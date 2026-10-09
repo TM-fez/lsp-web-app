@@ -139,3 +139,10 @@ export function describeThebe(thebe: number): string {
     .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `${sign}P${whole}.${String(abs % 100).padStart(2, '0')}`;
 }
+
+/**
+ * (Round 11, N11-2) The audit `diff.reason` InvoicesRepository.refund writes when a refund lowers
+ * a booking's agreed total (owner decision 2026-10-02). Its presence is how the folio and the
+ * unlowered-refunds report tell today's refunds from legacy ones — keep the three in step.
+ */
+export const REFUND_LOWERED_REASON = 'refund lowers the agreed total';

@@ -157,3 +157,12 @@ export function moveTarget(
   if (room === b.room_id && checkIn === b.check_in_date && checkOut === b.check_out_date) return null;
   return { room_id: room, check_in_date: checkIn, check_out_date: checkOut };
 }
+
+/**
+ * (Round 11) The unit column fits the longest code on the board: ~1ch per character of the
+ * medium-weight label plus the cell's padding, never narrower than the old 5.5rem.
+ */
+export function unitColumnWidth(units: { code: string }[]): string {
+  const longest = units.reduce((n, u) => Math.max(n, u.code.length), 0);
+  return `max(5.5rem, calc(${longest}ch + 1.75rem))`;
+}

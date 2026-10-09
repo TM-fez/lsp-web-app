@@ -305,6 +305,19 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     expect(screen.getByText('Price', { exact: true })).toBeInTheDocument();
   });
 
+  // (Round 11) "P3,249 of P2,166 paid" beside a "paid" badge read oddly.
+  it('shows an overpaid stay as paid against agreed, badged overpaid', () => {
+    folioData = {
+      ...folioData!, total_amount: 216_600, paid_amount: 324_900, outstanding_amount: 0, credit_amount: 108_300, payment_state: 'PAID',
+      invoices: [{ id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 324_900, refunded_amount: 0, created_at: '2026-08-24T10:00:00Z' }],
+    };
+    open({ status: 'CONFIRMED' });
+    expect(screen.getByText('BWP 3,249.00 paid — agreed BWP 2,166.00')).toBeInTheDocument();
+    expect(screen.queryByText(/of BWP 2,166.00 paid/)).not.toBeInTheDocument();
+    expect(screen.getByText('overpaid')).toBeInTheDocument();
+    expect(screen.queryByText('paid', { exact: true })).not.toBeInTheDocument();
+  });
+
   // (R10 #6) Text still sent staff to the Invoices page, which the booking can now do itself.
   it('points to the refund on this booking, not the Invoices page', () => {
     perms = ['invoices.refund'];

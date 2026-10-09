@@ -165,4 +165,18 @@ describe('R10 #6 — smaller items', () => {
     const row = (await findUnloweredRefunds(db)).find((r) => r.reservation_id === legacy.id)!;
     expect(row).toMatchObject({ agreed_total: STAY, refunded: STAY, guest_name: 'Garth Miller' });
   });
+
+  // (Round 11, N11-2) A deposit refunded on a confirmed stay that still owes the rest: the
+  // refund lowered the total by the deposit, so what's left is a real debt. It read "fully
+  // refunded" beside "P1,083 still outstanding"; it is UNPAID — as the calendar's "payment
+  // incomplete" already said — and it is not a legacy refund for the owner's report.
+  it('calls a stay whose deposit went back but which still owes UNPAID, and leaves it off the report', async () => {
+    const DEPOSIT = 50_000;
+    const b = await paidBooking({ status: 'CONFIRMED', agreed: 158_300, paid: DEPOSIT });
+    await invoices.refundInvoice(b.receipt, DEPOSIT, 'deposit returned', meta());
+
+    const folio = await reservations.getFolio(b.id);
+    expect(folio).toMatchObject({ paid_amount: 0, total_amount: 108_300, outstanding_amount: 108_300, payment_state: 'UNPAID' });
+    expect((await findUnloweredRefunds(db)).map((r) => r.reservation_id)).not.toContain(b.id);
+  });
 });

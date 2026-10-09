@@ -62,9 +62,9 @@ const view = (over: Partial<CalendarView> = {}): CalendarView => ({
   ],
   bookings: [
     { id: 'r1', room_id: 'b1', check_in_date: '2026-09-28', check_out_date: '2026-11-15', status: 'CHECKED_IN', source: 'CORPORATE',
-      guest_name: 'Alexander Forbes', company_name: 'Financial Services Botswana', payment_incomplete: false },
+      guest_name: 'Alexander Forbes', company_name: 'Financial Services Botswana', payment_incomplete: false, fully_refunded: false },
     { id: 'r2', room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-27', status: 'CONFIRMED', source: 'DIRECT',
-      guest_name: 'Garth Miller', company_name: null, payment_incomplete: true },
+      guest_name: 'Garth Miller', company_name: null, payment_incomplete: true, fully_refunded: false },
   ],
   closures: [
     { room_id: 's1', kind: 'OUT_OF_SERVICE', from: null, to: null, label: 'Closed — out of service', ref_id: null },
@@ -101,6 +101,36 @@ describe('CalendarPage', () => {
     expect(b2.getByLabelText('Payment incomplete')).toBeInTheDocument();
     expect(within(screen.getByTestId('unit-row-S1')).getByText('Closed — out of service')).toBeInTheDocument();
     expect(screen.getByText('Incomplete payment')).toBeInTheDocument();
+  });
+
+  // (Round 11) The fixed 5.5rem column cut long codes to "DEMO-…".
+  it('shows each unit’s full code, however long', () => {
+    cal.value = { ...cal.value, data: view({
+      units: [{ id: 'b1', code: 'DEMO-B12-LOFT', name: 'Loft', type: 'STANDARD', status: 'AVAILABLE', building_name: null }],
+      bookings: [], closures: [],
+    }) };
+    renderPage();
+    const name = within(screen.getByTestId('unit-row-DEMO-B12-LOFT')).getByText('DEMO-B12-LOFT');
+    expect(name).not.toHaveClass('truncate');
+    expect(name.parentElement!.style.width).toBe('var(--unit-col)');
+    let board: HTMLElement | null = name.parentElement;
+    while (board && !board.style.getPropertyValue('--unit-col')) board = board.parentElement;
+    expect(board?.style.getPropertyValue('--unit-col')).toBe('max(5.5rem, calc(13ch + 1.75rem))');
+  });
+
+  // (Round 11) A fully refunded stay looked like any other bar.
+  it('marks a fully refunded stay so it doesn’t read as paid', () => {
+    cal.value = { ...cal.value, data: view({
+      bookings: [
+        { id: 'r2', room_id: 'b2', check_in_date: '2026-10-25', check_out_date: '2026-10-27', status: 'CONFIRMED', source: 'DIRECT',
+          guest_name: 'Garth Miller', company_name: null, payment_incomplete: false, fully_refunded: true },
+      ],
+    }) };
+    renderPage();
+    const bar = screen.getByText('Garth Miller').closest('button')!;
+    expect(bar).toHaveAttribute('data-refunded', 'true');
+    expect(bar.getAttribute('title')).toContain('fully refunded');
+    expect(within(bar).getByLabelText('Fully refunded')).toBeInTheDocument();
   });
 
   it('opens the booking when its bar is tapped', () => {
@@ -179,7 +209,7 @@ describe('CalendarPage', () => {
       updateMutate.mockReset().mockResolvedValue({});
       preview.calls = [];
       preview.value = {
-        data: { allowed: true, reason: null, current_total: 222_300, new_total: 296_400, total_source: 'FOLIO', opens_cleaning_task: false },
+        data: { allowed: true, reason: null, current_total: 222_300, new_total: 296_400, total_source: 'FOLIO', opens_cleaning_task: false, paid_amount: 0 },
         isLoading: false, isError: false,
       };
     });
@@ -209,6 +239,31 @@ describe('CalendarPage', () => {
       }));
     });
 
+    // (Round 11) The box said how the PRICE moves, not what the guest then owes or is owed.
+    async function dragGarthOneNight() {
+      renderPage();
+      const b2 = track('B2');
+      document.elementFromPoint = vi.fn(() => b2);
+      fireEvent.pointerDown(screen.getByText('Garth Miller').closest('button')!, { clientX: 500, clientY: 10, button: 0 });
+      fireEvent.pointerMove(window, { clientX: 500 + DAY + 5, clientY: 10 });
+      fireEvent.pointerUp(window);
+      return screen.findByTestId('move-balance');
+    }
+
+    it('says how much the guest will owe after the move', async () => {
+      preview.value = { ...preview.value, data: { ...(preview.value.data as object), paid_amount: 222_300 } };
+      expect(await dragGarthOneNight()).toHaveTextContent(
+        'After the move the guest will owe BWP 741.00 (BWP 2,223.00 already paid).'
+      );
+    });
+
+    it('says when the guest will be due a refund after the move', async () => {
+      preview.value = { ...preview.value, data: { ...(preview.value.data as object), new_total: 148_200, paid_amount: 222_300 } };
+      expect(await dragGarthOneNight()).toHaveTextContent(
+        'After the move the guest will be due a refund of BWP 741.00 — they have paid BWP 2,223.00.'
+      );
+    });
+
     it('stretches a stay by its right edge without changing unit or arrival', () => {
       renderPage();
       const b2 = track('B2');
@@ -221,7 +276,7 @@ describe('CalendarPage', () => {
     });
 
     it('says why a move is refused and offers nothing to confirm', async () => {
-      preview.value = { data: { allowed: false, reason: 'That unit isn’t free for those nights — another booking, a closure or a repair is in the way.', current_total: 222_300, new_total: null, total_source: 'FOLIO', opens_cleaning_task: false }, isLoading: false, isError: false };
+      preview.value = { data: { allowed: false, reason: 'That unit isn’t free for those nights — another booking, a closure or a repair is in the way.', current_total: 222_300, new_total: null, total_source: 'FOLIO', opens_cleaning_task: false, paid_amount: 0 }, isLoading: false, isError: false };
       renderPage();
       const b2 = track('B2');
       document.elementFromPoint = vi.fn(() => b2);

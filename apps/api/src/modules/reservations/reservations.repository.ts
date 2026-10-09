@@ -2,7 +2,7 @@ import { releaseReservationHolds } from '../holds/holds.release.js';
 import { Kysely, Transaction, sql } from 'kysely';
 import type { Database, ReservationRow, NewReservation, UpdateReservation } from '../../db/types.js';
 import { AppError } from '../../core/errors/AppError.js';
-import { describeThebe } from '../../core/money/folio.js';
+import { describeThebe, REFUND_LOWERED_REASON } from '../../core/money/folio.js';
 import type { ReservationPricing, NotPriceable } from './reservations.pricing.js';
 import { paidToDate, lockReservation, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { inTransaction } from '../../core/db/transaction.js';
@@ -93,6 +93,39 @@ export class ReservationsRepository {
     return paidToDate(this.db, reservationIds);
   }
 
+  /**
+   * (Round 11, N11-2) Has a refund ever lowered this booking's agreed total? Since 2026-10-02
+   * every refund that does writes this audit row (InvoicesRepository.refund), so a refunded
+   * booking WITHOUT one is a legacy refund whose total was never lowered — and a booking WITH
+   * one that still shows an amount owing genuinely owes it (a deposit went back; the rest of
+   * the stay was never paid). Shared with `findUnloweredRefunds` via REFUND_LOWERED_REASON.
+   */
+  async refundLoweredTotal(reservationId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('audit_logs')
+      .select('id')
+      .where('entity', '=', 'reservations')
+      .where('entity_id', '=', reservationId)
+      .where(sql<boolean>`diff->>'reason' = ${REFUND_LOWERED_REASON}`)
+      .limit(1)
+      .executeTakeFirst();
+    return !!row;
+  }
+
+  /** (Round 11) Which of these bookings have had money refunded (a live credit note). */
+  async withRefunds(reservationIds: string[]): Promise<Set<string>> {
+    if (reservationIds.length === 0) return new Set();
+    const rows = await this.db
+      .selectFrom('invoices')
+      .select('reservation_id')
+      .distinct()
+      .where('reservation_id', 'in', reservationIds)
+      .where('kind', '=', 'REFUND')
+      .where('deleted_at', 'is', null)
+      .execute();
+    return new Set(rows.map((r) => r.reservation_id as string));
+  }
+
   /** The invoice documents behind a booking's folio, newest last. */
   async folioInvoices(reservationId: string): Promise<FolioInvoiceLine[]> {
     const rows = await this.db
@@ -137,6 +170,20 @@ export class ReservationsRepository {
   }
 
   async checkAvailability(roomId: string, checkIn: Date, checkOut: Date, excludeReservationId?: string): Promise<boolean> {
+    return (await this.whatBlocks(roomId, checkIn, checkOut, excludeReservationId)) === null;
+  }
+
+  /**
+   * (Round 11) WHAT stops these nights being booked, not just whether something does — the
+   * drag confirm box said "another booking, a closure or a repair is in the way" and left
+   * staff to guess which. Same checks, same order, as availability always ran them.
+   */
+  async whatBlocks(
+    roomId: string,
+    checkIn: Date,
+    checkOut: Date,
+    excludeReservationId?: string
+  ): Promise<'CLOSED' | 'REPAIR' | 'BOOKING' | null> {
     // Rooms are the source of truth: a room must exist, be active, and not be
     // blocked by status (MAINTENANCE / OUT_OF_SERVICE) to accept reservations.
     const room = await this.db
@@ -147,14 +194,14 @@ export class ReservationsRepository {
       .executeTakeFirst();
 
     if (!room || room.status === 'MAINTENANCE' || room.status === 'OUT_OF_SERVICE') {
-      return false;
+      return 'CLOSED';
     }
 
     // (R5, migration 085) A serious repair booked on some of these nights blocks them,
     // exactly as availability search reads it (core/availability/repairWindows.ts).
     const repair = await sql<{ blocked: boolean }>`
       SELECT ${repairWindowOverlaps(sql`${roomId}::uuid`, checkIn, checkOut)} AS blocked`.execute(this.db);
-    if (repair.rows[0]?.blocked) return false;
+    if (repair.rows[0]?.blocked) return 'REPAIR';
 
     // Check for overlaps: NewCheckIn < ExistCheckOut AND NewCheckOut > ExistCheckIn
     let query = this.db
@@ -174,7 +221,7 @@ export class ReservationsRepository {
     }
 
     const { overlap_count } = await query.executeTakeFirstOrThrow();
-    return Number(overlap_count) === 0;
+    return Number(overlap_count) === 0 ? null : 'BOOKING';
   }
 
   async findPaginated(

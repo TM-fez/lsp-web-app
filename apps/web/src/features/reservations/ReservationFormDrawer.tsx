@@ -524,13 +524,21 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
                 folio.data && (
                   <div className="rounded-md border border-line bg-cream-2/40 px-3 py-2.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      {/* (Round 11) "P3,249 of P2,166 paid" with a "paid" badge read oddly: more
+                          than everything is not "of". An overpaid stay says what came in against
+                          what was agreed, and its badge says overpaid (the refund-due line below
+                          says what to do). */}
                       <span className="font-display text-lg text-ink">
-                        {formatMoney(folio.data.paid_amount)} of {formatMoney(folio.data.total_amount)} paid
+                        {folio.data.credit_amount > 0
+                          ? `${formatMoney(folio.data.paid_amount)} paid — agreed ${formatMoney(folio.data.total_amount)}`
+                          : `${formatMoney(folio.data.paid_amount)} of ${formatMoney(folio.data.total_amount)} paid`}
                       </span>
                       {/* (R8 #2) "P0.00 of P0.00 — paid" after a full refund read as if the guest
                           had paid in full; the badge now says what the words below say. */}
                       {fullyRefunded(folio.data) ? (
                         <Badge tone="slate" className="shrink-0">fully refunded</Badge>
+                      ) : folio.data.credit_amount > 0 ? (
+                        <Badge tone="amber" className="shrink-0">overpaid</Badge>
                       ) : (
                         <Badge tone={paymentTone[folio.data.payment_state]} className="shrink-0">
                           {paymentLabel[folio.data.payment_state]}
@@ -1063,12 +1071,12 @@ function ClaimBookingSection({ reservationId, onClaimed }: { reservationId: stri
   );
 }
 
-/** Everything paid has gone back: agreed total P0 with a receipt and its credit note behind it. */
 /** Everything that has gone back to the guest on this booking: the credit notes. */
 function refundedTotal(f: ReservationFolio): number {
   return f.invoices.filter((i) => i.kind === 'REFUND').reduce((sum, i) => sum + i.total_amount, 0);
 }
 
+/** Everything paid has gone back: agreed total P0 with a receipt and its credit note behind it. */
 function fullyRefunded(f: ReservationFolio): boolean {
   return (
     f.total_amount === 0 &&

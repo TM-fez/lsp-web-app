@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween, moveTarget } from './util';
+import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween, moveTarget, unitColumnWidth } from './util';
 
 describe('calendar util', () => {
   it('steps days across month and year ends without touching the browser’s zone', () => {
@@ -75,5 +75,12 @@ describe('calendar util', () => {
     it('is nothing when the bar ends where it started', () => {
       expect(moveTarget(stay, 'move', 0, 'b2')).toBeNull();
     });
+  });
+});
+
+describe('unitColumnWidth (Round 11)', () => {
+  it('grows with the longest code and never shrinks below the old column', () => {
+    expect(unitColumnWidth([{ code: 'B1' }, { code: 'DEMO-B12-LOFT' }])).toBe('max(5.5rem, calc(13ch + 1.75rem))');
+    expect(unitColumnWidth([])).toBe('max(5.5rem, calc(0ch + 1.75rem))');
   });
 });
