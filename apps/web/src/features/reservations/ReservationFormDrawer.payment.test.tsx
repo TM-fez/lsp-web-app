@@ -318,6 +318,26 @@ describe('ReservationFormDrawer — the money on a booking', () => {
     expect(screen.queryByText('paid', { exact: true })).not.toBeInTheDocument();
   });
 
+  // (Post-launch polish) "free-cancellation" was the example reason on a guest who is staying.
+  it('suggests a goodwill reason, not a cancellation, when refunding a live stay', () => {
+    perms = ['invoices.refund'];
+    folioData = {
+      ...folioData!, total_amount: 172_300, paid_amount: 172_300, outstanding_amount: 0, credit_amount: 0, payment_state: 'PAID',
+      invoices: [{ id: 'rcpt-1', number: 'RCPT-1', kind: 'BALANCE', status: 'PAID', total_amount: 172_300, refunded_amount: 0, created_at: '2026-08-24T10:00:00Z' }],
+    };
+    open({ status: 'CONFIRMED' });
+    const reason = screen.getByLabelText('Reason');
+    expect(reason.getAttribute('placeholder')).not.toMatch(/cancellation/i);
+  });
+
+  // (Post-launch polish) "Can't start in the past" only came as a toast after Save.
+  it('says next to the date that a stay can’t be moved into the past, and offers no Save', () => {
+    open({ status: 'PENDING', check_in_date: '2099-01-10', check_out_date: '2099-01-12' });
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2001-01-01' } });
+    expect(screen.getByText('A stay can’t be moved to start in the past.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
   // (R10 #6) Text still sent staff to the Invoices page, which the booking can now do itself.
   it('points to the refund on this booking, not the Invoices page', () => {
     perms = ['invoices.refund'];

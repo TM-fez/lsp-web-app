@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween, moveTarget, unitColumnWidth } from './util';
+import { addDays, barPlacement, bookingLabel, bookingTone, dayColumns, daysBetween, moveTarget, unitColumnWidth, barLabel } from './util';
 
 describe('calendar util', () => {
   it('steps days across month and year ends without touching the browser’s zone', () => {
@@ -82,5 +82,14 @@ describe('unitColumnWidth (Round 11)', () => {
   it('grows with the longest code and never shrinks below the old column', () => {
     expect(unitColumnWidth([{ code: 'B1' }, { code: 'DEMO-B12-LOFT' }])).toBe('max(5.5rem, calc(13ch + 1.75rem))');
     expect(unitColumnWidth([])).toBe('max(5.5rem, calc(0ch + 1.75rem))');
+  });
+});
+
+describe('barLabel (post-launch polish)', () => {
+  const b = { guest_name: 'Alexander Forbes', company_name: 'Financial Services Botswana', status: 'CONFIRMED', source: 'CORPORATE' } as const;
+  it('gives a short bar the guest’s name, not the company’s', () => {
+    expect(barLabel(b, 1)).toBe('Alexander Forbes');
+    expect(barLabel(b, 2)).toBe('Alexander Forbes');
+    expect(barLabel(b, 3)).toBe('Financial Services Botswana, Alexander Forbes');
   });
 });

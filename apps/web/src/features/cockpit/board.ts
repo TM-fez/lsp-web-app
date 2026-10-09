@@ -12,10 +12,12 @@ export interface BoardSummary {
   maintenance: number;
   outOfService: number;
   needsCleaning: number; // housekeeping_status !== READY
+  /** (Post-launch polish) Off sale for either reason — the Cockpit's "out of action" figure. */
+  outOfAction: number;
 }
 
 export function summarize(units: CockpitUnit[]): BoardSummary {
-  const s: BoardSummary = { total: units.length, available: 0, occupied: 0, maintenance: 0, outOfService: 0, needsCleaning: 0 };
+  const s: BoardSummary = { total: units.length, available: 0, occupied: 0, maintenance: 0, outOfService: 0, needsCleaning: 0, outOfAction: 0 };
   for (const u of units) {
     if (u.status === 'AVAILABLE') s.available++;
     else if (u.status === 'OCCUPIED') s.occupied++;
@@ -23,6 +25,7 @@ export function summarize(units: CockpitUnit[]): BoardSummary {
     else if (u.status === 'OUT_OF_SERVICE') s.outOfService++;
     if (u.housekeeping_status !== 'READY') s.needsCleaning++;
   }
+  s.outOfAction = s.maintenance + s.outOfService;
   return s;
 }
 

@@ -67,5 +67,9 @@ describe('activity feed with a busy neighbour', () => {
     expect(rows.map((r) => r.entity_id)).toContain(quiet.r);
     expect(rows.some((r) => r.entity_id === busy.r)).toBe(false);
     expect(ms).toBeLessThan(1000); // generous for CI; ~10 ms locally
-  });
+    // The 5 s default timed out on CI (5009 / 5013 ms) while the FEED stayed well inside its own
+    // 1 s check: the time goes on seeding 9,000 audit rows through the property-stamping trigger
+    // on a shared, busy runner. The test's budget covers that setup; the speed guarantee is the
+    // `ms` assertion above, which is unchanged.
+  }, 30_000);
 });

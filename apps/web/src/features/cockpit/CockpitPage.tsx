@@ -91,7 +91,9 @@ export function CockpitPage() {
                 from earlier days, and calling those today's would misreport the day. */}
             {data.arrivals.length} arrival{data.arrivals.length === 1 ? '' : 's'} to check in.{' '}
             {summary.needsCleaning} unit{summary.needsCleaning === 1 ? '' : 's'} await housekeeping,{' '}
-            {summary.maintenance} in repair.
+            {/* (Post-launch polish) "0 in repair" while a unit was closed out of service: the
+                line counted only MAINTENANCE. Both kinds of closure keep a unit off sale. */}
+            {summary.outOfAction} out of action.
           </p>
         </div>
         <Button variant="primary" onClick={() => openAssign()} disabled={assignableUnits.length === 0}>
@@ -105,7 +107,12 @@ export function CockpitPage() {
         <Stat no="01" k="In-house tonight" value={data.in_house.length} foot="currently staying" />
         <Stat no="02" k="Arrivals" value={data.arrivals.length} foot={`${assignableUnits.length} units ready to assign`} />
         <Stat no="03" k="Awaiting clean" value={data.housekeeping_queue.length} foot="in the cleaning queue" />
-        <Stat no="04" k="In repair" value={summary.maintenance} foot="units under maintenance" />
+        <Stat
+          no="04"
+          k="Out of action"
+          value={summary.outOfAction}
+          foot="under repair or out of service"
+        />
       </section>
 
       <section className="animate-rise d-3">

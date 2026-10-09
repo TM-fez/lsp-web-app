@@ -210,6 +210,8 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   );
 
   const datesOrdered = !!checkIn && !!checkOut && checkIn < checkOut;
+  const movedIntoPast =
+    isEdit && !!checkIn && checkIn !== toDateInput(reservation!.check_in_date) && checkIn < todayISO();
   const stayNights = datesOrdered ? nights(checkIn, checkOut) : 0;
 
   // Live availability only on create (the modify endpoint can't exclude self).
@@ -221,7 +223,7 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
   const unavailable = availEnabled && availability.data === false;
 
   const valid =
-    !!guest && !!roomId && datesOrdered && (isEdit || checkIn >= todayISO()) && !unavailable;
+    !!guest && !!roomId && datesOrdered && (isEdit || checkIn >= todayISO()) && !movedIntoPast && !unavailable;
 
   // (Re-test 3) A double click on "Create reservation" sent a second request before the
   // button re-rendered disabled; the server refused the overlap, but the user saw a
@@ -451,6 +453,11 @@ export function ReservationFormDrawer({ open, onOpenChange, reservation, rooms, 
 
           {!!checkIn && !!checkOut && !datesOrdered && (
             <span className="text-xs text-rose-600">Check-out must be after check-in.</span>
+          )}
+          {/* (Post-launch polish) Moving a stay to start in the past was only said by a toast
+              after Save; say it here, next to the date, and don't offer Save. */}
+          {movedIntoPast && (
+            <span className="text-xs text-rose-600">A stay can’t be moved to start in the past.</span>
           )}
           {datesOrdered && (
             <div className="flex items-center gap-2 text-xs">
@@ -1186,7 +1193,8 @@ function RefundFromBooking({ folio, status }: { folio: ReservationFolio; status:
         <Label htmlFor="res-refund-reason">Reason</Label>
         <Input
           id="res-refund-reason"
-          placeholder="e.g. Cancelled within the free-cancellation period"
+          // (Post-launch polish) The free-cancellation example read oddly on a guest who is staying.
+          placeholder={closed ? 'e.g. Cancelled within the free-cancellation period' : 'e.g. Goodwill — the geyser was broken'}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />

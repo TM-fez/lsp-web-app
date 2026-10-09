@@ -32,6 +32,7 @@ import { useCalendar, useMovePreview } from './hooks';
 import {
   addDays,
   barPlacement,
+  barLabel,
   bookingLabel,
   bookingTone,
   closureTone,
@@ -485,6 +486,7 @@ function UnitRow({
           if (!p) return null;
           const tone = bookingTone(b.status);
           const label = bookingLabel(b);
+          const nightsShown = Math.round(p.width * days);
           const draggable = !!canDrag && DRAGGABLE.has(b.status);
           return (
             <button
@@ -508,10 +510,13 @@ function UnitRow({
                 b.fully_refunded && 'opacity-60 outline-2 -outline-offset-2 outline-dashed outline-ink/50'
               )}
             >
-              <span className="flex h-full w-5 shrink-0 items-center justify-center bg-black/15">
-                <Search className="h-3 w-3" />
-              </span>
-              <span className="truncate px-1.5 text-xs font-medium">{label}</span>
+              {/* A one-night bar gives its few pixels to the name, not the magnifier. */}
+              {nightsShown > 1 && (
+                <span className="flex h-full w-5 shrink-0 items-center justify-center bg-black/15">
+                  <Search className="h-3 w-3" />
+                </span>
+              )}
+              <span className="truncate px-1.5 text-xs font-medium">{barLabel(b, nightsShown)}</span>
               {b.fully_refunded && (
                 <Undo2 aria-label="Fully refunded" className="mr-1.5 h-3 w-3 shrink-0" />
               )}
