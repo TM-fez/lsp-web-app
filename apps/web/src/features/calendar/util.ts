@@ -73,6 +73,18 @@ export function bookingLabel(b: Pick<CalendarBooking, 'guest_name' | 'company_na
   return b.company_name ? `${b.company_name}, ${guest}` : guest;
 }
 
+/**
+ * (Post-launch polish) What fits on a bar. A one- or two-night bar has room for a few letters,
+ * and "Financial Services Botswana, Alexander Forbes" became "Financial Se…" — the company, not
+ * who is staying. Short bars show the guest alone; the full label stays in the tooltip.
+ */
+export function barLabel(
+  b: Pick<CalendarBooking, 'guest_name' | 'company_name' | 'status' | 'source'>,
+  nightsShown: number
+): string {
+  return nightsShown <= 2 ? bookingLabel({ ...b, company_name: null }) : bookingLabel(b);
+}
+
 export type BarTone = 'confirmed' | 'pending' | 'in' | 'out';
 
 /** The legend's four booking colours. A Booking.com block is a confirmed stay to the desk. */

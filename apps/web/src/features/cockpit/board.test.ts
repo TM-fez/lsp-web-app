@@ -34,6 +34,12 @@ describe('summarize / countForFilter', () => {
     expect(countForFilter(s, 'AVAILABLE')).toBe(2);
     expect(countForFilter(s, 'NEEDS_CLEANING')).toBe(1);
   });
+
+  // (Post-launch polish) The Cockpit said "0 in repair" while a unit was closed out of service.
+  it('counts both kinds of closure as out of action', () => {
+    expect(summarize(units).outOfAction).toBe(2);
+    expect(summarize([unit({ code: '9', status: 'OUT_OF_SERVICE' })]).outOfAction).toBe(1);
+  });
 });
 
 describe('matchesFilter', () => {
