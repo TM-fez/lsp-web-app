@@ -689,7 +689,8 @@ function OpenBooking({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      // The by-id read carries no joined names; the board already has them.
+      // Since #158 the by-id read carries the joined names too (R10 d); the board's copies are
+      // laid over them only so the drawer names the guest and unit exactly as the tapped bar did.
       reservation={{
         ...booking.data,
         guest_name: opened.guest_name ?? booking.data.guest_name,
