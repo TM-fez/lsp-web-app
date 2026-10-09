@@ -265,6 +265,13 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    refunds WITHOUT one are legacy — the folio and `db:report-unlowered-refunds` both use it.
    (c) The drag box names what's in the way (`whatBlocks`: booking / repair / closure) and says what the
    guest will owe or be owed (`paid_amount`); the calendar marks `fully_refunded` stays and fits full unit codes.
+   **R12 (2026-10-09, v1 launch).** (a) **An early check-in moves the arrival to the day the guest
+   arrived** (`moveArrivalForEarlyCheckIn`, through the locked, re-priced edit, before the check-in is
+   written): the unit is held from tonight for staff, the public page and the overlap constraint, the
+   extra night is priced like any date edit (delta on a confirmed stay), and it is refused (409) when
+   another booking holds those nights. (b) **A status set by hand obeys one rule** (`assertStatusChange`):
+   the cancel route and a PATCH `status` may only cancel a PENDING/CONFIRMED booking (same 409 wording);
+   every other jump through PATCH is a 409, re-checked under the row lock.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.

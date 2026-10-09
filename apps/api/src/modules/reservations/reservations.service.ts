@@ -8,7 +8,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
 import { describeThebe, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
-import { assertStayChangeAllowed, stayChangeProblem } from './reservations.moveRules.js';
+import { assertStatusChange, assertStayChangeAllowed, stayChangeProblem } from './reservations.moveRules.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
 import type { UnitType } from '../pricing/pricing.types.js';
@@ -685,6 +685,11 @@ export class ReservationsService {
     if (dto.status && existing.status === 'CHECKED_OUT' && dto.status !== 'CHECKED_OUT') {
       throw AppError.conflict('Cannot modify a checked out reservation');
     }
+    // (Round 12, N12-2) PATCH {status:'CANCELLED'} on an in-house stay answered 200 while the
+    // cancel route refused it with 409 — the guest stayed in the unit, the booking said
+    // cancelled, and tonight was sold again. A status sent through the edit now obeys exactly
+    // the cancel route's rule (assertStatusChange), checked again under the row lock below.
+    if (dto.status) assertStatusChange(existing.status, dto.status);
 
     const checkIn = dto.check_in_date ? new Date(dto.check_in_date) : existing.check_in_date;
     const checkOut = dto.check_out_date ? new Date(dto.check_out_date) : existing.check_out_date;
@@ -762,6 +767,7 @@ export class ReservationsService {
             // Judged again on the LOCKED row: a check-in or cancellation that committed while
             // this edit queued changes what may be moved.
             if (stayChanged) stayRule(current.status, current.check_in_date);
+            if (dto.status) assertStatusChange(current.status, dto.status);
           },
           ...(changesStay ? { repriceStay: this.pricerFor() } : {}),
         }
@@ -776,6 +782,49 @@ export class ReservationsService {
       throw AppError.notFound(`Failed to update reservation with id ${id}`);
     }
     return updated;
+  }
+
+  /**
+   * (Round 12, N12-1) A guest checked in BEFORE their arrival day is in the unit tonight, so the
+   * booking must say so. Check-in allows arriving a day early (late-night arrivals), but the
+   * booking kept tomorrow's arrival — and every "is it free" reader, the overlap constraint and
+   * the public page all judge by the booking's dates, so tonight was sold again on top of the
+   * guest. The arrival is moved to the day they really arrived, through the same locked edit a
+   * date change uses: the extra night is priced the way any edit prices it (an unpaid pending
+   * stay re-priced; anything else moved by the difference, Stage 3), and the revenue ledger
+   * follows the booking after the write. If someone else holds tonight, the early check-in is
+   * refused — the guest can't be put in a unit another booking is promised.
+   */
+  async moveArrivalForEarlyCheckIn(id: string, arrivalDay: string, meta: ReservationRequestMeta): Promise<void> {
+    const existing = await this.repository.findById(id);
+    if (!existing) throw AppError.notFound(`Reservation with id ${id} not found`);
+    if (existing.check_in_date.toISOString().slice(0, 10) <= arrivalDay) return;
+
+    const from = new Date(`${arrivalDay}T00:00:00Z`);
+    const busy = AppError.conflict(
+      'Another booking holds this unit before this guest’s arrival day, so they can’t check in early. Move one of the bookings first.'
+    );
+    if (await this.repository.whatBlocks(existing.room_id, from, existing.check_out_date, id)) throw busy;
+    await this.repository.assertNoCompetingHold(existing.room_id, from, existing.check_out_date);
+    try {
+      await this.repository.update(
+        id,
+        { check_in_date: from, updated_by: meta.userId },
+        meta,
+        undefined,
+        {
+          validate: (current) => {
+            if (current.status !== 'PENDING' && current.status !== 'CONFIRMED') {
+              throw AppError.conflict('This booking changed while checking in. Refresh and try again.');
+            }
+          },
+          repriceStay: this.pricerFor(),
+        }
+      );
+    } catch (e) {
+      if (isReservationOverlapError(e)) throw busy;
+      throw e;
+    }
   }
 
   /**
@@ -987,14 +1036,15 @@ export class ReservationsService {
   async cancelReservation(id: string, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
     const existing = await this.getReservationById(id, activePropertyId);
 
-    if (['CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'].includes(existing.status)) {
-      throw AppError.conflict(`Cannot cancel reservation with status ${existing.status}`);
-    }
+    assertStatusChange(existing.status, 'CANCELLED');
 
     const updated = await this.repository.update(
       id,
       { status: 'CANCELLED', updated_by: meta.userId },
-      meta
+      meta,
+      undefined,
+      // (Round 12) Re-judged on the locked row: a check-in that landed while this queued wins.
+      { validate: (current) => assertStatusChange(current.status, 'CANCELLED') }
     );
 
     if (!updated) {
