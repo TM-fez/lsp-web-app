@@ -1,5 +1,6 @@
 import { sql, type Kysely } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { REFUND_LOWERED_REASON } from '../../core/money/folio.js';
 
 /**
  * (R10 #6) Live bookings whose money all went back but whose agreed total was never lowered.
@@ -42,6 +43,12 @@ export async function findUnloweredRefunds(db: Kysely<Database>): Promise<Unlowe
       LEFT JOIN rooms rm ON rm.id = r.room_id
      WHERE r.deleted_at IS NULL
        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+       -- (Round 11, N11-2) A refund that lowered the total is today's rule at work, not a
+       -- legacy one: a deposit refunded on a stay that still owes the rest belongs here no more.
+       AND NOT EXISTS (
+         SELECT 1 FROM audit_logs a
+          WHERE a.entity = 'reservations' AND a.entity_id = r.id::text
+            AND a.diff->>'reason' = ${REFUND_LOWERED_REASON})
        AND r.folio_total_amount > 0
        AND m.refunded > 0
        AND m.paid <= 0

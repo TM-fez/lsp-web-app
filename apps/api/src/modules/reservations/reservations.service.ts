@@ -8,6 +8,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
 import { describeThebe, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
+import { assertStayChangeAllowed, stayChangeProblem } from './reservations.moveRules.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
 import type { UnitType } from '../pricing/pricing.types.js';
@@ -197,7 +198,13 @@ export class ReservationsService {
               // refunds lowered the agreed total (2026-10-02) still carry their old total, so
               // the P0-total test above misses them and they read UNPAID — as if the guest had
               // never paid. `npm run db:report-unlowered-refunds` lists any that still owe on paper.
-              invoices.some((i) => i.kind === 'REFUND') ? 'REFUNDED' : 'UNPAID'
+              // (Round 11, N11-2) …but only when no refund lowered the total. A deposit refunded
+              // under today's rule lowers the total by the deposit; what is left is a real debt,
+              // and "fully refunded" beside "P1,083 still outstanding" said two things at once.
+              invoices.some((i) => i.kind === 'REFUND') &&
+              !(outstanding > 0 && (await this.repository.refundLoweredTotal(id)))
+                ? 'REFUNDED'
+                : 'UNPAID'
             : outstanding > 0 ? 'PART_PAID' : 'PAID',
       total_source: source,
       invoices,
@@ -506,6 +513,7 @@ export class ReservationsService {
       this.repository.calendarClosures(propertyId, from, to),
     ]);
     const paid = await this.repository.paidToDate(rows.map((r) => r.id));
+    const refunded = await this.repository.withRefunds(rows.map((r) => r.id));
 
     // A stay with no agreed total yet (made before totals were frozen) is priced at today's
     // rates — exactly what its folio does — so the corner and the drawer never disagree. A
@@ -534,7 +542,11 @@ export class ReservationsService {
         r.status === 'BLOCKED' ||
         (agreed?.frozen === true && agreed.total === 0) ||
         (agreed != null && received > 0 && received >= agreed.total);
-      return { ...r, payment_incomplete: !settled };
+      // (Round 11) A stay whose money all went back (agreed total lowered to P0 by the refund,
+      // owner decision 2026-10-02) looked like any other paid bar; the board marks it, as the
+      // folio does with payment_state REFUNDED. A complimentary P0 stay has no refund.
+      const fullyRefunded = agreed?.frozen === true && agreed.total === 0 && received <= 0 && refunded.has(r.id);
+      return { ...r, payment_incomplete: !settled, fully_refunded: fullyRefunded };
     });
 
     const closed: CalendarClosure[] = [
@@ -632,7 +644,13 @@ export class ReservationsService {
     }
   }
 
-  async modifyReservation(id: string, dto: UpdateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+  async modifyReservation(
+    id: string,
+    dto: UpdateReservationDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string,
+    isAdmin = false
+  ): Promise<ReservationRow> {
     await this.assertCrmContactsExist(dto);
     const existing = await this.getReservationById(id, activePropertyId);
 
@@ -675,6 +693,25 @@ export class ReservationsService {
     if (checkIn >= checkOut) {
       throw AppError.badRequest('Check-out date must be after check-in date');
     }
+
+    // (Round 11, N11-1) The drawer sends every field back, so "did the stay change" is a
+    // question about VALUES, not about which keys were sent — re-saving a cancelled booking's
+    // note must not be refused for "moving" it onto the dates it already has.
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const stayChanged =
+      day(checkIn) !== day(existing.check_in_date) ||
+      day(checkOut) !== day(existing.check_out_date) ||
+      roomId !== existing.room_id;
+    const stayRule = (status: string, fromCheckIn: Date) =>
+      assertStayChangeAllowed({
+        status,
+        fromCheckIn: day(fromCheckIn),
+        checkIn: day(checkIn),
+        checkOut: day(checkOut),
+        today: todayInPropertyTZ(),
+        isAdmin,
+      });
+    if (stayChanged) stayRule(existing.status, existing.check_in_date);
 
     // Re-check availability if dates or room changed
     if (dto.check_in_date || dto.check_out_date || dto.room_id) {
@@ -722,6 +759,9 @@ export class ReservationsService {
             if (inDate >= outDate) {
               throw AppError.badRequest('Check-out date must be after check-in date');
             }
+            // Judged again on the LOCKED row: a check-in or cancellation that committed while
+            // this edit queued changes what may be moved.
+            if (stayChanged) stayRule(current.status, current.check_in_date);
           },
           ...(changesStay ? { repriceStay: this.pricerFor() } : {}),
         }
@@ -751,7 +791,7 @@ export class ReservationsService {
    * has arrived, so only the unit and the leaving day can change. Booking.com blocks belong
    * to Booking.com; checked-out and cancelled stays are history.
    */
-  async previewMove(id: string, q: MovePreviewQueryDTO, activePropertyId: string): Promise<MovePreview> {
+  async previewMove(id: string, q: MovePreviewQueryDTO, activePropertyId: string, isAdmin = false): Promise<MovePreview> {
     const existing = await this.getReservationById(id, activePropertyId);
     const day = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
     const roomId = q.room_id ?? existing.room_id;
@@ -765,31 +805,34 @@ export class ReservationsService {
       opens_cleaning_task: existing.status === 'CHECKED_IN' && roomId !== existing.room_id,
     };
     const refuse = (reason: string): MovePreview => ({
-      ...base, allowed: false, reason, current_total: existing.folio_total_amount, new_total: null,
+      ...base, paid_amount: 0, allowed: false, reason, current_total: existing.folio_total_amount, new_total: null,
       total_source: existing.folio_total_amount != null ? 'FOLIO' : 'PRICED',
     });
 
-    if (!['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(existing.status)) {
-      return refuse(
-        existing.status === 'BLOCKED'
-          ? 'This is a Booking.com booking — change it on Booking.com.'
-          : 'Only pending, confirmed and in-house stays can be moved.'
-      );
-    }
-    if (existing.status === 'CHECKED_IN' && checkIn !== day(existing.check_in_date)) {
-      return refuse('This guest has already arrived, so the arrival day can’t change — only the unit or the leaving day.');
-    }
-    if (checkIn >= checkOut) return refuse('The stay must be at least one night.');
-    if (checkIn !== day(existing.check_in_date) && checkIn < todayInPropertyTZ()) {
-      return refuse('A stay can’t be moved to start in the past.');
-    }
+    // (Round 11) The same rule the edit enforces — see reservations.moveRules.ts.
+    const problem = stayChangeProblem({
+      status: existing.status,
+      fromCheckIn: day(existing.check_in_date),
+      checkIn,
+      checkOut,
+      today: todayInPropertyTZ(),
+      isAdmin,
+    });
+    if (problem) return refuse(problem.message);
     if (roomId !== existing.room_id && (await this.repository.roomPropertyId(roomId)) !== activePropertyId) {
       return refuse('That unit is not in this property.');
     }
     const ci = new Date(`${checkIn}T00:00:00Z`);
     const co = new Date(`${checkOut}T00:00:00Z`);
-    if (!(await this.checkAvailability(roomId, ci, co, id))) {
-      return refuse('That unit isn’t free for those nights — another booking, a closure or a repair is in the way.');
+    const blocker = await this.repository.whatBlocks(roomId, ci, co, id);
+    if (blocker) {
+      return refuse(
+        blocker === 'BOOKING'
+          ? 'That unit isn’t free for those nights — another booking is in the way.'
+          : blocker === 'REPAIR'
+            ? 'That unit isn’t free for those nights — a repair is booked on it.'
+            : 'That unit isn’t free for those nights — it is closed (maintenance or out of service).'
+      );
     }
     try {
       await this.repository.assertNoCompetingHold(roomId, ci, co);
@@ -802,12 +845,12 @@ export class ReservationsService {
     const [was, now] = await Promise.all([this.priceStay(existing, existing), this.priceStay(after, after)]);
     const priceable = !('priceable' in was && was.priceable === false) && !('priceable' in now && now.priceable === false);
     const nowTotal = priceable ? (now as ReservationPricing).total_amount : null;
+    const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
 
     if (existing.folio_total_amount == null) {
       // Nothing agreed: the folio shows today's price for whatever the stay is, so does this.
-      return { ...base, allowed: true, reason: null, current_total: priceable ? (was as ReservationPricing).total_amount : null, new_total: nowTotal, total_source: 'PRICED' };
+      return { ...base, paid_amount: paid, allowed: true, reason: null, current_total: priceable ? (was as ReservationPricing).total_amount : null, new_total: nowTotal, total_source: 'PRICED' };
     }
-    const paid = (await this.repository.paidToDate([id])).get(id) ?? 0;
     let newTotal: number | null;
     if (!priceable) newTotal = existing.folio_total_amount; // the edit leaves an unpriceable stay's total alone
     else if (existing.status === 'PENDING' && paid === 0) newTotal = nowTotal;
@@ -815,7 +858,7 @@ export class ReservationsService {
     if (newTotal != null && newTotal < 0) {
       return refuse('This move would take the agreed price below zero because of earlier refunds. Ask the owner to review the refunds first.');
     }
-    return { ...base, allowed: true, reason: null, current_total: existing.folio_total_amount, new_total: newTotal, total_source: 'FOLIO' };
+    return { ...base, paid_amount: paid, allowed: true, reason: null, current_total: existing.folio_total_amount, new_total: newTotal, total_source: 'FOLIO' };
   }
 
   /**

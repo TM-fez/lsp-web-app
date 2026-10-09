@@ -58,7 +58,7 @@ export class ReservationsController {
     try {
       const parsed = MovePreviewQuerySchema.safeParse(req.query);
       if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? 'Choose the new unit or dates.');
-      res.json(await this.service.previewMove(req.params.id as string, parsed.data, req.activePropertyId as string));
+      res.json(await this.service.previewMove(req.params.id as string, parsed.data, req.activePropertyId as string, req.user?.role === 'admin'));
     } catch (err) {
       next(err);
     }
@@ -106,7 +106,14 @@ export class ReservationsController {
     try {
       const dto = req.body as UpdateReservationDTO;
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.modifyReservation(req.params.id as string, dto, meta, req.activePropertyId);
+      const reservation = await this.service.modifyReservation(
+        req.params.id as string,
+        dto,
+        meta,
+        req.activePropertyId,
+        // (Round 11) Only an admin may correct an in-house guest's arrival day.
+        req.user?.role === 'admin'
+      );
       res.json(reservation);
     } catch (err) {
       next(err);

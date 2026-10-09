@@ -12,6 +12,7 @@ import {
   CircleMinus,
   Plus,
   Search,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,7 @@ import {
   dayColumns,
   STATUS_WORDS,
   TONE_CLASS,
+  unitColumnWidth,
   unitTypeLabel,
   VIEW_DAYS,
   DRAGGABLE,
@@ -47,8 +49,13 @@ import {
 } from './util';
 import type { CalendarBooking, CalendarClosure, CalendarUnit, UnitType } from '@/types';
 
-/** Width of the unit-name column, and the narrowest a night may get before the board scrolls. */
-const UNIT_COL = '5.5rem';
+/**
+ * Width of the unit-name column, and the narrowest a night may get before the board scrolls.
+ * (Round 11) The column grows to the longest unit code on the board — a fixed 5.5rem cut
+ * "DEMO-B12" to "DEMO-…", and a unit you can't name is a unit you can't book. Set once as a
+ * CSS variable on the board so the header spacer and every row agree.
+ */
+const UNIT_COL = 'var(--unit-col)';
 const MIN_DAY = '2.75rem';
 
 /** (Calendar drag) A bar being dragged: where it started, and where it would land now. */
@@ -280,7 +287,12 @@ export function CalendarPage() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-line bg-paper">
           <div className="overflow-x-auto">
-            <div style={{ minWidth: `calc(${UNIT_COL} + ${days} * ${MIN_DAY})` }}>
+            <div
+              style={{
+                ['--unit-col' as string]: unitColumnWidth(data.units),
+                minWidth: `calc(${UNIT_COL} + ${days} * ${MIN_DAY})`,
+              }}
+            >
               <HeaderRow columns={columns} today={data.today} />
               {groups.map((g) => (
                 <Fragment key={g.type}>
@@ -431,7 +443,7 @@ function UnitRow({
         style={{ width: UNIT_COL }}
         title={unit.building_name ? `${unit.name} · ${unit.building_name}` : unit.name}
       >
-        <span className="truncate whitespace-nowrap">{unit.code}</span>
+        <span className="whitespace-nowrap">{unit.code}</span>
       </div>
       <div className="relative flex-1" data-track>
         <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))` }}>
@@ -483,20 +495,26 @@ function UnitRow({
               data-draggable={draggable || undefined}
               title={`${label} — ${STATUS_WORDS[tone]}, ${fmtDate(b.check_in_date)} to ${fmtDate(b.check_out_date)}${
                 b.payment_incomplete ? ' · payment incomplete' : ''
-              }`}
+              }${b.fully_refunded ? ' · fully refunded' : ''}`}
+              data-refunded={b.fully_refunded || undefined}
               style={barStyle(p)}
               className={cn(
                 barShape(p),
                 TONE_CLASS[tone],
                 'text-left hover:brightness-95',
                 draggable && 'cursor-grab active:cursor-grabbing',
-                draggingId === b.id && 'opacity-40'
+                draggingId === b.id && 'opacity-40',
+                // (Round 11) Fully refunded: faded with a dashed edge, so it doesn't read as paid.
+                b.fully_refunded && 'opacity-60 outline-2 -outline-offset-2 outline-dashed outline-ink/50'
               )}
             >
               <span className="flex h-full w-5 shrink-0 items-center justify-center bg-black/15">
                 <Search className="h-3 w-3" />
               </span>
               <span className="truncate px-1.5 text-xs font-medium">{label}</span>
+              {b.fully_refunded && (
+                <Undo2 aria-label="Fully refunded" className="mr-1.5 h-3 w-3 shrink-0" />
+              )}
               {b.payment_incomplete && (
                 <span
                   aria-label="Payment incomplete"
@@ -753,6 +771,19 @@ function MoveConfirm({ move, units, onClose }: { move: PendingMove; units: Calen
                           (delta ?? 0) > 0 ? '+' : '−'
                         }${formatMoney(Math.abs(delta ?? 0))}).`}
               </p>
+              {/* (Round 11) The price line says how the PRICE moves; staff also need to know
+                  what that means for the guest's money — will they owe, or be owed? */}
+              {p.new_total != null && (p.paid_amount > 0 || p.total_source === 'FOLIO') && (
+                <p data-testid="move-balance" className={p.new_total === p.paid_amount ? 'text-muted' : 'text-terra'}>
+                  {p.new_total > p.paid_amount
+                    ? `After the move the guest will owe ${formatMoney(p.new_total - p.paid_amount)}${
+                        p.paid_amount > 0 ? ` (${formatMoney(p.paid_amount)} already paid)` : ''
+                      }.`
+                    : p.new_total < p.paid_amount
+                      ? `After the move the guest will be due a refund of ${formatMoney(p.paid_amount - p.new_total)} — they have paid ${formatMoney(p.paid_amount)}.`
+                      : 'After the move the stay is paid in full — nothing owed either way.'}
+                </p>
+              )}
               {p.opens_cleaning_task && (
                 <p className="text-muted">The guest is in-house, so {code(b.room_id)} gets a cleaning job when they move.</p>
               )}

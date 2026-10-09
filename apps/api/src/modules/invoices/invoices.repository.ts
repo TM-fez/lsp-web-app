@@ -12,6 +12,7 @@ import {
   paidToDate,
   OPEN_INVOICE_STATUSES,
   TERMINAL_RESERVATION_STATUSES,
+  REFUND_LOWERED_REASON,
 } from '../../core/money/folio.js';
 import type { PaginationOptions } from '../crm/crm.types.js';
 import { insertInvoice, reconcileReceivable } from './invoices.receivable.js';
@@ -630,7 +631,7 @@ export class InvoicesRepository {
               action: 'UPDATE',
               entity: 'reservations',
               entity_id: reservation.id,
-              diff: { folio_total_amount: { from: total, to: lowered }, reason: 'refund lowers the agreed total' },
+              diff: { folio_total_amount: { from: total, to: lowered }, reason: REFUND_LOWERED_REASON },
               ip_address: meta.ip ?? null,
             }).execute();
           }

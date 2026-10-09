@@ -231,6 +231,8 @@ export interface CalendarBooking {
   company_name: string | null;
   /** True while a live stay still owes money — the board's "incomplete payment" corner. */
   payment_incomplete: boolean;
+  /** (Round 11) Everything paid went back and the agreed total is P0 — drawn differently. */
+  fully_refunded: boolean;
 }
 
 /**
@@ -284,4 +286,9 @@ export interface MovePreview {
   total_source: 'FOLIO' | 'PRICED';
   /** An in-house guest changing unit: the vacated unit gets a cleaning job. */
   opens_cleaning_task: boolean;
+  /**
+   * (Round 11) Money received so far (net of refunds), so the confirm box can say whether the
+   * guest will owe money or be due a refund once the move lands — not just how the price moves.
+   */
+  paid_amount: number;
 }

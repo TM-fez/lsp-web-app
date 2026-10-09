@@ -883,6 +883,8 @@ export interface CalendarBooking {
   guest_name: string | null;
   company_name: string | null;
   payment_incomplete: boolean;
+  /** (Round 11) Everything paid went back; agreed total P0. */
+  fully_refunded: boolean;
 }
 
 export interface CalendarClosure {
@@ -915,4 +917,6 @@ export interface MovePreview {
   new_total: number | null;
   total_source: 'FOLIO' | 'PRICED';
   opens_cleaning_task: boolean;
+  /** (Round 11) Received so far, net of refunds — what the new price is weighed against. */
+  paid_amount: number;
 }

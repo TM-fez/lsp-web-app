@@ -255,6 +255,16 @@ These are real invariants. Breaking one is a production bug, not a style issue.
    ordinary `PATCH` does the move under the lock. Draggable: PENDING / CONFIRMED / CHECKED_IN; an in-house
    guest keeps their arrival day (a unit move opens the usual cleaning task). Price changes need no extra
    sign-off, same as editing dates in the drawer.
+   **R11 (2026-10-09).** (a) **The edit obeys the drag's rules** — one rule, `stayChangeProblem`
+   (`reservations.moveRules.ts`), asked by the preview and by `modifyReservation` (again under the row
+   lock): only PENDING / CONFIRMED / CHECKED_IN stays move; a new arrival day can't be in the past; a
+   cancelled booking's dates are fixed (its other fields still save). **Owner decision: after check-in
+   only an admin may change the arrival day** (403 for anyone else, on the server), never to a day after
+   today, and overlap rules still apply. (b) **A deposit refunded on a stay that still owes is `UNPAID`**,
+   not REFUNDED: a refund that lowered the total leaves an audit row (`REFUND_LOWERED_REASON`), and only
+   refunds WITHOUT one are legacy — the folio and `db:report-unlowered-refunds` both use it.
+   (c) The drag box names what's in the way (`whatBlocks`: booking / repair / closure) and says what the
+   guest will owe or be owed (`paid_amount`); the calendar marks `fully_refunded` stays and fits full unit codes.
 
 ✅ **Answered 2026-09-07 (D02):** `reports.forwardOccupancy` now counts PENDING as demand. Since
 D01 a held night is unsellable, so excluding it let the nudge advertise rooms nobody can book.
