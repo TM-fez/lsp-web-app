@@ -24,12 +24,11 @@ export class FinanceService {
 
   /** Real-time receivables snapshot, scoped to the caller's ACTIVE property. */
   async getCockpit(query: FinanceQuery): Promise<FinanceCockpit> {
-    const [summary, agingRows, propRows, invoiceRows] = await Promise.all([
-      this.repo.summary(query),
-      this.repo.aging(query),
-      this.repo.byProperty(query),
-      this.repo.outstanding(query),
-    ]);
+    // (Post-launch) One snapshot for all four reads, so the headline always equals the rows
+    // beneath it even while invoices are being raised (FinanceRepository.snapshot).
+    const [summary, agingRows, propRows, invoiceRows] = await this.repo.snapshot((repo) =>
+      Promise.all([repo.summary(query), repo.aging(query), repo.byProperty(query), repo.outstanding(query)])
+    );
 
     // Fill the fixed four-bucket shape; the query only returns non-empty buckets.
     const byBucket = new Map(agingRows.map((r) => [r.bucket, r]));
