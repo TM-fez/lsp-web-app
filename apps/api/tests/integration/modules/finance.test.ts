@@ -133,6 +133,40 @@ describe('Financial Cockpit — receivables (live DB)', () => {
   // Re-test round 3: refunds_payable summed OPEN refund invoices — but a credit note is
   // born PAID, so it was always 0. It is now what live bookings have been paid beyond
   // their agreed total (a stay shortened after payment): money owed back to guests.
+  // (Post-launch) The four cockpit reads used to see the database at four different instants, so
+  // an invoice raised between them showed in the headline but not in the rows (seen in CI:
+  // 156600 over rows adding up to 150000). Here an invoice lands after the summary is read and
+  // before the per-property split is: one snapshot means the split can't see it either.
+  it('reads the headline and the rows beneath it from one snapshot, even while an invoice is raised', async () => {
+    let summaryDone!: () => void;
+    const afterSummary = new Promise<void>((r) => (summaryDone = r));
+    let raced: string | undefined;
+    class Racing extends FinanceRepository {
+      override async summary(q: Parameters<FinanceRepository['summary']>[0]) {
+        const r = await super.summary(q);
+        summaryDone();
+        return r;
+      }
+      override async byProperty(q: Parameters<FinanceRepository['byProperty']>[0]) {
+        await afterSummary;
+        // Another desk raises an invoice for this property, outside the cockpit's reads.
+        raced = (await db.insertInto('invoices').values({
+          number: `FIN-RACE-${Math.random().toString(36).slice(2, 10)}`, reservation_id: resA, kind: 'BALANCE', status: 'ISSUED',
+          subtotal_amount: 6_600, tax_rate_bps: 0, tax_amount: 0, total_amount: 6_600,
+          issued_by: userId, created_by: userId, updated_by: userId,
+        } as never).returning('id').executeTakeFirstOrThrow()).id;
+        return super.byProperty(q);
+      }
+    }
+    try {
+      const c = await new FinanceService(new Racing(db)).getCockpit({ propertyId: propA });
+      expect(c.summary.total_receivable).toBe(c.by_property.reduce((t, p) => t + p.amount, 0));
+      expect(c.summary.open_invoices).toBe(c.by_property.reduce((t, p) => t + p.count, 0));
+    } finally {
+      if (raced) await db.deleteFrom('invoices').where('id', '=', raced).execute();
+    }
+  });
+
   it('reports money owed back to guests (paid beyond the agreed total), per property', async () => {
     const before = (await service.getCockpit({ propertyId: propA })).summary.refunds_payable;
     const res = (await db.insertInto('reservations').values({

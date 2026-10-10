@@ -47,6 +47,22 @@ interface InvoiceRow {
 export class FinanceRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /**
+   * (Post-launch) Run `fn` against ONE consistent picture of the books. The cockpit reads the
+   * summary, the ageing, the per-property split and the list as four queries; on the shared
+   * pool each saw the database at its own instant, so an invoice raised in between showed in
+   * the headline but not in the rows beneath it ("P1,566 owed" over rows adding up to P1,500).
+   * A read-only REPEATABLE READ transaction gives every query the same snapshot.
+   */
+  async snapshot<T>(fn: (repo: this) => Promise<T>): Promise<T> {
+    const Repo = this.constructor as new (db: Kysely<Database>) => this;
+    return this.db
+      .transaction()
+      .setIsolationLevel('repeatable read')
+      .setAccessMode('read only')
+      .execute((trx) => fn(new Repo(trx)));
+  }
+
   // Headline totals in one pass: receivables (DEPOSIT+BALANCE) plus the refund
   // liability (REFUND), split with FILTER so a single scan does both.
   async summary(q: FinanceQuery): Promise<SummaryRow> {
