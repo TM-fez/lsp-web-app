@@ -24,9 +24,11 @@ export const MAX_PUBLIC_LEAD_DAYS = 548;
 const DAY_MS = 86_400_000;
 
 /** Whole nights between two dates (check-out exclusive), by calendar day in UTC. */
-export function stayNights(checkIn: Date, checkOut: Date): number {
-  const from = Date.UTC(checkIn.getUTCFullYear(), checkIn.getUTCMonth(), checkIn.getUTCDate());
-  const to = Date.UTC(checkOut.getUTCFullYear(), checkOut.getUTCMonth(), checkOut.getUTCDate());
+export function stayNights(checkIn: Date | string, checkOut: Date | string): number {
+  const a = new Date(checkIn);
+  const b = new Date(checkOut);
+  const from = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+  const to = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
   return Math.round((to - from) / DAY_MS);
 }
 

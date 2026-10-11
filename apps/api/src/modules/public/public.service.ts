@@ -9,6 +9,7 @@ import { sendEmail, isEmailConfigured } from '../../core/email/email.service.js'
 import type { CreateBookingDTO, LookupBookingDTO, PublicBookingSummary, PublicRequestMeta, StayUnitOption, SelfCheckinDTO, GuestCheckinInfo, CreateEnquiryDTO, EnquiryConfirmation, PublicPropertyOption } from './public.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 import type { CRMRequestMeta } from '../crm/crm.types.js';
+import { stayNights } from '../../core/stayLimits.js';
 
 const unitLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 
@@ -154,6 +155,20 @@ export class PublicService {
     if (!plan || plan.nightly_rate <= 0) {
       throw AppError.badRequest(
         `${unitLabel(dto.unit_type)} bookings aren’t open online right now. Please send us an enquiry instead.`,
+      );
+    }
+
+    // (Audit 2026-10-11, M-2) The rate plan's own limits were shown on the page but never
+    // enforced, so a stranger could hold a unit for a stay the house doesn't sell online.
+    const nights = stayNights(dto.check_in, dto.check_out);
+    if (nights < plan.min_nights) {
+      throw AppError.badRequest(
+        `${unitLabel(dto.unit_type)} stays are at least ${plan.min_nights} nights. Please choose a longer stay.`,
+      );
+    }
+    if (dto.guests > plan.max_guests) {
+      throw AppError.badRequest(
+        `A ${unitLabel(dto.unit_type)} sleeps up to ${plan.max_guests}. Please choose a larger unit or send us an enquiry.`,
       );
     }
 
