@@ -206,6 +206,23 @@ describe('rooms: feed and QR tokens only for people who manage channel sync', ()
     expect((await request(app).post(`/rooms/${roomA}/channel/rotate-token`).set('Authorization', 'Bearer t').set('x-property-id', propA)).status).toBe(403);
   });
 
+  // (Audit 2026-10-11, M-4) Only the reads were filtered: an edit, a close or a restore
+  // answered with the whole row, so PATCH /rooms/:id {} handed over both tokens.
+  it('hides them from every write response too — edit, close, restore', async () => {
+    asStaff();
+    const send = (method: 'patch' | 'post', path: string, body: object = {}) =>
+      request(app)[method](path).set('Authorization', 'Bearer t').set('x-property-id', propA).send(body);
+    for (const res of [
+      await send('patch', `/rooms/${roomA}`, {}),
+      await send('post', `/rooms/${roomA}/out-of-service`, { confirm_overlap: true }),
+      await send('post', `/rooms/${roomA}/restore`),
+    ]) {
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('ical_token');
+      expect(res.body).not.toHaveProperty('guest_qr_token');
+    }
+  });
+
   it('shows them to rooms.channel.manage (admin)', async () => {
     as(staffId, 'admin', ['rooms.read', 'rooms.update', 'rooms.channel.manage']);
     const one = await get(`/rooms/${roomA}`);

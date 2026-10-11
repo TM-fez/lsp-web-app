@@ -60,7 +60,7 @@ export class RoomsController {
       const dto = req.body as CreateRoomDTO;
       const meta = this.getRequestMeta(req);
       const room = await this.service.createRoom(dto, meta);
-      res.status(201).json(room);
+      res.status(201).json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -71,7 +71,7 @@ export class RoomsController {
       const dto = req.body as UpdateRoomDTO;
       const meta = this.getRequestMeta(req);
       const room = await this.service.updateRoom(req.params.id as string, dto, meta);
-      res.json(room);
+      res.json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -109,7 +109,7 @@ export class RoomsController {
     try {
       const meta = this.getRequestMeta(req);
       const room = await this.service.setMaintenance(req.params.id as string, meta, req.body);
-      res.json(room);
+      res.json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -119,7 +119,7 @@ export class RoomsController {
     try {
       const meta = this.getRequestMeta(req);
       const room = await this.service.setOutOfService(req.params.id as string, meta, req.body);
-      res.json(room);
+      res.json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -129,7 +129,7 @@ export class RoomsController {
     try {
       const meta = this.getRequestMeta(req);
       const room = await this.service.restoreRoom(req.params.id as string, meta);
-      res.json(room);
+      res.json(withoutSecrets(req, room));
     } catch (err) {
       next(err);
     }
@@ -154,6 +154,10 @@ export class RoomsController {
  * (Re-test 2026-10-04) rooms.update was too wide a key — maintenance and operations hold
  * it to flag units. Only rooms.channel.manage (admin, migration 076) sees the tokens now;
  * the unit drawer's channel-sync and QR boxes hide themselves when they are absent.
+ *
+ * (Audit 2026-10-11, M-4) …but only the three READS applied it. Create, edit, close and
+ * restore answered with the full row, so `PATCH /rooms/:id {}` handed both tokens to the
+ * very roles above. Every response that carries a room goes through here now.
  */
 function withoutSecrets<T extends object>(req: Request, room: T): T {
   if (req.user?.permissions.includes('rooms.channel.manage')) return room;
