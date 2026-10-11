@@ -697,6 +697,20 @@ export class ReservationsService {
       }
     }
 
+    // (Audit 2026-10-11, M-1) The Booking.com feed publishes every booking EXCEPT those that
+    // came from Booking.com. Relabelling a booking as BOOKING_COM would hide its nights from
+    // the channel (double-selling), and relabelling an OTA booking as ours would echo it back.
+    // The drawer re-sends the source on every save, so only a CHANGE across that line is refused.
+    if (
+      dto.source &&
+      dto.source !== existing.source &&
+      (dto.source === 'BOOKING_COM' || existing.source === 'BOOKING_COM')
+    ) {
+      throw AppError.badRequest(
+        'A booking can’t be moved to or from “Booking.com” — that label decides what the Booking.com calendar shows.'
+      );
+    }
+
     // Commercial invariant: CONFIRMED / CHECKED_IN / CHECKED_OUT are owned by the
     // system (payment via settlePaid(), and the check-in flow) — never set by a
     // direct edit. This keeps settlePaid() the sole commercial confirmer.

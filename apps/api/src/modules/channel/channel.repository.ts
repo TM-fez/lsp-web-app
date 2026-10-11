@@ -3,7 +3,7 @@ import type { Database, RoomRow, ReservationRow } from '../../db/types.js';
 import { propertyToday } from '../../core/time.js';
 import {
   EXPORTABLE_STATUSES,
-  EXPORT_SOURCES,
+  NON_EXPORT_SOURCES,
   IMPORT_SOURCE,
   IMPORT_STATUS,
   SYSTEM_USER_ID,
@@ -66,8 +66,8 @@ export class ChannelRepository {
       .executeTakeFirst();
   }
 
-  // The nights to publish to OTAs for one unit: its own DIRECT/WEBSITE sold stays from
-  // today onward. BOOKING_COM-sourced BLOCKED rows are EXCLUDED here (EXPORT_SOURCES) so
+  // The nights to publish to OTAs for one unit: every stay of ours from today onward.
+  // BOOKING_COM-sourced rows are EXCLUDED here (NON_EXPORT_SOURCES) so
   // an OTA's own booking is never looped back to it. Past stays are dropped to keep the
   // feed small. The WHERE mirrors the EXPORT_* constants — the single source of truth.
   async findExportableStays(roomId: string): Promise<ExportableStay[]> {
@@ -77,7 +77,7 @@ export class ChannelRepository {
       .where('room_id', '=', roomId)
       .where('deleted_at', 'is', null)
       .where('status', 'in', [...EXPORTABLE_STATUSES])
-      .where('source', 'in', [...EXPORT_SOURCES])
+      .where('source', 'not in', [...NON_EXPORT_SOURCES])
       .where(sql<boolean>`check_out_date >= ${propertyToday()}`)
       .orderBy('check_in_date')
       .execute();
