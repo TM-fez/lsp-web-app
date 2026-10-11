@@ -34,7 +34,11 @@ export const CreateRoomSchema = z.object({
   capacity: z.coerce.number().int().positive().default(4),
   notes: z.string().nullable().optional(),
   // Multi-property: which building this unit sits in, plus an optional floor label.
-  building_id: z.string().uuid().nullable().optional(),
+  // (Audit 2026-10-11, L-3) Required: a unit's property comes from its building, so a unit
+  // with none belonged to no property and vanished from every screen — admins' included —
+  // with its bookings. The scope check also skipped a null, so anyone with rooms.update
+  // could detach a unit.
+  building_id: z.string().uuid({ message: 'Choose the building this unit is in.' }),
   floor: z.coerce.number().int().min(0).max(200).nullable().optional(),
   // Ownership attribution + landlord contact (free text, wa.me-able phone).
   ownership: RoomOwnershipEnum.default('LIFESTYLE'),
@@ -50,7 +54,8 @@ export const UpdateRoomSchema = z.object({
   type: RoomTypeEnum.optional(),
   capacity: z.coerce.number().int().positive().optional(),
   notes: z.string().nullable().optional(),
-  building_id: z.string().uuid().nullable().optional(),
+  // (Audit L-3) May move to another building, never to none.
+  building_id: z.string().uuid({ message: 'Choose the building this unit is in.' }).optional(),
   floor: z.coerce.number().int().min(0).max(200).nullable().optional(),
   ownership: RoomOwnershipEnum.optional(),
   landlord_name: z.string().max(255).nullable().optional(),

@@ -241,6 +241,16 @@ describe('rooms: a unit can only be placed in a building of the active property'
     expect((await send('patch', `/rooms/${roomA}`, { building_id: bldB })).status).toBe(404);
   });
 
+  // (Audit 2026-10-11, L-3) "No building" put a unit in no property — gone from every screen.
+  it('refuses a unit with no building, on create and on an edit', async () => {
+    as(staffId, 'operations', ['rooms.read', 'rooms.create', 'rooms.update']);
+    expect((await send('post', '/rooms', { name: 'H6 nowhere', code: `H6-NOWHERE-${uniq}` })).status).toBe(400);
+    expect((await send('post', '/rooms', { name: 'H6 nowhere', code: `H6-NOWHERE-${uniq}`, building_id: null })).status).toBe(400);
+    expect((await send('patch', `/rooms/${roomA}`, { building_id: null })).status).toBe(400);
+    const row = await db.selectFrom('rooms').select('building_id').where('id', '=', roomA).executeTakeFirstOrThrow();
+    expect(row.building_id).toBe(bldA);
+  });
+
   it('accepts a building in the active property', async () => {
     as(staffId, 'operations', ['rooms.read', 'rooms.create', 'rooms.update']);
     const res = await send('post', '/rooms', { name: 'H6 ok', code: `H6-OK-${uniq}`, building_id: bldA });
