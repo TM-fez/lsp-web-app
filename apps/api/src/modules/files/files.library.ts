@@ -64,6 +64,10 @@ export interface LibraryViewer {
   isContractor: boolean;
   /** Holds files.delete (admin / operations): sees everyone's unfiled uploads, to file them. */
   canManageFiles: boolean;
+  /** (Audit M-5) Holds invoices.read: may see income receipts (proof a guest paid). */
+  canSeeIncomeReceipts: boolean;
+  /** (Audit M-5) Holds opex.read: may see expense receipts (what the business spent). */
+  canSeeExpenseReceipts: boolean;
   /** null = every property (admin); otherwise the properties this user belongs to. */
   accessiblePropertyIds: string[] | null;
   /**
@@ -145,6 +149,11 @@ function viewerWhere(v: LibraryViewer): RawBuilder<unknown> {
   // everyone with files.read. Until it is filed, it belongs to whoever uploaded it, plus
   // the people who manage files (files.delete) so a stray upload can still be tidied.
   if (!v.canManageFiles) parts.push(sql`(lib.category <> 'UNFILED' OR lib.created_by = ${v.userId})`);
+  // (Audit 2026-10-11, M-5) Owner decision R4(c), migration 083: the documents behind the
+  // money stay with whoever may read that ledger. Operations lost invoices.read / opex.read but
+  // still listed and downloaded every receipt here. The person who uploaded a receipt keeps it.
+  if (!v.canSeeIncomeReceipts) parts.push(sql`(lib.category <> 'INCOME_RECEIPTS' OR lib.created_by = ${v.userId})`);
+  if (!v.canSeeExpenseReceipts) parts.push(sql`(lib.category <> 'EXPENSE_RECEIPTS' OR lib.created_by = ${v.userId})`);
   if (v.isContractor) {
     parts.push(sql`(lib.created_by = ${v.userId} OR (lib.category = 'REPAIR_PHOTOS' AND lib.assignee = ${v.userId}))`);
   }
@@ -162,10 +171,15 @@ function viewerWhere(v: LibraryViewer): RawBuilder<unknown> {
     const standaloneNoProperty = v.allProperties
       ? sql`true`
       : sql`lib.created_by = ${v.userId}`;
+    // (Audit M-5) A receipt with no property is a COMPANY-level cost or payment — like the
+    // cost row itself, it is for people who see every property (CLAUDE.md "Company-level
+    // rows"), not for anyone it happens to be "attached" to.
     parts.push(sql`(
       ${mine}
-      OR (lib.property_id IS NULL AND lib.link_kind IS NOT NULL)
-      OR (lib.property_id IS NULL AND lib.link_kind IS NULL AND ${standaloneNoProperty})
+      OR (lib.property_id IS NULL AND lib.link_kind IS NOT NULL
+          AND lib.category NOT IN ('INCOME_RECEIPTS', 'EXPENSE_RECEIPTS'))
+      OR (lib.property_id IS NULL AND (lib.link_kind IS NULL OR lib.category IN ('INCOME_RECEIPTS', 'EXPENSE_RECEIPTS'))
+          AND ${standaloneNoProperty})
     )`);
     // (Audit 2026-10-11, H-2) A guest's profile picture belongs to no property, so the rule
     // above showed it to everyone — and each row carries the guest's name and id. That listed

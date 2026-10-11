@@ -69,6 +69,8 @@ export class FilesController {
       canSeeGuestDocuments: user.permissions.includes('files.guest_documents.read'),
       isContractor: user.role === 'contractor',
       canManageFiles: user.permissions.includes('files.delete'),
+      canSeeIncomeReceipts: user.permissions.includes('invoices.read'),
+      canSeeExpenseReceipts: user.permissions.includes('opex.read'),
       accessiblePropertyIds: scope.ids,
       allProperties: scope.allProperties,
     };
