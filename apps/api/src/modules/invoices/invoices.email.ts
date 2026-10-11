@@ -62,11 +62,14 @@ export function renderInvoiceEmail(d: InvoiceEmailData, company: CompanyDetails)
   ].filter((r): r is [string, string] => !!r[1]);
   const taxPct = Number.isInteger(d.tax_rate_bps / 100) ? String(d.tax_rate_bps / 100) : (d.tax_rate_bps / 100).toFixed(1);
   const stayLine = d.unit_code
-    ? `${d.unit_name ?? d.unit_code}${d.check_in_date ? ` &nbsp;·&nbsp; ${fmtDate(d.check_in_date)} → ${fmtDate(d.check_out_date)}` : ''}`
+    ? `${esc(d.unit_name ?? d.unit_code)}${d.check_in_date ? ` &nbsp;·&nbsp; ${fmtDate(d.check_in_date)} → ${fmtDate(d.check_out_date)}` : ''}`
     : '';
   // Greet whoever actually receives the email — the bill-to, falling back to the guest.
   const recipientName = d.bill_to_name ?? d.guest_name;
-  const greetName = recipientName ? recipientName.split(' ')[0] : 'there';
+  // (Audit 2026-10-11, L-1) The name is whatever was typed on the public booking page —
+  // unescaped, "<a/href=…>Pay_here</a>" became a live link inside a genuine invoice email
+  // from the business's own address. Every guest- or staff-typed value is escaped here.
+  const greetName = esc(recipientName ? recipientName.split(' ')[0]! : 'there');
   const paid = d.status === 'PAID';
   // Bank details only where money is still owed — never on a receipt, credit note or void.
   const owing = d.kind !== 'REFUND' && (d.status === 'ISSUED' || d.status === 'PARTIALLY_PAID');
@@ -77,7 +80,7 @@ export function renderInvoiceEmail(d: InvoiceEmailData, company: CompanyDetails)
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td style="font-size:18px;font-weight:bold;color:#22402f;">${BRAND}${businessLine ? `<div style="margin-top:4px;font-size:11px;font-weight:normal;color:#8e8576;">${businessLine}</div>` : ''}</td>
         <td align="right" style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8e8576;">${title}<br>
-          <span style="font-size:15px;color:#1b1815;letter-spacing:0;text-transform:none;">${d.number}</span></td>
+          <span style="font-size:15px;color:#1b1815;letter-spacing:0;text-transform:none;">${esc(d.number)}</span></td>
       </tr></table>
     </div>
     <div style="padding:22px 28px;font-size:14px;line-height:1.6;">
