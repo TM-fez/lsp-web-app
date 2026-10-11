@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { UnitTypeEnum } from '../pricing/pricing.types.js';
+import { MAX_PUBLIC_STAY_NIGHTS, stayNights, withinPublicLead } from '../../core/stayLimits.js';
 
 // A public, guest-facing booking request. No auth — this is the front door onto
 // the same booking engine staff use, so it is deliberately narrow and validated.
@@ -16,6 +17,16 @@ export const CreateBookingSchema = z
   .refine((d) => d.check_in < d.check_out, {
     message: 'check_out must be after check_in',
     path: ['check_out'],
+  })
+  // (Audit H-1) Bounded BEFORE anything is written: an unbounded date let one anonymous
+  // request crash the API while pricing, and a long one holds a real unit (invariant 7).
+  .refine((d) => stayNights(d.check_in, d.check_out) <= MAX_PUBLIC_STAY_NIGHTS, {
+    message: 'Online bookings can be up to a year. For a longer stay, please send us an enquiry.',
+    path: ['check_out'],
+  })
+  .refine((d) => withinPublicLead(d.check_in), {
+    message: 'We take online bookings up to 18 months ahead. For a later stay, please send us an enquiry.',
+    path: ['check_in'],
   });
 
 export type CreateBookingDTO = z.infer<typeof CreateBookingSchema>;

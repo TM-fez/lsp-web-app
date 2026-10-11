@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
+import { STAY_TOO_LONG_MESSAGE, withinStayLimit } from '../../core/stayLimits.js';
 import { UnitTypeEnum, type UnitType } from '../pricing/pricing.types.js';
 import type { PriceSegment } from '../pricing/pricing.types.js';
 
@@ -18,6 +19,11 @@ export const CreateQuoteSchema = z
   })
   .refine((d) => d.check_in < d.check_out, {
     message: 'check_out must be after check_in',
+    path: ['check_out'],
+  })
+  // (Audit H-1) Same ceiling as the price engine, refused before anything is written.
+  .refine((d) => withinStayLimit(d.check_in, d.check_out), {
+    message: STAY_TOO_LONG_MESSAGE,
     path: ['check_out'],
   });
 
