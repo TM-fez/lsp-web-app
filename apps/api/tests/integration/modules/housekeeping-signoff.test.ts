@@ -153,6 +153,12 @@ describe('Three-stage housekeeping flow (live DB)', () => {
     expect(ticked.body.items.find((i: any) => i.id === first).checked).toBe(true);
     const unticked = await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: first, checked: false });
     expect(unticked.body.items.find((i: any) => i.id === first).checked).toBe(false);
+    // (Audit 2026-10-11, L-4) Both the tick and the untick leave an audit row.
+    const trail = await db.selectFrom('audit_logs').select('diff')
+      .where('entity', '=', 'housekeeping_tasks').where('entity_id', '=', taskId).execute();
+    const marks = trail.map((a) => a.diff as { checklist_item_id?: string; checked?: boolean })
+      .filter((d) => d.checklist_item_id === first).map((d) => d.checked);
+    expect(marks).toEqual(expect.arrayContaining([true, false]));
 
     for (const item of before.items) {
       await post(`/api/housekeeping/rooms/${roomId}/checks`, { item_id: item.id, checked: true });
