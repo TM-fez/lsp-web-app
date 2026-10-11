@@ -157,12 +157,25 @@ export class PayrollRepository {
    * `payroll:YYYY-MM:<propertyId>` = one property's share.
    */
   async postedMarkers(month: string): Promise<Set<string>> {
+    // (Audit 2026-10-11, M-7) `notes` is free text on any cost, so a CBD-only accountant
+    // could type "payroll:2026-11" (or "…:<Village id>") on a CBD cost and block the month,
+    // or silently drop the Village's share from an all-property posting. A marker now counts
+    // only on the cost it describes: the company marker on a company-level cost (which a
+    // limited user cannot create), a property's marker on that property's own cost.
     const rows = await this.db
       .selectFrom('operating_expenses')
       .select('notes')
       .where('deleted_at', 'is', null)
       .where('category', '=', 'PAYROLL')
-      .where((eb) => eb.or([eb('notes', '=', `payroll:${month}`), eb('notes', 'like', `payroll:${month}:%`)]))
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('notes', '=', `payroll:${month}`), eb('property_id', 'is', null)]),
+          eb.and([
+            eb('notes', 'like', `payroll:${month}:%`),
+            eb(sql<string>`notes`, '=', sql<string>`'payroll:' || ${month} || ':' || property_id::text`),
+          ]),
+        ])
+      )
       .execute();
     return new Set(rows.map((r) => r.notes ?? ''));
   }

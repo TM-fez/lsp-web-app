@@ -206,8 +206,12 @@ export class OperatingExpensesRepository {
       // the "already generated?" read and the insert cannot be split by a concurrent run.
       const wrote = await this.db.transaction().execute(async (trx) => {
         const tag = `recurring:${t.id}:${month}`;
+        // (Audit M-7) Only a row in the template's own property counts as "already generated" —
+        // a tag typed onto some other property's cost can't skip this one.
         const exists = await trx.selectFrom('operating_expenses').select('id')
-          .where('notes', '=', tag).where('deleted_at', 'is', null).executeTakeFirst();
+          .where('notes', '=', tag).where('deleted_at', 'is', null)
+          .where((eb) => (t.property_id === null ? eb('property_id', 'is', null) : eb('property_id', '=', t.property_id)))
+          .executeTakeFirst();
         if (exists) return false;
         const ins = await trx.insertInto('operating_expenses').values({
           property_id: t.property_id,

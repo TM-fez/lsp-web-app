@@ -10,6 +10,17 @@ import type {
   UpdateRecurringDTO,
 } from './operating-expenses.types.js';
 
+/**
+ * (Audit 2026-10-11, M-7) `payroll:…` and `recurring:…` notes are the markers the payroll
+ * posting and the recurring-cost generator use to know a month is done. Typed by hand, they
+ * could close another property's month. Only the system writes them.
+ */
+function assertNotReservedNote(notes: string | null | undefined): void {
+  if (notes && /^\s*(payroll|recurring):/i.test(notes)) {
+    throw AppError.badRequest('Notes can’t start with “payroll:” or “recurring:” — those are kept for the system.');
+  }
+}
+
 export class OperatingExpensesService {
   constructor(private readonly repository: OperatingExpensesRepository) {}
 
@@ -24,6 +35,7 @@ export class OperatingExpensesService {
   }
 
   create(dto: CreateOperatingExpenseDTO, meta: OperatingExpensesRequestMeta) {
+    assertNotReservedNote(dto.notes);
     return this.repository.create(
       {
         property_id: dto.property_id ?? null,
@@ -43,6 +55,12 @@ export class OperatingExpensesService {
   }
 
   async update(id: string, dto: UpdateOperatingExpenseDTO, meta: OperatingExpensesRequestMeta) {
+    if (dto.notes !== undefined) {
+      // Re-saving a system-posted cost sends its marker back unchanged — that is fine.
+      const existing = await this.repository.findById(id);
+      if (!existing) throw AppError.notFound(`Operating expense ${id} not found`);
+      if (dto.notes !== existing.notes) assertNotReservedNote(dto.notes);
+    }
     const patch = {
       ...(dto.property_id !== undefined ? { property_id: dto.property_id } : {}),
       ...(dto.category !== undefined ? { category: dto.category } : {}),

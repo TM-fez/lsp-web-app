@@ -183,6 +183,30 @@ describe('post to operating costs', () => {
   });
 });
 
+// (Audit 2026-10-11, M-7) The "already posted" markers live in a free-text notes column.
+// A CBD-only accountant could type the company marker, or the Village's, on a CBD cost and
+// close the month for everyone or silently drop the Village's payroll.
+describe('forged payroll markers', () => {
+  const MONTH_FORGED = '2031-09';
+
+  it('a marker typed on some other cost neither closes the month nor drops a property', async () => {
+    // As if typed before this fix (the opex form now refuses such notes outright).
+    for (const notes of [`payroll:${MONTH_FORGED}`, `payroll:${MONTH_FORGED}:${propVillage}`]) {
+      await db.insertInto('operating_expenses').values({
+        property_id: propCbd, category: 'PAYROLL', description: 'forged', amount: 1, incurred_on: new Date('2031-09-01'),
+        notes, created_by: clerk, updated_by: clerk,
+      } as never).execute();
+    }
+    asAdmin();
+    const res = await call('post', '/payroll/post-to-costs', { month: MONTH_FORGED });
+    expect(res.status).toBe(201);
+    const rows = await db.selectFrom('operating_expenses').select(['property_id', 'amount'])
+      .where('id', 'in', res.body.operating_expense_ids).execute();
+    expect(rows.find((r) => r.property_id === propVillage)?.amount).toBeGreaterThanOrEqual(2_000_00);
+    expect(rows.some((r) => r.property_id === null)).toBe(true);
+  });
+});
+
 describe('R5 — a person who works in two properties is costed once', () => {
   const MONTH_A = '2031-05';
   const MONTH_B = '2031-06';
