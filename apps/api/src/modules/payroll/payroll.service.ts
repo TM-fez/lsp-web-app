@@ -59,6 +59,23 @@ export class PayrollService {
   async upsertCompensation(userId: string, dto: UpsertCompensationDTO, scope: PropertyScope, meta: PayrollRequestMeta) {
     // Someone outside the caller's properties is "not found" — same as every other scoped by-id route.
     if (!(await this.repo.employeeVisible(userId, scope))) throw AppError.notFound('Staff member not found');
+    // (Audit 2026-10-11, M-6) Nobody but an admin sets their own pay or payout account.
+    if (userId === meta.userId && scope.ids !== null) {
+      throw AppError.forbidden('You can’t change your own pay. Ask an admin to make this change.');
+    }
+    // (Audit M-6) Seeing someone (a shared membership) is not the same as owning their cost.
+    // The R5 guard below only stopped a limited user MOVING a home they don't hold; editing
+    // the amount or bank account of pay costed to another property was still open, and the
+    // other property's next posting charged it. Pay costed outside your properties — or at
+    // company level — is for someone who works across all properties.
+    if (!scope.allProperties) {
+      const current = await this.repo.currentHome(userId);
+      if (!current || !(scope.ids ?? []).includes(current)) {
+        throw AppError.forbidden(
+          'This person’s pay is costed to a property you don’t manage. Ask someone who works across all properties to change it.',
+        );
+      }
+    }
     // (R5) Where their pay is costed: one of the properties they work in, and — for someone
     // limited to some properties — one of the caller's own. Only an all-property user may
     // make it company-level (null): that moves the cost out of every property's P&L.

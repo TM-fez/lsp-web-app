@@ -236,6 +236,22 @@ describe('R5 — a person who works in two properties is costed once', () => {
     expect((await call('put', `/payroll/employees/${dual}`, { gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: propVillage })).status).toBe(200);
   });
 
+  // (Audit 2026-10-11, M-6) The guard above stopped a limited user MOVING the home, but not
+  // changing the pay or bank account itself — which the Village's next posting then charged.
+  it('a limited user cannot change the pay or bank account of someone costed to another property', async () => {
+    asClerk(); // CBD only; dual works at CBD too but is costed to the Village
+    const res = await call('put', `/payroll/employees/${dual}`, { gross_amount: 9_000_00, frequency: 'MONTHLY', bank_account: '000-attacker' });
+    expect(res.status).toBe(403);
+    const row = await db.selectFrom('staff_compensation').select(['gross_amount', 'bank_account']).where('user_id', '=', dual).executeTakeFirstOrThrow();
+    expect(row.gross_amount).toBe(500_00);
+    expect(row.bank_account).not.toBe('000-attacker');
+  });
+
+  it('nobody but an admin sets their own pay', async () => {
+    asClerk();
+    expect((await call('put', `/payroll/employees/${clerk}`, { gross_amount: 9_000_00, frequency: 'MONTHLY' })).status).toBe(403);
+  });
+
   it('a limited user cannot make a salary company-level', async () => {
     asClerk();
     const res = await call('put', `/payroll/employees/${cbdStaff}`, { gross_amount: 1_000_00, frequency: 'MONTHLY', home_property_id: null });
