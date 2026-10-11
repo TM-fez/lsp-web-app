@@ -35,7 +35,10 @@ export class HoldsController {
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as CreateHoldDTO;
-      res.status(201).json(await this.service.createHold(dto, this.getRequestMeta(req)));
+      const s = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      res.status(201).json(
+        await this.service.createHold(dto, this.getRequestMeta(req), { userId: req.user!.sub, ids: s.ids, allProperties: s.allProperties })
+      );
     } catch (err) {
       next(err);
     }

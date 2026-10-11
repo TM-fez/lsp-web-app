@@ -13,9 +13,9 @@ describe('OperatingExpensesService — reserved notes', () => {
   const base = { category: 'OTHER', description: 'x', amount: 100, incurred_on: new Date('2031-09-01') } as never;
   const meta = { userId: 'u' };
 
-  it('refuses a new cost whose notes start with a system marker', () => {
+  it('refuses a new cost whose notes start with a system marker', async () => {
     for (const notes of ['payroll:2031-09', '  Recurring:abc:2031-09']) {
-      expect(() => svc.create({ ...(base as object), notes } as never, meta)).toThrow(/kept for the system/);
+      await expect(svc.create({ ...(base as object), notes } as never, meta)).rejects.toThrow(/kept for the system/);
     }
     expect(repo.create).not.toHaveBeenCalled();
   });

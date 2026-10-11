@@ -7,6 +7,7 @@ import { renderInvoiceEmail } from './invoices.email.js';
 import { sendEmail } from '../../core/email/email.service.js';
 import type { InvoiceRow } from '../../db/types.js';
 import type { PaginationOptions } from '../crm/crm.types.js';
+import type { QuoteScope } from '../quotes/quotes.types.js';
 import type {
   IssueInvoiceDTO,
   InvoiceFilters,
@@ -76,9 +77,11 @@ export class InvoicesService {
   async issueInvoice(
     dto: IssueInvoiceDTO,
     meta: InvoiceRequestMeta,
-    activePropertyId?: string
+    activePropertyId?: string,
+    scope?: QuoteScope
   ): Promise<InvoiceRow> {
-    const quote = await this.quotes.getQuote(dto.quote_id);
+    // (Audit L-10) Only a quote the caller may see — see HoldsService.createHold.
+    const quote = await this.quotes.getQuote(dto.quote_id, scope);
 
     // An explicit amount wins: a payment taken at the desk is for whatever the guest
     // actually handed over, which need not be the quote's deposit/balance split.
@@ -190,9 +193,9 @@ export class InvoicesService {
       throw AppError.conflict(`Cannot settle a ${invoice.status} invoice`);
     }
 
-    if (receiptFileId) {
-      const file = await this.filesRepo.findById(receiptFileId);
-      if (!file) throw AppError.badRequest('Invalid receipt_file_id');
+    // (Audit L-10) Your own upload (or you see every property) — not any file you have the id of.
+    if (receiptFileId && !(await this.filesRepo.linkableBy(receiptFileId, meta.userId))) {
+      throw AppError.badRequest('Invalid receipt_file_id');
     }
 
     const updated = await this.repository.settle(

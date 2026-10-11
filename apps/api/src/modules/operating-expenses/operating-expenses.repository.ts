@@ -1,12 +1,18 @@
 import { Kysely, Transaction, sql } from 'kysely';
 import type { Database, NewOperatingExpense, UpdateOperatingExpense, NewRecurringCost, UpdateRecurringCost } from '../../db/types.js';
 import type { OperatingExpenseFilters, OperatingExpensesRequestMeta } from './operating-expenses.types.js';
+import { fileLinkableBy } from '../../core/scope/fileLink.js';
 
 // Sentinel id used to make an "in" match nothing when the caller has no properties.
 const NO_PROPERTY = '00000000-0000-0000-0000-000000000000';
 
 export class OperatingExpensesRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** (Audit L-10) May `userId` attach this file to a record? See core/scope/fileLink.ts. */
+  fileLinkableBy(fileId: string, userId: string): Promise<boolean> {
+    return fileLinkableBy(this.db, fileId, userId);
+  }
 
   private base() {
     return this.db

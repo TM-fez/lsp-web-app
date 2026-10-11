@@ -5,6 +5,7 @@ import { holdConflictMessage, isHoldConflict } from './holds.conflicts.js';
 import type { HoldRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateHoldDTO, HoldFilters, HoldRequestMeta } from './holds.types.js';
+import type { QuoteScope } from '../quotes/quotes.types.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 
 export const HOLD_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -26,8 +27,11 @@ export class HoldsService {
     return this.repository.findPaginated(filters, pagination);
   }
 
-  async createHold(dto: CreateHoldDTO, meta: HoldRequestMeta): Promise<HoldRow> {
-    const quote = await this.quotes.getQuote(dto.quote_id);
+  async createHold(dto: CreateHoldDTO, meta: HoldRequestMeta, scope?: QuoteScope): Promise<HoldRow> {
+    // (Audit L-10) Only a quote the caller may see — made by them, held in their property, or
+    // they see every property. Attaching any quote id made it "held in mine", so visible, and
+    // let a quote someone else priced (an override, say) be paid at the desk.
+    const quote = await this.quotes.getQuote(dto.quote_id, scope);
     this.quotes.assertUsable(quote);
 
     // (Audit 2026-10-11, H-3) A hold on a booking is how that booking gets paid, and the first

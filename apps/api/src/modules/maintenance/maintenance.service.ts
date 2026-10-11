@@ -193,9 +193,9 @@ export class MaintenanceService {
       throw AppError.conflict(`Cannot start work order from status ${order.status}`);
     }
 
-    if (data.before_file_id) {
-      const file = await this.filesRepo.findById(data.before_file_id);
-      if (!file) throw AppError.badRequest('Invalid before_file_id');
+    // (Audit L-10) A photo you uploaded (or you see every property), not any file id.
+    if (data.before_file_id && !(await this.filesRepo.linkableBy(data.before_file_id, meta.userId))) {
+      throw AppError.badRequest('Invalid before_file_id');
     }
 
     return this.repo.update(id, { 
@@ -206,17 +206,18 @@ export class MaintenanceService {
   }
 
   async complete(id: string, data: CompleteWorkOrderDTO, meta: { userId: string, requestId?: string }) {
+    // (Audit L-10) A photo you uploaded (or you see every property), not any file id. Checked
+    // BEFORE the transaction: it reads through the pool, and a pooled connection must never be
+    // held while asking the pool for another (R7 N7-1).
+    if (data.after_file_id && !(await this.filesRepo.linkableBy(data.after_file_id, meta.userId))) {
+      throw AppError.badRequest('Invalid after_file_id');
+    }
     return this.repo.transaction(async (trx) => {
       const order = await this.repo.findById(id, trx);
       if (!order) throw AppError.notFound('Work order not found');
 
       if (order.status !== 'IN_PROGRESS' && order.status !== 'BLOCKED') {
         throw AppError.conflict(`Cannot complete work order from status ${order.status}`);
-      }
-
-      if (data.after_file_id) {
-        const file = await this.filesRepo.findById(data.after_file_id);
-        if (!file) throw AppError.badRequest('Invalid after_file_id');
       }
 
       const updated = await this.repo.update(id, {

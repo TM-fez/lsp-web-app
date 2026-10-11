@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { InvoicesService } from './invoices.service.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { userCanAccessProperty } from '../../core/scope/activeProperty.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
 import { InvoiceListQuerySchema } from './invoices.types.js';
 import type { IssueInvoiceDTO, SettleInvoiceDTO, RefundInvoiceDTO } from './invoices.types.js';
 
@@ -66,7 +67,14 @@ export class InvoicesController {
   issue = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = req.body as IssueInvoiceDTO;
-      res.status(201).json(await this.service.issueInvoice(dto, this.getRequestMeta(req), req.activePropertyId));
+      const s = await propertyScopeForUser(req.user!.sub, req.user!.role);
+      res.status(201).json(
+        await this.service.issueInvoice(dto, this.getRequestMeta(req), req.activePropertyId, {
+          userId: req.user!.sub,
+          ids: s.ids,
+          allProperties: s.allProperties,
+        })
+      );
     } catch (err) {
       next(err);
     }

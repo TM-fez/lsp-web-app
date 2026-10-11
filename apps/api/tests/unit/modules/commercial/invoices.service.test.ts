@@ -24,7 +24,7 @@ function setup() {
       currency: 'BWP',
     }),
   } as any;
-  const files = { findById: vi.fn() } as any;
+  const files = { findById: vi.fn(), linkableBy: vi.fn().mockResolvedValue(true) } as any;
   return { svc: new InvoicesService(repo, quotes, files), repo, quotes, files };
 }
 
@@ -157,7 +157,8 @@ describe('InvoicesService.settleInvoice', () => {
   it('rejects an invalid receipt file reference', async () => {
     const { svc, repo, files } = setup();
     repo.findById.mockResolvedValue({ id: 'inv1', status: 'ISSUED' });
-    files.findById.mockResolvedValue(null);
+    // (Audit L-10) Not a file this user may attach (missing, or someone else's) — same answer.
+    files.linkableBy.mockResolvedValue(false);
     await expect(svc.settleInvoice('inv1', 'file-x', { userId: 'u1' })).rejects.toThrow('Invalid receipt_file_id');
   });
 

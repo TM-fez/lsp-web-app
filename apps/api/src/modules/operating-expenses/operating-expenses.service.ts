@@ -28,14 +28,26 @@ export class OperatingExpensesService {
     return this.repository.list(filters);
   }
 
+  /**
+   * (Audit 2026-10-11, L-10) The receipt files under this cost's property, so attaching another
+   * property's (or the company's) document here moved it into view. Your own upload, or you see
+   * every property.
+   */
+  private async assertReceiptLinkable(fileId: string | null | undefined, userId: string): Promise<void> {
+    if (fileId && !(await this.repository.fileLinkableBy(fileId, userId))) {
+      throw AppError.badRequest('That receipt couldn’t be found. Upload it again.');
+    }
+  }
+
   async get(id: string) {
     const row = await this.repository.findById(id);
     if (!row) throw AppError.notFound(`Operating expense ${id} not found`);
     return row;
   }
 
-  create(dto: CreateOperatingExpenseDTO, meta: OperatingExpensesRequestMeta) {
+  async create(dto: CreateOperatingExpenseDTO, meta: OperatingExpensesRequestMeta) {
     assertNotReservedNote(dto.notes);
+    await this.assertReceiptLinkable(dto.receipt_file_id, meta.userId);
     return this.repository.create(
       {
         property_id: dto.property_id ?? null,
@@ -55,11 +67,14 @@ export class OperatingExpensesService {
   }
 
   async update(id: string, dto: UpdateOperatingExpenseDTO, meta: OperatingExpensesRequestMeta) {
-    if (dto.notes !== undefined) {
-      // Re-saving a system-posted cost sends its marker back unchanged — that is fine.
+    if (dto.notes !== undefined || dto.receipt_file_id !== undefined) {
+      // Re-saving sends the marker and the receipt back unchanged — only a change is checked.
       const existing = await this.repository.findById(id);
       if (!existing) throw AppError.notFound(`Operating expense ${id} not found`);
-      if (dto.notes !== existing.notes) assertNotReservedNote(dto.notes);
+      if (dto.notes !== undefined && dto.notes !== existing.notes) assertNotReservedNote(dto.notes);
+      if (dto.receipt_file_id !== undefined && dto.receipt_file_id !== existing.receipt_file_id) {
+        await this.assertReceiptLinkable(dto.receipt_file_id, meta.userId);
+      }
     }
     const patch = {
       ...(dto.property_id !== undefined ? { property_id: dto.property_id } : {}),
