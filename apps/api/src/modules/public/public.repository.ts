@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow } from '../../db/types.js';
 import { propertyToday } from '../../core/time.js';
+import { SYSTEM_OTA_CONTACT_ID } from '../channel/channel.types.js';
 import type { UnitType } from '../pricing/pricing.types.js';
 import type { PublicPropertyOption, StayUnitOption } from './public.types.js';
 
@@ -152,6 +153,68 @@ export class PublicRepository {
     meta: { userId: string; ip?: string; requestId?: string }
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
+      // Someone else already holds this email as their own (migration 089: one live contact
+      // per email unless shared). Never answer that — it would tell a stranger who is a guest.
+      const emailOwnedElsewhere = async (email: string) =>
+        Boolean(
+          await trx
+            .selectFrom('contacts')
+            .select('id')
+            .where(sql<boolean>`lower(email) = lower(${email})`)
+            .where('id', '<>', contactId)
+            .where('deleted_at', 'is', null)
+            .where('email_shared', '=', false)
+            .executeTakeFirst()
+        );
+
+      // (Audit 2026-10-11, M-3) Every unclaimed Booking.com block points at ONE shared
+      // placeholder contact (migration 047). It has no email or phone, so the "fill the blanks
+      // of an anonymous contact" rule below wrote the first guest's name, email and phone onto
+      // it — after which every unclaimed OTA booking at every property showed that person, and
+      // no later guest's details could land. The guest gets their own record instead, and this
+      // booking (only) is pointed at it. The placeholder is never written to.
+      if (contactId === SYSTEM_OTA_CONTACT_ID) {
+        const shared = await emailOwnedElsewhere(submitted.email);
+        const created = await trx
+          .insertInto('contacts')
+          .values({
+            type: 'individual',
+            name: submitted.name,
+            email: submitted.email,
+            phone: submitted.phone || null,
+            email_shared: shared,
+            notes: shared ? 'Booking.com guest self check-in — possible duplicate of another guest with this email.' : null,
+            created_by: meta.userId,
+            updated_by: meta.userId,
+          } as never)
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'CREATE',
+          entity: 'contacts',
+          entity_id: created.id,
+          diff: { name: submitted.name, email_shared: shared, source: 'guest self check-in (Booking.com guest)' },
+          ip_address: meta.ip ?? null,
+        }).execute();
+        await trx
+          .updateTable('reservations')
+          .set({ contact_id: created.id, self_checkin_at: sql`now()`, updated_by: meta.userId, updated_at: sql`now()` })
+          .where('id', '=', reservationId)
+          .execute();
+        await trx.insertInto('audit_logs').values({
+          request_id: meta.requestId ?? null,
+          user_id: meta.userId,
+          action: 'UPDATE',
+          entity: 'reservations',
+          entity_id: reservationId,
+          diff: { self_checkin: true, contact_id: created.id },
+          ip_address: meta.ip ?? null,
+        }).execute();
+        return;
+      }
+
       const contact = await trx
         .selectFrom('contacts')
         .select(['name', 'email', 'phone'])
@@ -167,8 +230,12 @@ export class PublicRepository {
       } else if (submitted.name && submitted.name.trim().toLowerCase() !== contact.name.trim().toLowerCase()) {
         differs.push(`name “${submitted.name}”`);
       }
-      if (!contact.email) patch.email = submitted.email;
-      else if (submitted.email.toLowerCase() !== contact.email.toLowerCase()) differs.push(`email ${submitted.email}`);
+      if (!contact.email) {
+        // (Audit L-2) Writing an email another guest owns failed with a 409 — a yes/no answer
+        // to "is this email a guest here?". Note it for staff instead, like any other mismatch.
+        if (await emailOwnedElsewhere(submitted.email)) differs.push(`email ${submitted.email}`);
+        else patch.email = submitted.email;
+      } else if (submitted.email.toLowerCase() !== contact.email.toLowerCase()) differs.push(`email ${submitted.email}`);
       if (submitted.phone) {
         if (!contact.phone) patch.phone = submitted.phone;
         else if (submitted.phone.replace(/\s/g, '') !== contact.phone.replace(/\s/g, '')) differs.push(`phone ${submitted.phone}`);
