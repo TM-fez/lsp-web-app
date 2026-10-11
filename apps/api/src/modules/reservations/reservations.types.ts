@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_MONEY_THEBE } from '../../core/money/limits.js';
+import { STAY_TOO_LONG_MESSAGE, withinStayLimit } from '../../core/stayLimits.js';
 import type { ReservationRow } from '../../db/types.js';
 import type { CRMRequestMeta, PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 
@@ -54,7 +55,12 @@ export const CreateReservationSchema = z.object({
 }).refine(data => data.check_in_date < data.check_out_date, {
   message: "Check-out date must be after check-in date",
   path: ["check_out_date"],
-});
+})
+  // (Audit H-1) The engine refuses more anyway; saying so here keeps the answer a plain 400.
+  .refine((data) => withinStayLimit(data.check_in_date, data.check_out_date), {
+    message: STAY_TOO_LONG_MESSAGE,
+    path: ["check_out_date"],
+  });
 
 export const UpdateReservationSchema = z.object({
   contact_id: z.string().uuid().optional(),

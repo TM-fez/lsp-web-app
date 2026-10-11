@@ -5,6 +5,8 @@ import { holdConflictMessage, isHoldConflict } from './holds.conflicts.js';
 import type { HoldRow } from '../../db/types.js';
 import type { PaginatedResult, PaginationOptions } from '../crm/crm.types.js';
 import type { CreateHoldDTO, HoldFilters, HoldRequestMeta } from './holds.types.js';
+import type { QuoteScope } from '../quotes/quotes.types.js';
+import { nightsBetween } from '../quotes/quotes.util.js';
 
 export const HOLD_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RETRY_EXTENSION_MS = 15 * 60 * 1000; // each retry buys 15 more minutes
@@ -25,9 +27,32 @@ export class HoldsService {
     return this.repository.findPaginated(filters, pagination);
   }
 
-  async createHold(dto: CreateHoldDTO, meta: HoldRequestMeta): Promise<HoldRow> {
-    const quote = await this.quotes.getQuote(dto.quote_id);
+  async createHold(dto: CreateHoldDTO, meta: HoldRequestMeta, scope?: QuoteScope): Promise<HoldRow> {
+    // (Audit L-10) Only a quote the caller may see — made by them, held in their property, or
+    // they see every property. Attaching any quote id made it "held in mine", so visible, and
+    // let a quote someone else priced (an override, say) be paid at the desk.
+    const quote = await this.quotes.getQuote(dto.quote_id, scope);
     this.quotes.assertUsable(quote);
+
+    // (Audit 2026-10-11, H-3) A hold on a booking is how that booking gets paid, and the first
+    // payment freezes the booking's agreed total from the quote (settlePaid). So the quote must
+    // price THIS booking's stay — the same number of nights of the same kind of unit (the rate
+    // card has no seasons, so that is what decides the price). Without this check, someone who
+    // can quote and take payments (reception) could attach a one-night quote to a month's
+    // booking and agree the month at a one-night price: a discount nobody approved.
+    if (dto.reservation_id) {
+      const stay = await this.repository.reservationStay(dto.reservation_id);
+      if (!stay) throw AppError.notFound('Reservation not found');
+      const matches =
+        nightsBetween(new Date(stay.check_in_date), new Date(stay.check_out_date)) === quote.nights &&
+        stay.unit_type === quote.unit_type &&
+        (!dto.room_id || dto.room_id === stay.room_id);
+      if (!matches) {
+        throw AppError.conflict(
+          'That quote is for a different length of stay or a different kind of unit than this booking. Make a quote for the booking’s own stay.',
+        );
+      }
+    }
 
     // (R5 retest) A hold with no booking behind it reserves the unit by itself, so it must
     // not land on nights that are already booked or closed for a repair. (One attached to

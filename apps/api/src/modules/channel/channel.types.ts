@@ -15,8 +15,14 @@ export const EXPORTABLE_STATUSES = ['PENDING', 'CONFIRMED', 'CHECKED_IN'] as con
 
 // Only OUR OWN bookings get published. BOOKING_COM-sourced rows are excluded so an OTA's
 // own booking is never echoed back to it — that feedback loop is the one bug we cannot
-// ship (proven by channel-export.test.ts). 'WEBSITE' = a /stay booking; still ours.
-export const EXPORT_SOURCES = ['DIRECT', 'WEBSITE'] as const;
+// ship (proven by channel-export.test.ts).
+//
+// (Audit 2026-10-11, M-1) This used to be a whitelist, ['DIRECT', 'WEBSITE']. Migration 050
+// added WALK_IN / PHONE / EMAIL / CORPORATE / OTHER and the staff form defaults to WALK_IN, so
+// every booking made at the desk was left out of the feed and Booking.com went on selling
+// nights that were already taken (invariant 7). Now a blacklist: everything is ours except
+// what came FROM the channel — a new source is published by default, which is the safe side.
+export const NON_EXPORT_SOURCES = ['BOOKING_COM'] as const;
 
 // Stable, globally-unique VEVENT id for one of our reservations. Stable across re-exports
 // so subscribers update the same event rather than duplicating it.

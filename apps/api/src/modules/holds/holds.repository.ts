@@ -15,6 +15,19 @@ interface CreateHoldParams {
 export class HoldsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /** (Audit H-3) The stay a hold's booking is for: its dates, unit and that unit's type. */
+  async reservationStay(
+    reservationId: string
+  ): Promise<{ check_in_date: Date; check_out_date: Date; room_id: string; unit_type: string } | undefined> {
+    return this.db
+      .selectFrom('reservations as r')
+      .innerJoin('rooms as rm', 'rm.id', 'r.room_id')
+      .select(['r.check_in_date', 'r.check_out_date', 'r.room_id', 'rm.type as unit_type'])
+      .where('r.id', '=', reservationId)
+      .where('r.deleted_at', 'is', null)
+      .executeTakeFirst();
+  }
+
   /**
    * (R5 retest) May a booking-less hold sit on this unit for these nights? Same answer as a
    * booking would get — the unit's status, other bookings, and a serious repair's dates

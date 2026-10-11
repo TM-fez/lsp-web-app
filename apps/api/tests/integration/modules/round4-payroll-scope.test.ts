@@ -183,6 +183,30 @@ describe('post to operating costs', () => {
   });
 });
 
+// (Audit 2026-10-11, M-7) The "already posted" markers live in a free-text notes column.
+// A CBD-only accountant could type the company marker, or the Village's, on a CBD cost and
+// close the month for everyone or silently drop the Village's payroll.
+describe('forged payroll markers', () => {
+  const MONTH_FORGED = '2031-09';
+
+  it('a marker typed on some other cost neither closes the month nor drops a property', async () => {
+    // As if typed before this fix (the opex form now refuses such notes outright).
+    for (const notes of [`payroll:${MONTH_FORGED}`, `payroll:${MONTH_FORGED}:${propVillage}`]) {
+      await db.insertInto('operating_expenses').values({
+        property_id: propCbd, category: 'PAYROLL', description: 'forged', amount: 1, incurred_on: new Date('2031-09-01'),
+        notes, created_by: clerk, updated_by: clerk,
+      } as never).execute();
+    }
+    asAdmin();
+    const res = await call('post', '/payroll/post-to-costs', { month: MONTH_FORGED });
+    expect(res.status).toBe(201);
+    const rows = await db.selectFrom('operating_expenses').select(['property_id', 'amount'])
+      .where('id', 'in', res.body.operating_expense_ids).execute();
+    expect(rows.find((r) => r.property_id === propVillage)?.amount).toBeGreaterThanOrEqual(2_000_00);
+    expect(rows.some((r) => r.property_id === null)).toBe(true);
+  });
+});
+
 describe('R5 — a person who works in two properties is costed once', () => {
   const MONTH_A = '2031-05';
   const MONTH_B = '2031-06';
@@ -234,6 +258,22 @@ describe('R5 — a person who works in two properties is costed once', () => {
     // …while the Village clerk, who holds that home, may move it.
     asVillageClerk();
     expect((await call('put', `/payroll/employees/${dual}`, { gross_amount: 500_00, frequency: 'MONTHLY', home_property_id: propVillage })).status).toBe(200);
+  });
+
+  // (Audit 2026-10-11, M-6) The guard above stopped a limited user MOVING the home, but not
+  // changing the pay or bank account itself — which the Village's next posting then charged.
+  it('a limited user cannot change the pay or bank account of someone costed to another property', async () => {
+    asClerk(); // CBD only; dual works at CBD too but is costed to the Village
+    const res = await call('put', `/payroll/employees/${dual}`, { gross_amount: 9_000_00, frequency: 'MONTHLY', bank_account: '000-attacker' });
+    expect(res.status).toBe(403);
+    const row = await db.selectFrom('staff_compensation').select(['gross_amount', 'bank_account']).where('user_id', '=', dual).executeTakeFirstOrThrow();
+    expect(row.gross_amount).toBe(500_00);
+    expect(row.bank_account).not.toBe('000-attacker');
+  });
+
+  it('nobody but an admin sets their own pay', async () => {
+    asClerk();
+    expect((await call('put', `/payroll/employees/${clerk}`, { gross_amount: 9_000_00, frequency: 'MONTHLY' })).status).toBe(403);
   });
 
   it('a limited user cannot make a salary company-level', async () => {

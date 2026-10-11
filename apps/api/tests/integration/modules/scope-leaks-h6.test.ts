@@ -206,6 +206,23 @@ describe('rooms: feed and QR tokens only for people who manage channel sync', ()
     expect((await request(app).post(`/rooms/${roomA}/channel/rotate-token`).set('Authorization', 'Bearer t').set('x-property-id', propA)).status).toBe(403);
   });
 
+  // (Audit 2026-10-11, M-4) Only the reads were filtered: an edit, a close or a restore
+  // answered with the whole row, so PATCH /rooms/:id {} handed over both tokens.
+  it('hides them from every write response too — edit, close, restore', async () => {
+    asStaff();
+    const send = (method: 'patch' | 'post', path: string, body: object = {}) =>
+      request(app)[method](path).set('Authorization', 'Bearer t').set('x-property-id', propA).send(body);
+    for (const res of [
+      await send('patch', `/rooms/${roomA}`, {}),
+      await send('post', `/rooms/${roomA}/out-of-service`, { confirm_overlap: true }),
+      await send('post', `/rooms/${roomA}/restore`),
+    ]) {
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('ical_token');
+      expect(res.body).not.toHaveProperty('guest_qr_token');
+    }
+  });
+
   it('shows them to rooms.channel.manage (admin)', async () => {
     as(staffId, 'admin', ['rooms.read', 'rooms.update', 'rooms.channel.manage']);
     const one = await get(`/rooms/${roomA}`);
@@ -222,6 +239,16 @@ describe('rooms: a unit can only be placed in a building of the active property'
     expect(res.status).toBe(404);
     expect(await db.selectFrom('rooms').select('id').where('code', '=', `H6-SNEAK-${uniq}`).executeTakeFirst()).toBeUndefined();
     expect((await send('patch', `/rooms/${roomA}`, { building_id: bldB })).status).toBe(404);
+  });
+
+  // (Audit 2026-10-11, L-3) "No building" put a unit in no property — gone from every screen.
+  it('refuses a unit with no building, on create and on an edit', async () => {
+    as(staffId, 'operations', ['rooms.read', 'rooms.create', 'rooms.update']);
+    expect((await send('post', '/rooms', { name: 'H6 nowhere', code: `H6-NOWHERE-${uniq}` })).status).toBe(400);
+    expect((await send('post', '/rooms', { name: 'H6 nowhere', code: `H6-NOWHERE-${uniq}`, building_id: null })).status).toBe(400);
+    expect((await send('patch', `/rooms/${roomA}`, { building_id: null })).status).toBe(400);
+    const row = await db.selectFrom('rooms').select('building_id').where('id', '=', roomA).executeTakeFirstOrThrow();
+    expect(row.building_id).toBe(bldA);
   });
 
   it('accepts a building in the active property', async () => {

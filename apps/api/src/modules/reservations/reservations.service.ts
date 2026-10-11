@@ -8,6 +8,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
 import { describeThebe, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
+import type { ContactViewer } from '../../core/scope/contactScope.js';
 import { assertStatusChange, assertStayChangeAllowed, stayChangeProblem } from './reservations.moveRules.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
@@ -43,6 +44,9 @@ export function isReservationOverlapError(e: unknown): boolean {
   return err?.code === '23P01' && err?.constraint === 'reservations_no_overlap';
 }
 
+/** (Audit H-2) A guest you can't see answers like one that doesn't exist. */
+const GUEST_NOT_FOUND = 'That guest isn’t in your guest list. Choose or add the guest first.';
+
 export class ReservationsService {
   // rooms + pricing are optional so unit tests can construct the service with just
   // a repository; the live router (reservations.routes) always wires them in, which
@@ -75,7 +79,7 @@ export class ReservationsService {
    * well as how it IS — see ReservationsRepository.repriceStayChange.
    *
    * `deps` lets a caller that is inside a transaction price through that transaction (see
-   * pricerFor) instead of borrowing a second connection from the pool while it holds a lock.
+   * stayPricer) instead of borrowing a second connection from the pool while it holds a lock.
    */
   private async priceStay(
     stay: Pick<ReservationRow, 'room_id' | 'check_in_date' | 'check_out_date'>,
@@ -123,7 +127,7 @@ export class ReservationsService {
    * The stay pricer handed to the repository: every read goes through the transaction the
    * repository is holding the booking's lock in.
    */
-  private pricerFor(): StayPricer | undefined {
+  stayPricer(): StayPricer | undefined {
     if (!this.pricing || !this.rooms) return undefined;
     return (trx: Transaction<Database>, stay, reservation) =>
       this.priceStay(stay, reservation, {
@@ -601,8 +605,22 @@ export class ReservationsService {
     }
   }
 
-  async createReservation(dto: CreateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+  async createReservation(
+    dto: CreateReservationDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string,
+    viewer?: ContactViewer
+  ): Promise<ReservationRow> {
     await this.assertCrmContactsExist(dto);
+    // (Audit H-2) Staff may only book guests they can see. The public page passes no viewer:
+    // it picks its own guest from what was typed (R6), never from an id it was given.
+    if (viewer) {
+      await this.repository.assertContactsVisible(
+        [dto.contact_id, dto.billing_contact_id, dto.booking_coordinator_id],
+        viewer,
+        GUEST_NOT_FOUND
+      );
+    }
     const checkIn = new Date(dto.check_in_date);
     const checkOut = new Date(dto.check_out_date);
 
@@ -649,10 +667,26 @@ export class ReservationsService {
     dto: UpdateReservationDTO,
     meta: ReservationRequestMeta,
     activePropertyId?: string,
-    isAdmin = false
+    isAdmin = false,
+    viewer?: ContactViewer
   ): Promise<ReservationRow> {
     await this.assertCrmContactsExist(dto);
     const existing = await this.getReservationById(id, activePropertyId);
+    // (Audit H-2) Only a guest who is CHANGING is checked: the drawer re-sends the whole form,
+    // and a coordinator already on this booking may be booked nowhere you can see.
+    if (viewer) {
+      const changed = (next: string | null | undefined, now: string | null) =>
+        next && next !== now ? next : null;
+      await this.repository.assertContactsVisible(
+        [
+          changed(dto.contact_id, existing.contact_id),
+          changed(dto.billing_contact_id, existing.billing_contact_id),
+          changed(dto.booking_coordinator_id, existing.booking_coordinator_id),
+        ],
+        viewer,
+        GUEST_NOT_FOUND
+      );
+    }
 
     // If the booking is being moved to a different unit, that unit must also be in
     // the active property.
@@ -661,6 +695,20 @@ export class ReservationsService {
       if (roomProperty !== activePropertyId) {
         throw AppError.badRequest('That unit is not in your active property');
       }
+    }
+
+    // (Audit 2026-10-11, M-1) The Booking.com feed publishes every booking EXCEPT those that
+    // came from Booking.com. Relabelling a booking as BOOKING_COM would hide its nights from
+    // the channel (double-selling), and relabelling an OTA booking as ours would echo it back.
+    // The drawer re-sends the source on every save, so only a CHANGE across that line is refused.
+    if (
+      dto.source &&
+      dto.source !== existing.source &&
+      (dto.source === 'BOOKING_COM' || existing.source === 'BOOKING_COM')
+    ) {
+      throw AppError.badRequest(
+        'A booking can’t be moved to or from “Booking.com” — that label decides what the Booking.com calendar shows.'
+      );
     }
 
     // Commercial invariant: CONFIRMED / CHECKED_IN / CHECKED_OUT are owned by the
@@ -769,7 +817,7 @@ export class ReservationsService {
             if (stayChanged) stayRule(current.status, current.check_in_date);
             if (dto.status) assertStatusChange(current.status, dto.status);
           },
-          ...(changesStay ? { repriceStay: this.pricerFor() } : {}),
+          ...(changesStay ? { repriceStay: this.stayPricer() } : {}),
         }
       );
     } catch (e) {
@@ -818,7 +866,7 @@ export class ReservationsService {
               throw AppError.conflict('This booking changed while checking in. Refresh and try again.');
             }
           },
-          repriceStay: this.pricerFor(),
+          repriceStay: this.stayPricer(),
         }
       );
     } catch (e) {
@@ -941,7 +989,7 @@ export class ReservationsService {
             throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
           }
         },
-        refreeze: this.pricerFor(),
+        refreeze: this.stayPricer(),
       }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
@@ -968,7 +1016,7 @@ export class ReservationsService {
           if (current.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
           if (current.discount_approved_at) throw AppError.conflict('This discount has already been approved');
         },
-        refreeze: this.pricerFor(),
+        refreeze: this.stayPricer(),
       }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
@@ -990,7 +1038,7 @@ export class ReservationsService {
       },
       meta,
       undefined,
-      { refreeze: this.pricerFor() }
+      { refreeze: this.stayPricer() }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
     return updated;
@@ -1014,6 +1062,7 @@ export class ReservationsService {
     dto: ClaimOtaBookingDTO,
     meta: ReservationRequestMeta,
     activePropertyId?: string,
+    viewer?: ContactViewer,
   ): Promise<ReservationRow> {
     const existing = await this.getReservationById(id, activePropertyId);
 
@@ -1023,6 +1072,7 @@ export class ReservationsService {
     if (!(await this.repository.contactExists(dto.contact_id))) {
       throw AppError.badRequest('Contact not found');
     }
+    if (viewer) await this.repository.assertContactsVisible([dto.contact_id], viewer, 'Contact not found');
 
     const updated = await this.repository.update(
       id,

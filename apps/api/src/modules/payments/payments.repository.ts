@@ -201,6 +201,11 @@ export class PaymentsRepository {
       if (reservation && (TERMINAL_RESERVATION_STATUSES as readonly string[]).includes(reservation.status)) {
         throw AppError.conflict(`A ${reservation.status.toLowerCase().replace('_', ' ')} booking can’t take payment.`);
       }
+      // (Audit H-3) Same rule as the desk payment: a channel block has no guest to pay, and
+      // settling one would freeze its total from the quote and mark it CONFIRMED.
+      if (reservation?.status === 'BLOCKED') {
+        throw AppError.conflict('This is a channel block, not a guest booking; there is nothing to pay.');
+      }
 
       const current = await trx
         .selectFrom('payment_intents')

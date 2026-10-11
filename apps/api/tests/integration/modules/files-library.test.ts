@@ -39,7 +39,8 @@ const as = (sub: string, role: string, permissions: string[]) => {
   mockState.user = { sub, role, permissions };
 };
 const asReception = () => as(reception, 'reception', [...READ, 'files.guest_documents.read']);
-const asAccounts = () => as(accounts, 'accounts', READ);
+// The real accounts role reads the money ledgers (invoices.read / opex.read) — and so its receipts.
+const asAccounts = () => as(accounts, 'accounts', [...READ, 'invoices.read', 'opex.read']);
 // Contractors hold files.read / files.create for their job photos — not the library.
 const asContractor = () => as(contractor, 'contractor', ['files.read', 'files.create']);
 
@@ -153,6 +154,20 @@ describe('P6 Files library', () => {
     expect(ids(res)).toContain(f.receipt);
     expect((await get(`/files/${f.passport}`)).status).toBe(404);
     expect((await get(`/files/${f.passport}/download`)).status).toBe(404);
+  });
+
+  // (Audit 2026-10-11, M-5) Owner decision R4(c): operations lost the money ledgers
+  // (migration 083), so the receipts behind them are not theirs to read either.
+  it('hides money receipts from someone without the ledger permission — list AND by id', async () => {
+    // Not the uploader (reception) — they keep what they uploaded.
+    as(accounts, 'operations', [...READ, 'files.delete']);
+    const res = await get(`/files/library?search=${uniq}&limit=100`);
+    expect(ids(res)).not.toContain(f.receipt);
+    expect(ids(res)).toContain(f.repair);
+    expect((await get(`/files/${f.receipt}`)).status).toBe(404);
+    expect((await get(`/files/${f.receipt}/download`)).status).toBe(404);
+    as(accounts, 'operations', [...READ, 'files.delete', 'invoices.read']);
+    expect(ids(await get(`/files/library?search=${uniq}&limit=100`))).toContain(f.receipt);
   });
 
   it('keeps contractors out of the library screen; they still open their own job photos', async () => {

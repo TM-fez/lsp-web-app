@@ -1,12 +1,18 @@
 import { Kysely, Transaction, sql } from 'kysely';
 import type { Database, NewOperatingExpense, UpdateOperatingExpense, NewRecurringCost, UpdateRecurringCost } from '../../db/types.js';
 import type { OperatingExpenseFilters, OperatingExpensesRequestMeta } from './operating-expenses.types.js';
+import { fileLinkableBy } from '../../core/scope/fileLink.js';
 
 // Sentinel id used to make an "in" match nothing when the caller has no properties.
 const NO_PROPERTY = '00000000-0000-0000-0000-000000000000';
 
 export class OperatingExpensesRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** (Audit L-10) May `userId` attach this file to a record? See core/scope/fileLink.ts. */
+  fileLinkableBy(fileId: string, userId: string): Promise<boolean> {
+    return fileLinkableBy(this.db, fileId, userId);
+  }
 
   private base() {
     return this.db
@@ -206,8 +212,12 @@ export class OperatingExpensesRepository {
       // the "already generated?" read and the insert cannot be split by a concurrent run.
       const wrote = await this.db.transaction().execute(async (trx) => {
         const tag = `recurring:${t.id}:${month}`;
+        // (Audit M-7) Only a row in the template's own property counts as "already generated" —
+        // a tag typed onto some other property's cost can't skip this one.
         const exists = await trx.selectFrom('operating_expenses').select('id')
-          .where('notes', '=', tag).where('deleted_at', 'is', null).executeTakeFirst();
+          .where('notes', '=', tag).where('deleted_at', 'is', null)
+          .where((eb) => (t.property_id === null ? eb('property_id', 'is', null) : eb('property_id', '=', t.property_id)))
+          .executeTakeFirst();
         if (exists) return false;
         const ins = await trx.insertInto('operating_expenses').values({
           property_id: t.property_id,

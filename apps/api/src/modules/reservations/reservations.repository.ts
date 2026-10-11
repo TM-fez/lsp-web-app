@@ -10,6 +10,7 @@ import { reconcileReceivable } from '../invoices/invoices.receivable.js';
 import { HousekeepingRepository } from '../housekeeping/housekeeping.repository.js';
 import { repairWindowOverlaps, LIVE_SERIOUS_WINDOW } from '../../core/availability/repairWindows.js';
 import { assertNoCompetingHold } from '../holds/holds.conflicts.js';
+import { assertContactsVisible, type ContactViewer } from '../../core/scope/contactScope.js';
 import type { ReservationFilters, ReservationPaginationOptions, PaginatedReservationResult, ReservationRequestMeta, ReservationListRow, FolioInvoiceLine } from './reservations.types.js';
 
 /**
@@ -369,6 +370,15 @@ export class ReservationsRepository {
 
       return inserted;
     });
+  }
+
+  /** (Audit H-2) Each id must be a live contact `viewer` may see — see assertContactsVisible. */
+  async assertContactsVisible(
+    ids: ReadonlyArray<string | null | undefined>,
+    viewer: ContactViewer,
+    message: string
+  ): Promise<void> {
+    await assertContactsVisible(this.db, ids, viewer, message);
   }
 
   /** Whether a (non-deleted) contact exists — guards the claim flow's FK. */

@@ -33,6 +33,7 @@ let cbdUser: string, villageUser: string;
 let propCbd: string, propVillage: string;
 const f: Record<string, string> = {};
 const users: string[] = [];
+let companyCost: string;
 
 const PERMS = ['files.read', 'files.create', 'files.delete', 'files.library'];
 const asCbd = () => { mockState.user = { sub: cbdUser, role: 'operations', permissions: PERMS }; };
@@ -74,9 +75,16 @@ beforeAll(async () => {
   await file('villageNoPropContract', villageUser, { category: 'CONTRACTS' }); // filed, but under "no property"
   await file('ownUnfiled', cbdUser);
   await file('toDelete', cbdUser, { category: 'OTHER', property_id: propCbd });
+  // (Audit M-5) A company-level cost (no property) with its receipt, filed by the Village user.
+  await file('companyReceipt', villageUser);
+  companyCost = (await db.insertInto('operating_expenses').values({
+    category: 'SOFTWARE', description: `F4 company cost ${uniq}`, amount: 1_000, incurred_on: new Date('2026-01-05'),
+    property_id: null, receipt_file_id: f.companyReceipt, created_by: villageUser, updated_by: villageUser,
+  } as never).returning('id').executeTakeFirstOrThrow()).id;
 });
 
 afterAll(async () => {
+  await db.deleteFrom('operating_expenses').where('id', '=', companyCost).execute();
   await db.deleteFrom('audit_logs').where('user_id', 'in', users).execute();
   await db.deleteFrom('files').where('id', 'in', Object.values(f)).execute();
   await db.deleteFrom('user_properties').where('user_id', 'in', users).execute();
@@ -141,6 +149,26 @@ describe('files that belong to no property', () => {
     asAdmin();
     const ids = await libraryIds();
     expect(ids).toEqual(expect.arrayContaining([f.villageUnfiled, f.villageNoPropContract, f.villageContract, f.cbdContract]));
+  });
+});
+
+// (Audit 2026-10-11, M-5) A receipt for a company-level cost is a company-level document:
+// the cost row itself is hidden from a CBD-only accountant, so its receipt must be too.
+describe('receipts of company-level (no property) costs', () => {
+  const asCbdAccounts = () => {
+    mockState.user = { sub: cbdUser, role: 'accounts', permissions: [...PERMS, 'opex.read', 'invoices.read'] };
+  };
+
+  it('are hidden from a user limited to one property — list and by id', async () => {
+    asCbdAccounts();
+    expect(await libraryIds()).not.toContain(f.companyReceipt);
+    expect((await call('get', `/files/${f.companyReceipt}`)).status).toBe(404);
+  });
+
+  it('are visible to an all-property user', async () => {
+    asAdmin();
+    mockState.user.permissions = [...PERMS, 'opex.read'];
+    expect(await libraryIds()).toContain(f.companyReceipt);
   });
 });
 

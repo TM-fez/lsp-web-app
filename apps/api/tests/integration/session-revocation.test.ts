@@ -12,6 +12,7 @@ import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import { app } from '../../src/app.js';
 import { db } from '../../src/config/db.js';
+import { UsersRepository } from '../../src/modules/users/users.repository.js';
 
 const uniq = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const PASSWORD = 'SessionPass@99!';
@@ -79,6 +80,22 @@ describe('H7: an access token stops working when its session ends', () => {
     const res = await me(token);
     expect(res.status).toBe(401);
     expect(res.body.message).toMatch(/inactive/i);
+  });
+
+  // (Audit 2026-10-11, M-9) Deactivation blocked the user but left their refresh tokens
+  // live, so reactivating them revived every old session (a lost phone included).
+  it('deactivating then reactivating a user does not bring their old logins back', async () => {
+    const u = await makeUser('reactivate');
+    const { cookie } = await login(u.email);
+    const users = new UsersRepository(db);
+    const meta = { userId: u.id, ip: undefined, requestId: undefined };
+    await users.update(u.id, { active: false }, undefined, undefined, meta as never);
+    await users.update(u.id, { active: true }, undefined, undefined, meta as never);
+
+    const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(res.status).toBe(401);
+    // …and they can still sign in afresh.
+    await login(u.email);
   });
 
   it('demoting a user refuses the old token; a refresh issues one with the new permissions', async () => {

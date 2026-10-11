@@ -271,21 +271,39 @@ export class HousekeepingRepository {
     return rows.map((r) => r.item_id);
   }
 
-  /** Tick an item (idempotent) or untick it (delete). */
+  /**
+   * Tick an item (idempotent) or untick it (delete).
+   *
+   * (Audit 2026-10-11, L-4) The ticks are the gate a unit must pass before it is signed off
+   * ready, yet they wrote no audit row — and an untick deleted the row, `checked_by` with it,
+   * so nobody could say who undid a check. Now one transaction with its audit row
+   * (invariant 6), and only a real change is recorded.
+   */
   async setCheck(taskId: string, itemId: string, checked: boolean, meta: HousekeepingRequestMeta): Promise<void> {
-    if (checked) {
-      await this.db
-        .insertInto('housekeeping_task_checks')
-        .values({ task_id: taskId, item_id: itemId, checked_by: meta.userId })
-        .onConflict((oc) => oc.columns(['task_id', 'item_id']).doNothing())
-        .execute();
-    } else {
-      await this.db
-        .deleteFrom('housekeeping_task_checks')
-        .where('task_id', '=', taskId)
-        .where('item_id', '=', itemId)
-        .execute();
-    }
+    await this.db.transaction().execute(async (trx) => {
+      const changed = checked
+        ? await trx
+            .insertInto('housekeeping_task_checks')
+            .values({ task_id: taskId, item_id: itemId, checked_by: meta.userId })
+            .onConflict((oc) => oc.columns(['task_id', 'item_id']).doNothing())
+            .returning('item_id')
+            .executeTakeFirst()
+        : await trx
+            .deleteFrom('housekeeping_task_checks')
+            .where('task_id', '=', taskId)
+            .where('item_id', '=', itemId)
+            .returning('item_id')
+            .executeTakeFirst();
+      if (!changed) return;
+      await trx.insertInto('audit_logs').values({
+        request_id: meta.requestId ?? null,
+        user_id: meta.userId,
+        action: 'UPDATE',
+        entity: 'housekeeping_tasks',
+        entity_id: taskId,
+        diff: { checklist_item_id: itemId, checked },
+      }).execute();
+    });
   }
 
   /** Active checklist items NOT yet ticked on a task — the compliance gate. */

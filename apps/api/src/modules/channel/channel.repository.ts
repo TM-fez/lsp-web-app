@@ -3,12 +3,21 @@ import type { Database, RoomRow, ReservationRow } from '../../db/types.js';
 import { propertyToday } from '../../core/time.js';
 import {
   EXPORTABLE_STATUSES,
-  EXPORT_SOURCES,
+  NON_EXPORT_SOURCES,
   IMPORT_SOURCE,
   IMPORT_STATUS,
   SYSTEM_USER_ID,
   SYSTEM_OTA_CONTACT_ID,
 } from './channel.types.js';
+import { ReservationsRepository } from '../reservations/reservations.repository.js';
+import { ReservationsService } from '../reservations/reservations.service.js';
+import { RoomsRepository } from '../rooms/rooms.repository.js';
+import { PricingService } from '../pricing/pricing.service.js';
+import { PricingRepository } from '../pricing/pricing.repository.js';
+
+/** (Audit M-8) Thrown inside the locked update when the row is no longer in the expected state. */
+class StaleOtaRow extends Error {}
+const SYSTEM_META = { userId: SYSTEM_USER_ID, ip: undefined, requestId: undefined };
 
 export interface ExportableStay {
   id: string;
@@ -66,8 +75,8 @@ export class ChannelRepository {
       .executeTakeFirst();
   }
 
-  // The nights to publish to OTAs for one unit: its own DIRECT/WEBSITE sold stays from
-  // today onward. BOOKING_COM-sourced BLOCKED rows are EXCLUDED here (EXPORT_SOURCES) so
+  // The nights to publish to OTAs for one unit: every stay of ours from today onward.
+  // BOOKING_COM-sourced rows are EXCLUDED here (NON_EXPORT_SOURCES) so
   // an OTA's own booking is never looped back to it. Past stays are dropped to keep the
   // feed small. The WHERE mirrors the EXPORT_* constants — the single source of truth.
   async findExportableStays(roomId: string): Promise<ExportableStay[]> {
@@ -77,7 +86,7 @@ export class ChannelRepository {
       .where('room_id', '=', roomId)
       .where('deleted_at', 'is', null)
       .where('status', 'in', [...EXPORTABLE_STATUSES])
-      .where('source', 'in', [...EXPORT_SOURCES])
+      .where('source', 'not in', [...NON_EXPORT_SOURCES])
       .where(sql<boolean>`check_out_date >= ${propertyToday()}`)
       .orderBy('check_in_date')
       .execute();
@@ -175,35 +184,77 @@ export class ChannelRepository {
     return Number(res.numUpdatedRows ?? 0) > 0;
   }
 
-  // A claimed OTA booking (real contact attached, staff own the lifecycle): the feed
-  // may still move its DATES, but status/contact/notes stay untouched. No-op when the
-  // dates already match. Returns true when a row was written.
-  async updateClaimedDates(id: string, b: { checkIn: Date; checkOut: Date }): Promise<boolean> {
-    const res = await this.db
-      .updateTable('reservations')
-      .set({
-        check_in_date: b.checkIn,
-        check_out_date: b.checkOut,
-        updated_by: SYSTEM_USER_ID,
-        updated_at: new Date(),
-      })
-      .where('id', '=', id)
-      .where('deleted_at', 'is', null)
-      .where((eb) =>
-        eb.not(eb.and([eb('check_in_date', '=', b.checkIn), eb('check_out_date', '=', b.checkOut)])),
-      )
-      .executeTakeFirst();
-    return Number(res.numUpdatedRows ?? 0) > 0;
+  // (Audit 2026-10-11, M-8) A claimed OTA booking has a real guest and may hold money, so a
+  // change from the feed goes through the same locked, audited booking update as a change at
+  // the desk. It used to be a bare UPDATE: no row lock, no audit row, no re-price — dates
+  // moved under a frozen agreed total, and nobody could say who or what had moved them.
+  //
+  // Only a CONFIRMED booking moves. An in-house guest (CHECKED_IN) is never moved by the
+  // feed — after check-in only an admin may change the arrival day (R11) — so it is left
+  // for staff ('skipped'). The status is re-read under the lock, so a check-in that commits
+  // while the sync runs is respected. A move the price rules refuse (e.g. it would take the
+  // agreed total below zero) also comes back 'skipped'. A 23P01 overlap still throws, for the
+  // caller's collision alert.
+  async moveClaimedDates(
+    id: string,
+    b: { checkIn: Date; checkOut: Date }
+  ): Promise<'moved' | 'unchanged' | 'skipped'> {
+    const day = (d: Date) => new Date(d).toISOString().slice(0, 10);
+    let unchanged = false;
+    const pricer = new ReservationsService(
+      new ReservationsRepository(this.db),
+      new RoomsRepository(this.db),
+      new PricingService(new PricingRepository(this.db))
+    ).stayPricer();
+    try {
+      await new ReservationsRepository(this.db).update(
+        id,
+        { check_in_date: b.checkIn, check_out_date: b.checkOut, updated_by: SYSTEM_USER_ID },
+        SYSTEM_META,
+        undefined,
+        {
+          validate: (before) => {
+            if (before.status !== 'CONFIRMED') throw new StaleOtaRow();
+            if (day(before.check_in_date) === day(b.checkIn) && day(before.check_out_date) === day(b.checkOut)) {
+              unchanged = true;
+              throw new StaleOtaRow();
+            }
+          },
+          ...(pricer ? { repriceStay: pricer } : {}),
+        }
+      );
+      return 'moved';
+    } catch (err) {
+      if (err instanceof StaleOtaRow) return unchanged ? 'unchanged' : 'skipped';
+      if ((err as { statusCode?: number }).statusCode === 409) return 'skipped';
+      throw err;
+    }
   }
 
-  // End a block (event cancelled or vanished from the feed) — CANCELLED frees the night
-  // (it leaves the no-overlap constraint) while keeping the row for audit/revival.
-  async cancelBlock(id: string): Promise<void> {
-    await this.db
-      .updateTable('reservations')
-      .set({ status: 'CANCELLED', updated_by: SYSTEM_USER_ID, updated_at: new Date() })
-      .where('id', '=', id)
-      .execute();
+  // End an OTA booking the feed cancelled. CANCELLED frees the night (it leaves the
+  // no-overlap constraint) while keeping the row for audit/revival.
+  //
+  // (Audit M-8) Through the locked, audited update: a cancelled booking's open invoice is
+  // voided and its holds released in the same transaction, as at the desk. `allowed` is
+  // re-checked under the lock — a guest who checked in meanwhile is never cancelled.
+  async cancelOtaBooking(id: string, allowed: ReadonlyArray<ReservationRow['status']>): Promise<boolean> {
+    try {
+      const done = await new ReservationsRepository(this.db).update(
+        id,
+        { status: 'CANCELLED', updated_by: SYSTEM_USER_ID },
+        SYSTEM_META,
+        undefined,
+        {
+          validate: (before) => {
+            if (!allowed.includes(before.status)) throw new StaleOtaRow();
+          },
+        }
+      );
+      return Boolean(done);
+    } catch (err) {
+      if (err instanceof StaleOtaRow) return false;
+      throw err;
+    }
   }
 
   // This unit's currently-active OTA rows (unclaimed BLOCKED + claimed

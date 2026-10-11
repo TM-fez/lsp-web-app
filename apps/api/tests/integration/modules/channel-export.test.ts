@@ -25,6 +25,10 @@ let roomId = '';
 let token = '';
 let directResId = '';
 let blockedResId = '';
+// (Audit M-1) Desk bookings, and a claimed Booking.com booking that must still not echo.
+let walkInResId = '';
+let phoneResId = '';
+let claimedOtaResId = '';
 
 const BLOCKED_UID = `evt-booking-${Date.now()}`;
 
@@ -49,6 +53,12 @@ const directIn = plusDays(10);
 const directOut = plusDays(14);
 const blockedIn = plusDays(40);
 const blockedOut = plusDays(42);
+const walkInIn = plusDays(60);
+const walkInOut = plusDays(62);
+const phoneIn = plusDays(70);
+const phoneOut = plusDays(71);
+const claimedIn = plusDays(80);
+const claimedOut = plusDays(83);
 
 beforeAll(async () => {
   const role = await db
@@ -124,13 +134,26 @@ beforeAll(async () => {
     .returning('id')
     .executeTakeFirstOrThrow();
   blockedResId = blocked.id;
+
+  const stay = async (source: 'WALK_IN' | 'PHONE' | 'BOOKING_COM', status: 'PENDING' | 'CONFIRMED', from: Date, to: Date) =>
+    (await db
+      .insertInto('reservations')
+      .values({
+        contact_id: contactId, room_id: roomId, check_in_date: asDate(from), check_out_date: asDate(to),
+        status, source, created_by: userId, updated_by: userId,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow()).id;
+  walkInResId = await stay('WALK_IN', 'PENDING', walkInIn, walkInOut);
+  phoneResId = await stay('PHONE', 'CONFIRMED', phoneIn, phoneOut);
+  claimedOtaResId = await stay('BOOKING_COM', 'CONFIRMED', claimedIn, claimedOut);
 });
 
 afterAll(async () => {
-  if (directResId || blockedResId) {
+  if (directResId || blockedResId || walkInResId) {
     await db
       .deleteFrom('reservations')
-      .where('id', 'in', [directResId, blockedResId].filter(Boolean))
+      .where('id', 'in', [directResId, blockedResId, walkInResId, phoneResId, claimedOtaResId].filter(Boolean))
       .execute();
   }
   if (contactId) await db.deleteFrom('contacts').where('id', '=', contactId).execute();
@@ -160,6 +183,21 @@ describe('GET /api/v1/ical/units/:token (export feed)', () => {
     expect(res.text).not.toContain(BLOCKED_UID);
     expect(res.text).not.toContain(`UID:${icalUid(blockedResId)}`);
     expect(res.text).not.toContain(`DTSTART;VALUE=DATE:${ymd(blockedIn)}`);
+  });
+
+  // (Audit 2026-10-11, M-1) The feed used to publish only DIRECT and WEBSITE. The staff form
+  // defaults to WALK_IN, so desk bookings never reached Booking.com — which sold them again.
+  it('publishes desk bookings of every source — walk-in, phone — including unpaid PENDING', async () => {
+    const res = await request(app).get(`/api/v1/ical/units/${token}`);
+    expect(res.text).toContain(`UID:${icalUid(walkInResId)}`);
+    expect(res.text).toContain(`DTSTART;VALUE=DATE:${ymd(walkInIn)}`);
+    expect(res.text).toContain(`UID:${icalUid(phoneResId)}`);
+  });
+
+  it('still never echoes a claimed (CONFIRMED) Booking.com booking back to Booking.com', async () => {
+    const res = await request(app).get(`/api/v1/ical/units/${token}`);
+    expect(res.text).not.toContain(`UID:${icalUid(claimedOtaResId)}`);
+    expect(res.text).not.toContain(`DTSTART;VALUE=DATE:${ymd(claimedIn)}`);
   });
 
   it('never exposes guest PII — only "Not available"', async () => {

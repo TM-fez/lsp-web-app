@@ -12,6 +12,7 @@ import type {
   UnitType,
 } from './pricing.types.js';
 import { ratesOutOfOrder } from './pricing.types.js';
+import { MAX_STAY_NIGHTS, STAY_TOO_LONG_MESSAGE } from '../../core/stayLimits.js';
 
 const NIGHTS_PER_WEEK = 7;
 const NIGHTS_PER_MONTH = 30;
@@ -73,6 +74,11 @@ export class PricingService {
    */
   priceStay(plan: RatePlanRow, nights: number): PriceResult {
     if (nights < 1) throw AppError.badRequest('Stay must be at least one night');
+    // (Audit H-1) The arrays below are sized by `nights`. Unbounded, one far-future stay
+    // exhausted the heap and crashed the process — refuse it here so every caller is covered.
+    if (!Number.isInteger(nights) || nights > MAX_STAY_NIGHTS) {
+      throw AppError.badRequest(STAY_TOO_LONG_MESSAGE);
+    }
 
     const blocks = [
       { unit: 'month' as const, size: NIGHTS_PER_MONTH, rate: plan.monthly_rate },

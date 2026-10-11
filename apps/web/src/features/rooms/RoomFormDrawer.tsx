@@ -58,12 +58,13 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
     setConfirmDelete(false);
   }, [open, room]);
 
-  const valid = name.trim().length > 0 && code.trim().length > 0 && capacity >= 1;
+  // (Audit L-3) Every unit sits in a building — that is what places it in a property.
+  const valid = name.trim().length > 0 && code.trim().length > 0 && capacity >= 1 && buildingId !== '';
 
   async function submit() {
     if (!valid) return;
     const placement = {
-      building_id: buildingId || null,
+      building_id: buildingId,
       floor: floor.trim() === '' ? null : Number(floor),
     };
     const owner = {
@@ -174,7 +175,9 @@ export function RoomFormDrawer({ open, onOpenChange, room, canDelete }: Props) {
             <div className="flex flex-col gap-1">
               <Label htmlFor="room-building">Building</Label>
               <Select id="room-building" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
-                <option value="">— Unassigned —</option>
+                <option value="" disabled>
+                  Choose a building
+                </option>
                 {(properties ?? []).map((p) => (
                   <optgroup key={p.id} label={p.name}>
                     {p.buildings.map((b) => (

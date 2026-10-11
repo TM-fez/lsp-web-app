@@ -2,6 +2,7 @@ import { Kysely, sql } from 'kysely';
 import type { Database, FileRow, NewFile } from '../../db/types.js';
 import type { FileRequestMeta, PaginatedResult } from './files.types.js';
 import { isLinked, listLibrary, viewerCanOpen, type LibraryFilters, type LibraryViewer } from './files.library.js';
+import { fileLinkableBy } from '../../core/scope/fileLink.js';
 
 type NewFileRecord = Omit<NewFile, 'id' | 'created_at' | 'updated_at'>;
 
@@ -87,6 +88,11 @@ export class FilesRepository {
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
+  }
+
+  /** (Audit L-10) May `userId` attach this file to a record? See core/scope/fileLink.ts. */
+  linkableBy(fileId: string, userId: string): Promise<boolean> {
+    return fileLinkableBy(this.db, fileId, userId);
   }
 
   async findByChecksum(checksum: string): Promise<FileRow | undefined> {

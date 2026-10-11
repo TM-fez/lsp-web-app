@@ -58,8 +58,20 @@ export class ContactsService {
     }
   }
 
+  /**
+   * (Audit 2026-10-11, L-10) A guest's profile picture is filed under "Profile pictures", which
+   * every limited user can open — so pointing a guest at someone else's file moved it into
+   * view. Your own upload, or you see every property.
+   */
+  private async assertAvatarLinkable(fileId: string | null | undefined, userId: string): Promise<void> {
+    if (fileId && !(await this.repository.fileLinkableBy(fileId, userId))) {
+      throw AppError.badRequest('That picture couldn’t be found. Upload it again.');
+    }
+  }
+
   async createContact(dto: CreateContactDTO, meta: CRMRequestMeta): Promise<ContactRow> {
     const { allow_duplicate_email, ...fields } = dto;
+    await this.assertAvatarLinkable(fields.avatar_file_id, meta.userId);
     await this.assertEmailFree(fields.email, allow_duplicate_email);
     const shared = await this.sharesEmail(fields.email, allow_duplicate_email);
     const newContact: NewContact = {
@@ -76,6 +88,8 @@ export class ContactsService {
     // Ensure contact exists (and is one this person may see)
     const current = await this.getContactById(id, viewer);
     const { allow_duplicate_email, ...fields } = dto;
+    // The drawer re-sends the current picture on every save — only a NEW one is checked.
+    if (fields.avatar_file_id !== current.avatar_file_id) await this.assertAvatarLinkable(fields.avatar_file_id, meta.userId);
     // (R6 NEW-3) Only a CHANGED email is a new question. A full-form edit resends the email
     // as it was, and a guest who already shares one (saved with "Save anyway") must stay editable.
     const emailChanged = fields.email !== undefined && (fields.email ?? '').toLowerCase() !== (current.email ?? '').toLowerCase();

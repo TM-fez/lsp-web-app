@@ -1,6 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Database, LeadRow, NewLead, UpdateLead } from '../../../db/types.js';
 import type { LeadFilters, LeadPaginationOptions, PaginatedLeadResult, LeadRequestMeta, LeadScope } from './leads.types.js';
+import { assertContactsVisible, type ContactViewer } from '../../../core/scope/contactScope.js';
 
 /** SQL for "may this caller see this lead" — one rule for the list, by-id, edit and delete. */
 export function leadVisibleSql(scope: LeadScope | undefined) {
@@ -12,6 +13,15 @@ export function leadVisibleSql(scope: LeadScope | undefined) {
 
 export class LeadsRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** (Audit H-2) Each id must be a live contact `viewer` may see — see assertContactsVisible. */
+  async assertContactsVisible(
+    ids: ReadonlyArray<string | null | undefined>,
+    viewer: ContactViewer,
+    message: string
+  ): Promise<void> {
+    await assertContactsVisible(this.db, ids, viewer, message);
+  }
 
   async findById(id: string, scope?: LeadScope): Promise<LeadRow | undefined> {
     return this.db

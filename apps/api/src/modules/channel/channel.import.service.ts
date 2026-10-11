@@ -190,8 +190,10 @@ export class ChannelImportService {
         if (existing.status === 'BLOCKED' || existing.status === 'CONFIRMED') {
           // A claimed-but-not-arrived guest cancelling on Booking.com frees the night
           // here too; staff see the reservation flip to CANCELLED in the list.
-          await this.repo.cancelBlock(existing.id);
-          res.cancelled++;
+          // (Audit M-8) Locked + audited; voids a claimed booking's open invoice. Re-checks the
+          // status under the lock, so a check-in that just landed is left alone.
+          if (await this.repo.cancelOtaBooking(existing.id, ['BLOCKED', 'CONFIRMED'])) res.cancelled++;
+          else res.warnings++;
         } else if (CLAIMED_ACTIVE.has(existing.status) || existing.status === 'CHECKED_OUT') {
           // Never auto-cancel someone who is (or was) physically in the room.
           logger.warn(
@@ -207,11 +209,20 @@ export class ChannelImportService {
       try {
         const existing = await this.repo.findBlockByUid(ev.uid);
         if (existing && CLAIMED_ACTIVE.has(existing.status)) {
-          const wrote = await this.repo.updateClaimedDates(existing.id, {
+          const outcome = await this.repo.moveClaimedDates(existing.id, {
             checkIn: ev.start,
             checkOut: ev.endExclusive,
           });
-          wrote ? res.upserted++ : res.unchanged++;
+          if (outcome === 'moved') res.upserted++;
+          else if (outcome === 'unchanged') res.unchanged++;
+          else {
+            // (Audit M-8) In-house, or the price rules refused the move: staff decide.
+            logger.warn(
+              { unit: room.code, uid: ev.uid, status: existing.status },
+              '[channel-sync] OTA changed the dates of a claimed stay — not applied, review manually',
+            );
+            res.warnings++;
+          }
         } else if (existing && existing.status === 'CHECKED_OUT') {
           // The stay already ended in LSP; nothing for the feed to govern anymore.
           res.unchanged++;
@@ -317,8 +328,8 @@ export class ChannelImportService {
     for (const row of vanishedBlocked) {
       const existing = await this.repo.findBlockByUid(row.external_uid);
       if (existing) {
-        await this.repo.cancelBlock(existing.id);
-        res.cancelled++;
+        // Only unclaimed blocks are pruned (vanishedBlocked) — re-checked under the lock.
+        if (await this.repo.cancelOtaBooking(existing.id, ['BLOCKED'])) res.cancelled++;
       }
     }
 

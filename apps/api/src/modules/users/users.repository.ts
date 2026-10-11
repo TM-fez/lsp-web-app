@@ -250,6 +250,19 @@ export class UsersRepository {
           .execute();
       }
 
+      // (Audit 2026-10-11, M-9) Deactivating someone ends their saved logins too. H7 blocks a
+      // deactivated user straight away, but their refresh tokens stayed live, so reactivating
+      // them (say, within the 7-day token life) quietly revived every old session — a lost
+      // phone included — with no password. Same as a password reset: every session goes.
+      if (fields.active === false) {
+        await trx
+          .updateTable('refresh_tokens')
+          .set({ revoked: true, revoked_at: new Date() })
+          .where('user_id', '=', id)
+          .where('revoked', '=', false)
+          .execute();
+      }
+
       // Replace-all semantics: the drawer always sends the full extras set.
       if (extraPermissionIds !== undefined) {
         await trx.deleteFrom('user_permissions').where('user_id', '=', id).execute();

@@ -31,6 +31,7 @@ describe('MaintenanceService', () => {
 
     filesRepo = {
       findById: vi.fn(),
+      linkableBy: vi.fn().mockResolvedValue(true),
     } as unknown as vi.Mocked<FilesRepository>;
 
     notifications = {
@@ -138,7 +139,8 @@ describe('MaintenanceService', () => {
 
   it('validates files integration on start', async () => {
     repo.findByIdWithPeople.mockResolvedValue({ id: 'm1', status: 'OPEN' } as any);
-    filesRepo.findById.mockResolvedValue(null);
+    // (Audit L-10) Not a file this user may attach (missing, or someone else's) — same answer.
+    filesRepo.linkableBy.mockResolvedValue(false);
     await expect(service.start('m1', { before_file_id: 'bad-id' }, { userId: 'u1' })).rejects.toThrow('Invalid before_file_id');
   });
 

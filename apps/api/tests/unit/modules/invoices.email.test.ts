@@ -40,3 +40,19 @@ describe('renderInvoiceEmail', () => {
     }
   });
 });
+
+// (Audit 2026-10-11, L-1) A name typed on the public booking page went into the greeting
+// unescaped — a live link inside a genuine invoice email from the business's own address.
+describe('renderInvoiceEmail — guest- and staff-typed text is escaped', () => {
+  it('escapes the greeting name', () => {
+    const { html } = renderInvoiceEmail(doc({ guest_name: '<a/href=https://evil.example>Pay_here</a> Smith' }), company);
+    expect(html).not.toContain('<a/href=');
+    expect(html).toContain('Hi &lt;a/href=');
+  });
+
+  it('escapes the unit name in the stay line', () => {
+    const { html } = renderInvoiceEmail(doc({ unit_name: '<b>J1</b>' }), company);
+    expect(html).not.toContain('<b>J1</b>');
+    expect(html).toContain('&lt;b&gt;J1&lt;/b&gt;');
+  });
+});

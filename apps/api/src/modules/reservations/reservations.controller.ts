@@ -4,6 +4,8 @@ import { ReservationStatusEnum, ReservationSourceEnum, SetDiscountSchema, Calend
 import type { CreateReservationDTO, UpdateReservationDTO, ClaimOtaBookingDTO, MarkPaidDTO, ConfirmReservationDTO } from './reservations.types.js';
 import { AppError } from '../../core/errors/AppError.js';
 import { parsePageQuery } from '../../core/http/pagination.js';
+import { propertyScopeForUser } from '../../core/scope/propertyScope.js';
+import type { ContactViewer } from '../../core/scope/contactScope.js';
 
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
@@ -15,6 +17,13 @@ export class ReservationsController {
       ip: req.ip,
       requestId: (req as any).id,
     };
+  }
+
+  /** (Audit H-2) Whose guest list a linked contact must be in. */
+  private async contactViewer(req: Request): Promise<ContactViewer> {
+    const user = req.user!;
+    const scope = await propertyScopeForUser(user.sub, user.role);
+    return { userId: user.sub, propertyIds: scope.ids };
   }
 
   getReservations = async (req: Request, res: Response, next: NextFunction) => {
@@ -95,7 +104,7 @@ export class ReservationsController {
     try {
       const dto = req.body as CreateReservationDTO;
       const meta = this.getRequestMeta(req);
-      const reservation = await this.service.createReservation(dto, meta, req.activePropertyId);
+      const reservation = await this.service.createReservation(dto, meta, req.activePropertyId, await this.contactViewer(req));
       res.status(201).json(reservation);
     } catch (err) {
       next(err);
@@ -112,7 +121,8 @@ export class ReservationsController {
         meta,
         req.activePropertyId,
         // (Round 11) Only an admin may correct an in-house guest's arrival day.
-        req.user?.role === 'admin'
+        req.user?.role === 'admin',
+        await this.contactViewer(req)
       );
       res.json(reservation);
     } catch (err) {
@@ -150,7 +160,7 @@ export class ReservationsController {
     try {
       const dto = req.body as ClaimOtaBookingDTO;
       const meta = this.getRequestMeta(req);
-      res.json(await this.service.claimOtaBooking(req.params.id as string, dto, meta, req.activePropertyId));
+      res.json(await this.service.claimOtaBooking(req.params.id as string, dto, meta, req.activePropertyId, await this.contactViewer(req)));
     } catch (err) {
       next(err);
     }

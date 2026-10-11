@@ -3,9 +3,15 @@ import { Kysely, sql } from 'kysely';
 import type { Database, ContactRow, NewContact, UpdateContact } from '../../../db/types.js';
 import type { ContactFilters, ContactViewer, PaginationOptions, PaginatedResult, CRMRequestMeta } from '../crm.types.js';
 import { contactVisibleSql } from '../../../core/scope/contactScope.js';
+import { fileLinkableBy } from '../../../core/scope/fileLink.js';
 
 export class ContactsRepository {
   constructor(private readonly db: Kysely<Database>) {}
+
+  /** (Audit L-10) May `userId` attach this file to a record? See core/scope/fileLink.ts. */
+  fileLinkableBy(fileId: string, userId: string): Promise<boolean> {
+    return fileLinkableBy(this.db, fileId, userId);
+  }
 
   /** `viewer` limits to the guests that person may see; internal callers omit it. */
   async findById(id: string, viewer?: ContactViewer): Promise<ContactRow | undefined> {
