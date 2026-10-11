@@ -3,6 +3,7 @@ import { checkDbConnection, pool } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import fs from 'fs/promises';
 import path from 'path';
+import { logger } from '../../core/logger.js';
 
 export async function liveness(_req: Request, res: Response): Promise<void> {
   res.json({ status: 'ok', uptime: process.uptime() });
@@ -25,11 +26,13 @@ export async function readiness(_req: Request, res: Response): Promise<void> {
 
     res.json({ status: 'ok', db: 'connected', migrations });
   } catch (err) {
+    logger.error({ err }, '[health] readiness check failed');
     res.status(503).json({
       status: 'error',
       db: 'error',
       migrations: 'error',
-      detail: String(err),
+      // (Audit L-7) Unauthenticated: the raw error named the DB host/user or server paths.
+      detail: 'unavailable',
     });
   }
 }
@@ -46,11 +49,13 @@ export async function storageHealth(_req: Request, res: Response): Promise<void>
       await fs.unlink(probe);
       res.json({ status: 'ok', driver, latencyMs: Date.now() - start });
     } catch (err) {
+      logger.error({ err }, '[health] storage check failed');
       res.status(503).json({
         status: 'error',
         driver,
         latencyMs: Date.now() - start,
-        detail: String(err),
+        // (Audit L-7) Unauthenticated: the raw error named the DB host/user or server paths.
+      detail: 'unavailable',
       });
     }
     return;

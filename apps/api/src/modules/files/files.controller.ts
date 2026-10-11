@@ -41,7 +41,10 @@ export class FilesController {
     // `defParamCharset` is a real multer 2 option missing from @types/multer.
     const upload = multer({
       storage,
-      limits: { fileSize: MAX_FILE_SIZE_BYTES },
+      // (Audit 2026-10-11, L-5) Only fileSize was capped: busboy's defaults allow any number of
+      // 1 MB text fields, buffered in memory, so one upload could hold as much RAM as it sent.
+      // An upload is one file plus a few small fields.
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1, fields: 10, parts: 12, fieldSize: 64 * 1024 },
       // Filenames are UTF-8 in every browser; busboy's default (latin1) turned
       // "Kgalagadi_ŋ.pdf" or an accented name into mojibake (re-test 2026-10-04).
       defParamCharset: 'utf8',
