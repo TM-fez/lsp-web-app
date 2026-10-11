@@ -8,6 +8,7 @@ import { AppError } from '../../core/errors/AppError.js';
 import { logger } from '../../core/logger.js';
 import { describeThebe, TERMINAL_RESERVATION_STATUSES } from '../../core/money/folio.js';
 import { todayInPropertyTZ } from '../../core/time.js';
+import type { ContactViewer } from '../../core/scope/contactScope.js';
 import { assertStatusChange, assertStayChangeAllowed, stayChangeProblem } from './reservations.moveRules.js';
 import { nightsBetween } from '../quotes/quotes.util.js';
 import { buildReservationPricing, type ReservationPricing, type NotPriceable } from './reservations.pricing.js';
@@ -42,6 +43,9 @@ export function isReservationOverlapError(e: unknown): boolean {
   const err = e as { code?: string; constraint?: string };
   return err?.code === '23P01' && err?.constraint === 'reservations_no_overlap';
 }
+
+/** (Audit H-2) A guest you can't see answers like one that doesn't exist. */
+const GUEST_NOT_FOUND = 'That guest isn’t in your guest list. Choose or add the guest first.';
 
 export class ReservationsService {
   // rooms + pricing are optional so unit tests can construct the service with just
@@ -601,8 +605,22 @@ export class ReservationsService {
     }
   }
 
-  async createReservation(dto: CreateReservationDTO, meta: ReservationRequestMeta, activePropertyId?: string): Promise<ReservationRow> {
+  async createReservation(
+    dto: CreateReservationDTO,
+    meta: ReservationRequestMeta,
+    activePropertyId?: string,
+    viewer?: ContactViewer
+  ): Promise<ReservationRow> {
     await this.assertCrmContactsExist(dto);
+    // (Audit H-2) Staff may only book guests they can see. The public page passes no viewer:
+    // it picks its own guest from what was typed (R6), never from an id it was given.
+    if (viewer) {
+      await this.repository.assertContactsVisible(
+        [dto.contact_id, dto.billing_contact_id, dto.booking_coordinator_id],
+        viewer,
+        GUEST_NOT_FOUND
+      );
+    }
     const checkIn = new Date(dto.check_in_date);
     const checkOut = new Date(dto.check_out_date);
 
@@ -649,10 +667,26 @@ export class ReservationsService {
     dto: UpdateReservationDTO,
     meta: ReservationRequestMeta,
     activePropertyId?: string,
-    isAdmin = false
+    isAdmin = false,
+    viewer?: ContactViewer
   ): Promise<ReservationRow> {
     await this.assertCrmContactsExist(dto);
     const existing = await this.getReservationById(id, activePropertyId);
+    // (Audit H-2) Only a guest who is CHANGING is checked: the drawer re-sends the whole form,
+    // and a coordinator already on this booking may be booked nowhere you can see.
+    if (viewer) {
+      const changed = (next: string | null | undefined, now: string | null) =>
+        next && next !== now ? next : null;
+      await this.repository.assertContactsVisible(
+        [
+          changed(dto.contact_id, existing.contact_id),
+          changed(dto.billing_contact_id, existing.billing_contact_id),
+          changed(dto.booking_coordinator_id, existing.booking_coordinator_id),
+        ],
+        viewer,
+        GUEST_NOT_FOUND
+      );
+    }
 
     // If the booking is being moved to a different unit, that unit must also be in
     // the active property.
@@ -1014,6 +1048,7 @@ export class ReservationsService {
     dto: ClaimOtaBookingDTO,
     meta: ReservationRequestMeta,
     activePropertyId?: string,
+    viewer?: ContactViewer,
   ): Promise<ReservationRow> {
     const existing = await this.getReservationById(id, activePropertyId);
 
@@ -1023,6 +1058,7 @@ export class ReservationsService {
     if (!(await this.repository.contactExists(dto.contact_id))) {
       throw AppError.badRequest('Contact not found');
     }
+    if (viewer) await this.repository.assertContactsVisible([dto.contact_id], viewer, 'Contact not found');
 
     const updated = await this.repository.update(
       id,

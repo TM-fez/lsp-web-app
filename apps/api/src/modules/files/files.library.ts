@@ -1,5 +1,6 @@
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Database } from '../../db/types.js';
+import { contactVisibleSql } from '../../core/scope/contactScope.js';
 
 /**
  * (P6) The Files library: every live file, categorised by what it is ATTACHED TO.
@@ -165,6 +166,19 @@ function viewerWhere(v: LibraryViewer): RawBuilder<unknown> {
       ${mine}
       OR (lib.property_id IS NULL AND lib.link_kind IS NOT NULL)
       OR (lib.property_id IS NULL AND lib.link_kind IS NULL AND ${standaloneNoProperty})
+    )`);
+    // (Audit 2026-10-11, H-2) A guest's profile picture belongs to no property, so the rule
+    // above showed it to everyone — and each row carries the guest's name and id. That listed
+    // every pictured guest in the estate to staff limited to one property, and the id was
+    // enough to link the guest onto their own booking and open the full record. A contact's
+    // picture now follows the guest list rule (owner decision 2026-10-04 (a)).
+    parts.push(sql`(
+      lib.link_kind IS DISTINCT FROM 'contact'
+      OR EXISTS (
+        SELECT 1 FROM contacts lc
+         WHERE lc.id = lib.link_id
+           AND ${contactVisibleSql('lc', v.accessiblePropertyIds, v.userId)}
+      )
     )`);
   }
   return sql.join(parts, sql` AND `);

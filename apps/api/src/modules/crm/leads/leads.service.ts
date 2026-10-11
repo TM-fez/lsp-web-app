@@ -42,6 +42,9 @@ export class LeadsService {
 
     const contactId = dto.contact_id ?? lead.contact_id;
     if (!contactId) throw AppError.badRequest('Choose a guest before converting this enquiry to a booking.');
+    // (Audit H-2) A guest chosen at conversion must be one you can see. The enquiry's own
+    // guest is already linked to it — the public page only reuses a record for the same person.
+    if (dto.contact_id && dto.contact_id !== lead.contact_id) await this.assertGuestVisible(dto.contact_id, scope);
 
     // Claim first, atomically — only one of several simultaneous clicks gets past here.
     const claim = await this.repository.claimForConversion(id, contactId, meta);
@@ -106,10 +109,24 @@ export class LeadsService {
     }
   }
 
+  /**
+   * (Audit H-2) Linking a guest to an enquiry is a step towards booking them here, and an
+   * enquiry shows its guest's name — so only a guest the caller can see may be linked.
+   */
+  private async assertGuestVisible(contactId: string | null | undefined, scope?: LeadScope): Promise<void> {
+    if (!contactId || !scope) return;
+    await this.repository.assertContactsVisible(
+      [contactId],
+      { userId: scope.userId, propertyIds: scope.ids },
+      'That guest isn’t in your guest list. Choose or add the guest first.'
+    );
+  }
+
   async createLead(dto: CreateLeadDTO, meta: LeadRequestMeta, scope?: LeadScope): Promise<LeadRow> {
     // Property: what was asked for, else the property the user is working in, else none.
     const propertyId = dto.property_id === undefined ? scope?.activePropertyId : dto.property_id;
     if (propertyId) this.assertPropertyAllowed(propertyId, scope);
+    await this.assertGuestVisible(dto.contact_id, scope);
     const newLead: NewLead = {
       ...dto,
       ...(propertyId !== undefined ? { property_id: propertyId } : {}),
@@ -123,6 +140,7 @@ export class LeadsService {
     // Ensure the lead exists AND is one the caller may see (else "not found")
     const existing = await this.getLeadById(id, scope);
     if (dto.property_id) this.assertPropertyAllowed(dto.property_id, scope);
+    if (dto.contact_id && dto.contact_id !== existing.contact_id) await this.assertGuestVisible(dto.contact_id, scope);
     // Taking a lead OUT of every property is for its creator or an every-property user; a
     // limited user could otherwise hide it from their colleagues.
     if (dto.property_id === null && scope && !scope.allProperties && existing.created_by !== scope.userId) {
