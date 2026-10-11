@@ -31,8 +31,8 @@ function makeRepo(overrides: Record<string, unknown> = {}) {
     findBlockByUid: vi.fn().mockResolvedValue(undefined),
     insertImportedBlock: vi.fn().mockResolvedValue('res-new'),
     updateBlock: vi.fn().mockResolvedValue(true),
-    updateClaimedDates: vi.fn().mockResolvedValue(true),
-    cancelBlock: vi.fn().mockResolvedValue(undefined),
+    moveClaimedDates: vi.fn().mockResolvedValue('moved'),
+    cancelOtaBooking: vi.fn().mockResolvedValue(true),
     listActiveOtaRows: vi.fn().mockResolvedValue([]),
     findConflicts: vi.fn().mockResolvedValue([]),
     recentCollisionAlertExists: vi.fn().mockResolvedValue(false),
@@ -128,9 +128,39 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.updateClaimedDates).toHaveBeenCalledWith('res-claimed', expect.any(Object));
+    expect(repo.moveClaimedDates).toHaveBeenCalledWith('res-claimed', expect.any(Object));
     expect(repo.updateBlock).not.toHaveBeenCalled();
     expect(summary.upserted).toBe(1);
+  });
+
+  // (Audit 2026-10-11, M-8) The move now goes through the locked, re-priced booking update,
+  // which refuses an in-house guest (or a move the price rules refuse): staff review it.
+  it('leaves a claimed stay it may not move for staff, with a warning', async () => {
+    const repo = makeRepo({
+      findBlockByUid: vi.fn().mockResolvedValue({ id: 'res-inhouse', status: 'CHECKED_IN', deleted_at: null }),
+      moveClaimedDates: vi.fn().mockResolvedValue('skipped'),
+    });
+    const svc = makeService(repo, {
+      fetchIcs: async () => feed(event('evt-1', { start: '20260710', end: '20260712' })),
+      dispatchAlert: vi.fn(),
+    });
+    const summary = await svc.runImport();
+    expect(summary.upserted).toBe(0);
+    expect(summary.warnings).toBe(1);
+  });
+
+  it('counts a cancel the lock refused (guest checked in meanwhile) as a warning, not a cancel', async () => {
+    const repo = makeRepo({
+      findBlockByUid: vi.fn().mockResolvedValue({ id: 'res-claimed', status: 'CONFIRMED', deleted_at: null }),
+      cancelOtaBooking: vi.fn().mockResolvedValue(false),
+    });
+    const svc = makeService(repo, {
+      fetchIcs: async () => feed(event('evt-c', { start: '20260701', end: '20260705', cancelled: true })),
+      dispatchAlert: vi.fn(),
+    });
+    const summary = await svc.runImport();
+    expect(summary.cancelled).toBe(0);
+    expect(summary.warnings).toBe(1);
   });
 
   it('cancels a claimed CONFIRMED stay when the OTA event is CANCELLED (guest cancelled)', async () => {
@@ -144,7 +174,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).toHaveBeenCalledWith('res-claimed');
+    expect(repo.cancelOtaBooking).toHaveBeenCalledWith('res-claimed', ['BLOCKED', 'CONFIRMED']);
     expect(summary.cancelled).toBe(1);
   });
 
@@ -159,7 +189,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).not.toHaveBeenCalled();
+    expect(repo.cancelOtaBooking).not.toHaveBeenCalled();
     expect(summary.warnings).toBe(1);
   });
 
@@ -245,7 +275,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).toHaveBeenCalledWith('res-c');
+    expect(repo.cancelOtaBooking).toHaveBeenCalledWith('res-c', expect.any(Array));
     expect(summary.cancelled).toBe(1);
   });
 
@@ -266,7 +296,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).toHaveBeenCalledWith('res-v');
+    expect(repo.cancelOtaBooking).toHaveBeenCalledWith('res-v', expect.any(Array));
     expect(summary.cancelled).toBe(1);
   });
 
@@ -281,7 +311,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).not.toHaveBeenCalled();
+    expect(repo.cancelOtaBooking).not.toHaveBeenCalled();
     expect(summary.rooms[0]!.pruneSkipped).toBe(true);
     expect(summary.warnings).toBe(1);
   });
@@ -303,7 +333,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).not.toHaveBeenCalled();
+    expect(repo.cancelOtaBooking).not.toHaveBeenCalled();
     expect(summary.rooms[0]!.pruneSkipped).toBe(true);
   });
 
@@ -322,7 +352,7 @@ describe('ChannelImportService.runImport', () => {
 
     const summary = await svc.runImport();
 
-    expect(repo.cancelBlock).not.toHaveBeenCalled();
+    expect(repo.cancelOtaBooking).not.toHaveBeenCalled();
     expect(summary.warnings).toBe(1);
   });
 

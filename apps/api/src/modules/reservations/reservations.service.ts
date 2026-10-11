@@ -79,7 +79,7 @@ export class ReservationsService {
    * well as how it IS — see ReservationsRepository.repriceStayChange.
    *
    * `deps` lets a caller that is inside a transaction price through that transaction (see
-   * pricerFor) instead of borrowing a second connection from the pool while it holds a lock.
+   * stayPricer) instead of borrowing a second connection from the pool while it holds a lock.
    */
   private async priceStay(
     stay: Pick<ReservationRow, 'room_id' | 'check_in_date' | 'check_out_date'>,
@@ -127,7 +127,7 @@ export class ReservationsService {
    * The stay pricer handed to the repository: every read goes through the transaction the
    * repository is holding the booking's lock in.
    */
-  private pricerFor(): StayPricer | undefined {
+  stayPricer(): StayPricer | undefined {
     if (!this.pricing || !this.rooms) return undefined;
     return (trx: Transaction<Database>, stay, reservation) =>
       this.priceStay(stay, reservation, {
@@ -817,7 +817,7 @@ export class ReservationsService {
             if (stayChanged) stayRule(current.status, current.check_in_date);
             if (dto.status) assertStatusChange(current.status, dto.status);
           },
-          ...(changesStay ? { repriceStay: this.pricerFor() } : {}),
+          ...(changesStay ? { repriceStay: this.stayPricer() } : {}),
         }
       );
     } catch (e) {
@@ -866,7 +866,7 @@ export class ReservationsService {
               throw AppError.conflict('This booking changed while checking in. Refresh and try again.');
             }
           },
-          repriceStay: this.pricerFor(),
+          repriceStay: this.stayPricer(),
         }
       );
     } catch (e) {
@@ -989,7 +989,7 @@ export class ReservationsService {
             throw AppError.conflict('A discount can only be applied to a pending booking (before payment confirms it)');
           }
         },
-        refreeze: this.pricerFor(),
+        refreeze: this.stayPricer(),
       }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
@@ -1016,7 +1016,7 @@ export class ReservationsService {
           if (current.discount_value == null) throw AppError.notFound('There is no discount to approve on this booking');
           if (current.discount_approved_at) throw AppError.conflict('This discount has already been approved');
         },
-        refreeze: this.pricerFor(),
+        refreeze: this.stayPricer(),
       }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
@@ -1038,7 +1038,7 @@ export class ReservationsService {
       },
       meta,
       undefined,
-      { refreeze: this.pricerFor() }
+      { refreeze: this.stayPricer() }
     );
     if (!updated) throw AppError.notFound(`Reservation ${id} not found`);
     return updated;
