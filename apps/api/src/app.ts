@@ -11,6 +11,7 @@ import { requestLog } from './core/middleware/requestLog.middleware.js';
 import { errorHandler } from './core/errors/errorHandler.middleware.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { router } from './router.js';
+import { scrubSentryEvent } from './core/sentryScrub.js';
 
 // The configured Express app, with NO `listen()` — so it can be imported both by the
 // long-running server (server.ts) and by a serverless handler (api/index.ts) without
@@ -21,6 +22,10 @@ if (env.SENTRY_DSN) {
     dsn: env.SENTRY_DSN,
     environment: env.NODE_ENV,
     // Deliberately no tracesSampleRate: error capture only, free-tier friendly.
+    // (Audit 2026-10-11) Never send passwords, guest details, cookies or tokens with a report.
+    sendDefaultPii: false,
+    integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: 'none' })],
+    beforeSend: scrubSentryEvent,
   });
 }
 
